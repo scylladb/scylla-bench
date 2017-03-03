@@ -14,6 +14,7 @@ import (
 
 var keyspaceName string
 var tableName string
+var counterTableName string
 
 var concurrency int
 
@@ -37,6 +38,11 @@ func PrepareDatabase(session *gocql.Session, replicationFactor int) {
 	}
 
 	err = session.Query("CREATE TABLE IF NOT EXISTS " + keyspaceName + "." + tableName + " (pk bigint, ck bigint, v blob, PRIMARY KEY(pk, ck)) WITH compression = { }").Exec()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = session.Query("CREATE TABLE IF NOT EXISTS " + keyspaceName + "." + counterTableName + " (pk bigint, ck bigint, c1 counter, c2 counter, c3 counter, c4 counter, c5 counter, PRIMARY KEY(pk, ck)) WITH compression = { }").Exec()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -69,6 +75,8 @@ func GetMode(name string) func(session *gocql.Session, workload WorkloadGenerato
 			return DoWrites
 		}
 		return DoBatchedWrites
+	case "counter_update":
+		return DoCounterUpdates
 	case "read":
 		return DoReads
 	default:
@@ -114,6 +122,7 @@ func main() {
 	flag.StringVar(&keyspaceName, "keyspace", "scylla_bench", "keyspace to use")
 	flag.StringVar(&tableName, "table", "test", "table to use")
 	flag.Parse()
+	counterTableName = "test_counters"
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stdout, "Usage:\n%s [options]\n\n", os.Args[0])

@@ -135,6 +135,37 @@ func DoBatchedWrites(session *gocql.Session, workload WorkloadGenerator) Result 
 	return result
 }
 
+func DoCounterUpdates(session *gocql.Session, workload WorkloadGenerator) Result {
+	query := session.Query("UPDATE " + keyspaceName + "." + counterTableName + " SET c1 = c1 + 1, c2 = c2 + 1, c3 = c3 + 1, c4 = c4 + 1, c5 = c5 + 1 WHERE pk = ? AND ck = ?")
+
+	var operations int
+	latencyHistogram := NewHistogram()
+
+	start := time.Now()
+	for !workload.IsDone() && atomic.LoadUint32(&stopAll) == 0 {
+		operations++
+		pk := workload.NextPartitionKey()
+		ck := workload.NextClusteringKey()
+		bound := query.Bind(pk, ck)
+
+		requestStart := time.Now()
+		err := bound.Exec()
+		requestEnd := time.Now()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		latency := requestEnd.Sub(requestStart)
+		err = latencyHistogram.RecordValue(latency.Nanoseconds())
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	end := time.Now()
+
+	return Result{end.Sub(start), operations, operations, latencyHistogram}
+}
+
 func DoReads(session *gocql.Session, workload WorkloadGenerator) Result {
 	request := fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? AND ck >= ? LIMIT %d", keyspaceName, tableName, rowsPerRequest)
 	query := session.Query(request)
