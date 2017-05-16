@@ -30,6 +30,16 @@ func NewHistogram() *hdrhistogram.Histogram {
 	return hdrhistogram.New(0, (2 * timeout).Nanoseconds(), 5)
 }
 
+var reportedError uint32
+
+func HandleError(err error) {
+	if atomic.SwapUint32(&stopAll, 1) == 0 {
+		log.Print(err)
+		fmt.Println("\nstopping")
+		atomic.StoreUint32(&stopAll, 1)
+	}
+}
+
 func RunConcurrently(workload func(id int) Result) MergedResult {
 	results := make([]chan Result, concurrency)
 	for i := range results {
@@ -80,13 +90,15 @@ func DoWrites(session *gocql.Session, workload WorkloadGenerator) Result {
 		err := bound.Exec()
 		requestEnd := time.Now()
 		if err != nil {
-			log.Fatal(err)
+			HandleError(err)
+			break
 		}
 
 		latency := requestEnd.Sub(requestStart)
 		err = latencyHistogram.RecordValue(latency.Nanoseconds())
 		if err != nil {
-			log.Fatal(err)
+			HandleError(err)
+			break
 		}
 	}
 	end := time.Now()
@@ -120,13 +132,15 @@ func DoBatchedWrites(session *gocql.Session, workload WorkloadGenerator) Result 
 		err := session.ExecuteBatch(batch)
 		requestEnd := time.Now()
 		if err != nil {
-			log.Fatal(err)
+			HandleError(err)
+			break
 		}
 
 		latency := requestEnd.Sub(requestStart)
 		err = result.Latency.RecordValue(latency.Nanoseconds())
 		if err != nil {
-			log.Fatal(err)
+			HandleError(err)
+			break
 		}
 	}
 	end := time.Now()
@@ -152,13 +166,15 @@ func DoCounterUpdates(session *gocql.Session, workload WorkloadGenerator) Result
 		err := bound.Exec()
 		requestEnd := time.Now()
 		if err != nil {
-			log.Fatal(err)
+			HandleError(err)
+			break
 		}
 
 		latency := requestEnd.Sub(requestStart)
 		err = latencyHistogram.RecordValue(latency.Nanoseconds())
 		if err != nil {
-			log.Fatal(err)
+			HandleError(err)
+			break
 		}
 	}
 	end := time.Now()
@@ -189,13 +205,15 @@ func DoReads(session *gocql.Session, workload WorkloadGenerator) Result {
 
 		err := iter.Close()
 		if err != nil {
-			log.Fatal(err)
+			HandleError(err)
+			break
 		}
 
 		latency := requestEnd.Sub(requestStart)
 		err = result.Latency.RecordValue(latency.Nanoseconds())
 		if err != nil {
-			log.Fatal(err)
+			HandleError(err)
+			break
 		}
 	}
 	end := time.Now()
