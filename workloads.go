@@ -28,8 +28,8 @@ func (sva *SequentialVisitAll) NextPartitionKey() int {
 		return sva.NextPartition
 	}
 	sva.NextClusteringRow = 0
-	pk := sva.NextPartition
 	sva.NextPartition++
+	pk := sva.NextPartition
 	return pk
 }
 
