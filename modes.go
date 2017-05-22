@@ -183,7 +183,12 @@ func DoCounterUpdates(session *gocql.Session, workload WorkloadGenerator) Result
 }
 
 func DoReads(session *gocql.Session, workload WorkloadGenerator) Result {
-	request := fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? AND ck >= ? LIMIT %d", keyspaceName, tableName, rowsPerRequest)
+	var request string
+	if provideUpperBound {
+		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ?", keyspaceName, tableName)
+	} else {
+		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? AND ck >= ? LIMIT %d", keyspaceName, tableName, rowsPerRequest)
+	}
 	query := session.Query(request)
 
 	var result Result
@@ -194,7 +199,13 @@ func DoReads(session *gocql.Session, workload WorkloadGenerator) Result {
 		result.Operations++
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
-		bound := query.Bind(pk, ck)
+
+		var bound *gocql.Query
+		if provideUpperBound {
+			bound = query.Bind(pk, ck, ck+rowsPerRequest)
+		} else {
+			bound = query.Bind(pk, ck)
+		}
 
 		requestStart := time.Now()
 		iter := bound.Iter()

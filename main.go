@@ -25,6 +25,7 @@ var clusteringRowCount int
 var clusteringRowSize int
 
 var rowsPerRequest int
+var provideUpperBound bool
 
 var timeout time.Duration
 
@@ -115,6 +116,7 @@ func main() {
 	flag.IntVar(&clusteringRowSize, "clustering-row-size", 4, "size of a single clustering row")
 
 	flag.IntVar(&rowsPerRequest, "rows-per-request", 1, "clustering rows per single request")
+	flag.BoolVar(&provideUpperBound, "provide-upper-bound", false, "whether read requests should provide an upper bound")
 	flag.DurationVar(&testDuration, "duration", 0, "duration of the test in seconds (0 for unlimited)")
 
 	flag.IntVar(&partitionOffset, "partition-offset", 0, "start of the partition range (only for sequential workload)")
@@ -214,6 +216,9 @@ func main() {
 	fmt.Println("Clustering rows:\t", clusteringRowCount)
 	fmt.Println("Clustering row size:\t", clusteringRowSize)
 	fmt.Println("Rows per request:\t", rowsPerRequest)
+	if mode == "read" {
+		fmt.Println("Provide upper bound:\t", provideUpperBound)
+	}
 	fmt.Println("Page size:\t\t", pageSize)
 	fmt.Println("Concurrency:\t\t", concurrency)
 	fmt.Println("Connections:\t\t", connectionCount)
