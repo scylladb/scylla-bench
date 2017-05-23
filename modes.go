@@ -68,7 +68,7 @@ type MergedResult struct {
 }
 
 func NewHistogram() *hdrhistogram.Histogram {
-	return hdrhistogram.New(0, (2 * timeout).Nanoseconds(), 5)
+	return hdrhistogram.New(time.Microsecond.Nanoseconds()*50, (timeout + timeout*2).Nanoseconds(), 3)
 }
 
 var reportedError uint32
