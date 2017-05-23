@@ -26,6 +26,7 @@ var clusteringRowSize int
 
 var rowsPerRequest int
 var provideUpperBound bool
+var inRestriction bool
 
 var timeout time.Duration
 
@@ -117,6 +118,7 @@ func main() {
 
 	flag.IntVar(&rowsPerRequest, "rows-per-request", 1, "clustering rows per single request")
 	flag.BoolVar(&provideUpperBound, "provide-upper-bound", false, "whether read requests should provide an upper bound")
+	flag.BoolVar(&inRestriction, "in-restriction", false, "use IN restriction in read requests")
 	flag.DurationVar(&testDuration, "duration", 0, "duration of the test in seconds (0 for unlimited)")
 
 	flag.IntVar(&partitionOffset, "partition-offset", 0, "start of the partition range (only for sequential workload)")
@@ -145,6 +147,12 @@ func main() {
 
 	if partitionOffset != 0 && workload != "sequential" {
 		log.Fatal("partition-offset has a meaning only in sequential workloads")
+	}
+
+	if mode != "read" {
+		if inRestriction || provideUpperBound {
+			log.Fatal("in-restriction and provide-uppder-bound flags make sense only in read mode")
+		}
 	}
 
 	cluster := gocql.NewCluster(nodes)
@@ -218,6 +226,7 @@ func main() {
 	fmt.Println("Rows per request:\t", rowsPerRequest)
 	if mode == "read" {
 		fmt.Println("Provide upper bound:\t", provideUpperBound)
+		fmt.Println("IN queries:\t\t", inRestriction)
 	}
 	fmt.Println("Page size:\t\t", pageSize)
 	fmt.Println("Concurrency:\t\t", concurrency)

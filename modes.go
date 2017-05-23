@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -184,7 +185,13 @@ func DoCounterUpdates(session *gocql.Session, workload WorkloadGenerator) Result
 
 func DoReads(session *gocql.Session, workload WorkloadGenerator) Result {
 	var request string
-	if provideUpperBound {
+	if inRestriction {
+		arr := make([]string, rowsPerRequest)
+		for i := 0; i < rowsPerRequest; i++ {
+			arr[i] = "?"
+		}
+		request = fmt.Sprintf("SELECT * from %s.%s WHERE pk = ? AND ck IN (%s)", keyspaceName, tableName, strings.Join(arr, ", "))
+	} else if provideUpperBound {
 		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ?", keyspaceName, tableName)
 	} else {
 		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? AND ck >= ? LIMIT %d", keyspaceName, tableName, rowsPerRequest)
@@ -198,13 +205,26 @@ func DoReads(session *gocql.Session, workload WorkloadGenerator) Result {
 	for !workload.IsDone() && atomic.LoadUint32(&stopAll) == 0 {
 		result.Operations++
 		pk := workload.NextPartitionKey()
-		ck := workload.NextClusteringKey()
 
 		var bound *gocql.Query
-		if provideUpperBound {
-			bound = query.Bind(pk, ck, ck+rowsPerRequest)
+		if inRestriction {
+			args := make([]interface{}, 1, rowsPerRequest+1)
+			args[0] = pk
+			for i := 0; i < rowsPerRequest; i++ {
+				if workload.IsPartitionDone() {
+					args = append(args, 0)
+				} else {
+					args = append(args, workload.NextClusteringKey())
+				}
+			}
+			bound = query.Bind(args...)
 		} else {
-			bound = query.Bind(pk, ck)
+			ck := workload.NextClusteringKey()
+			if provideUpperBound {
+				bound = query.Bind(pk, ck, ck+rowsPerRequest)
+			} else {
+				bound = query.Bind(pk, ck)
+			}
 		}
 
 		requestStart := time.Now()
