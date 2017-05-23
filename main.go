@@ -70,7 +70,7 @@ func GetWorkload(name string, threadId int, partitionOffset int) WorkloadGenerat
 	panic("unreachable")
 }
 
-func GetMode(name string) func(session *gocql.Session, workload WorkloadGenerator) Result {
+func GetMode(name string) func(session *gocql.Session, workload WorkloadGenerator, rateLimiter RateLimiter) Result {
 	switch name {
 	case "write":
 		if rowsPerRequest == 1 {
@@ -96,6 +96,7 @@ func main() {
 	var nodes string
 	var clientCompression bool
 	var connectionCount int
+	var maximumRate int
 	var pageSize int
 
 	var partitionOffset int
@@ -110,6 +111,7 @@ func main() {
 	flag.BoolVar(&clientCompression, "client-compression", true, "use compression for client-coordinator communication")
 	flag.IntVar(&concurrency, "concurrency", 16, "number of used goroutines")
 	flag.IntVar(&connectionCount, "connection-count", 4, "number of connections")
+	flag.IntVar(&maximumRate, "max-rate", 0, "the maximum rate of outbound requests in op/s (0 for unlimited)")
 	flag.IntVar(&pageSize, "page-size", 1000, "page size")
 
 	flag.IntVar(&partitionCount, "partition-count", 10000, "number of partitions")
@@ -208,8 +210,8 @@ func main() {
 		}()
 	}
 
-	result := RunConcurrently(func(i int) Result {
-		return GetMode(mode)(session, GetWorkload(workload, i, partitionOffset))
+	result := RunConcurrently(maximumRate, func(i int, rateLimiter RateLimiter) Result {
+		return GetMode(mode)(session, GetWorkload(workload, i, partitionOffset), rateLimiter)
 	})
 
 	fmt.Println("Configuration")
@@ -231,6 +233,11 @@ func main() {
 	fmt.Println("Page size:\t\t", pageSize)
 	fmt.Println("Concurrency:\t\t", concurrency)
 	fmt.Println("Connections:\t\t", connectionCount)
+	if maximumRate > 0 {
+		fmt.Println("Maximum rate:\t\t", maximumRate, "op/s")
+	} else {
+		fmt.Println("Maximum rate:\t\t unlimited")
+	}
 	fmt.Println("Client compression:\t", clientCompression)
 
 	fmt.Println("\nResults")
