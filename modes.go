@@ -126,7 +126,7 @@ func MergeResults(results []chan Result) (bool, *MergedResult) {
 	return final, result
 }
 
-func RunConcurrently(maximumRate int, workload func(id int, resultChannel chan Result, rateLimiter RateLimiter) Result) *MergedResult {
+func RunConcurrently(maximumRate int, workload func(id int, resultChannel chan Result, rateLimiter RateLimiter)) *MergedResult {
 	var timeOffsetUnit int64
 	if maximumRate != 0 {
 		timeOffsetUnit = int64(time.Second) / int64(maximumRate)
@@ -144,7 +144,7 @@ func RunConcurrently(maximumRate int, workload func(id int, resultChannel chan R
 	for i := 0; i < concurrency; i++ {
 		go func(i int) {
 			timeOffset := time.Duration(timeOffsetUnit * int64(i))
-			results[i] <- workload(i, results[i], NewRateLimiter(maximumRate, timeOffset))
+			workload(i, results[i], NewRateLimiter(maximumRate, timeOffset))
 			close(results[i])
 		}(i)
 	}
@@ -207,10 +207,7 @@ func (rb *ResultBuilder) RecordLatency(latency time.Duration, rateLimiter RateLi
 	return nil
 }
 
-func DoWrites(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) Result {
-	value := make([]byte, clusteringRowSize)
-	query := session.Query("INSERT INTO " + keyspaceName + "." + tableName + " (pk, ck, v) VALUES (?, ?, ?)")
-
+func RunTest(resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter, test func(rb *ResultBuilder) (error, time.Duration)) {
 	rb := NewResultBuilder()
 
 	start := time.Now()
@@ -218,22 +215,12 @@ func DoWrites(session *gocql.Session, resultChannel chan Result, workload Worklo
 	for !workload.IsDone() && atomic.LoadUint32(&stopAll) == 0 {
 		rateLimiter.Wait()
 
-		rb.IncOps()
-		rb.IncRows()
-
-		pk := workload.NextPartitionKey()
-		ck := workload.NextClusteringKey()
-		bound := query.Bind(pk, ck, value)
-
-		requestStart := time.Now()
-		err := bound.Exec()
-		requestEnd := time.Now()
+		err, latency := test(rb)
 		if err != nil {
 			HandleError(err)
 			break
 		}
 
-		latency := requestEnd.Sub(requestStart)
 		err = rb.RecordLatency(latency, rateLimiter)
 		if err != nil {
 			HandleError(err)
@@ -250,20 +237,38 @@ func DoWrites(session *gocql.Session, resultChannel chan Result, workload Worklo
 	end := time.Now()
 
 	rb.FullResult.ElapsedTime = end.Sub(start)
-	return *rb.FullResult
+	resultChannel <- *rb.FullResult
 }
 
-func DoBatchedWrites(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) Result {
+func DoWrites(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) {
+	value := make([]byte, clusteringRowSize)
+	query := session.Query("INSERT INTO " + keyspaceName + "." + tableName + " (pk, ck, v) VALUES (?, ?, ?)")
+
+	RunTest(resultChannel, workload, rateLimiter, func(rb *ResultBuilder) (error, time.Duration) {
+		rb.IncOps()
+		rb.IncRows()
+
+		pk := workload.NextPartitionKey()
+		ck := workload.NextClusteringKey()
+		bound := query.Bind(pk, ck, value)
+
+		requestStart := time.Now()
+		err := bound.Exec()
+		requestEnd := time.Now()
+		if err != nil {
+			return err, time.Duration(0)
+		}
+
+		latency := requestEnd.Sub(requestStart)
+		return nil, latency
+	})
+}
+
+func DoBatchedWrites(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) {
 	value := make([]byte, clusteringRowSize)
 	request := fmt.Sprintf("INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)", keyspaceName, tableName)
 
-	rb := NewResultBuilder()
-
-	start := time.Now()
-	partialStart := start
-	for !workload.IsDone() && atomic.LoadUint32(&stopAll) == 0 {
-		rateLimiter.Wait()
-
+	RunTest(resultChannel, workload, rateLimiter, func(rb *ResultBuilder) (error, time.Duration) {
 		batch := gocql.NewBatch(gocql.UnloggedBatch)
 		batchSize := 0
 
@@ -281,40 +286,18 @@ func DoBatchedWrites(session *gocql.Session, resultChannel chan Result, workload
 		err := session.ExecuteBatch(batch)
 		requestEnd := time.Now()
 		if err != nil {
-			HandleError(err)
-			break
+			return err, time.Duration(0)
 		}
 
 		latency := requestEnd.Sub(requestStart)
-		rb.RecordLatency(latency, rateLimiter)
-		if err != nil {
-			HandleError(err)
-			break
-		}
-
-		now := time.Now()
-		if now.Sub(partialStart) > time.Second {
-			resultChannel <- *rb.PartialResult
-			rb.ResetPartialResult()
-			partialStart = now
-		}
-	}
-	end := time.Now()
-
-	rb.FullResult.ElapsedTime = end.Sub(start)
-	return *rb.FullResult
+		return nil, latency
+	})
 }
 
-func DoCounterUpdates(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) Result {
+func DoCounterUpdates(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) {
 	query := session.Query("UPDATE " + keyspaceName + "." + counterTableName + " SET c1 = c1 + 1, c2 = c2 + 1, c3 = c3 + 1, c4 = c4 + 1, c5 = c5 + 1 WHERE pk = ? AND ck = ?")
 
-	rb := NewResultBuilder()
-
-	start := time.Now()
-	partialStart := start
-	for !workload.IsDone() && atomic.LoadUint32(&stopAll) == 0 {
-		rateLimiter.Wait()
-
+	RunTest(resultChannel, workload, rateLimiter, func(rb *ResultBuilder) (error, time.Duration) {
 		rb.IncOps()
 		rb.IncRows()
 
@@ -326,31 +309,15 @@ func DoCounterUpdates(session *gocql.Session, resultChannel chan Result, workloa
 		err := bound.Exec()
 		requestEnd := time.Now()
 		if err != nil {
-			HandleError(err)
-			break
+			return err, time.Duration(0)
 		}
 
 		latency := requestEnd.Sub(requestStart)
-		rb.RecordLatency(latency, rateLimiter)
-		if err != nil {
-			HandleError(err)
-			break
-		}
-
-		now := time.Now()
-		if now.Sub(partialStart) > time.Second {
-			resultChannel <- *rb.PartialResult
-			rb.ResetPartialResult()
-			partialStart = now
-		}
-	}
-	end := time.Now()
-
-	rb.FullResult.ElapsedTime = end.Sub(start)
-	return *rb.FullResult
+		return nil, latency
+	})
 }
 
-func DoReads(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) Result {
+func DoReads(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) {
 	var request string
 	if inRestriction {
 		arr := make([]string, rowsPerRequest)
@@ -365,13 +332,7 @@ func DoReads(session *gocql.Session, resultChannel chan Result, workload Workloa
 	}
 	query := session.Query(request)
 
-	rb := NewResultBuilder()
-
-	start := time.Now()
-	partialStart := start
-	for !workload.IsDone() && atomic.LoadUint32(&stopAll) == 0 {
-		rateLimiter.Wait()
-
+	RunTest(resultChannel, workload, rateLimiter, func(rb *ResultBuilder) (error, time.Duration) {
 		rb.IncOps()
 		pk := workload.NextPartitionKey()
 
@@ -405,26 +366,10 @@ func DoReads(session *gocql.Session, resultChannel chan Result, workload Workloa
 
 		err := iter.Close()
 		if err != nil {
-			HandleError(err)
-			break
+			return err, time.Duration(0)
 		}
 
 		latency := requestEnd.Sub(requestStart)
-		rb.RecordLatency(latency, rateLimiter)
-		if err != nil {
-			HandleError(err)
-			break
-		}
-
-		now := time.Now()
-		if now.Sub(partialStart) > time.Second {
-			resultChannel <- *rb.PartialResult
-			rb.ResetPartialResult()
-			partialStart = now
-		}
-	}
-	end := time.Now()
-
-	rb.FullResult.ElapsedTime = end.Sub(start)
-	return *rb.FullResult
+		return nil, latency
+	})
 }
