@@ -70,7 +70,7 @@ func GetWorkload(name string, threadId int, partitionOffset int) WorkloadGenerat
 	panic("unreachable")
 }
 
-func GetMode(name string) func(session *gocql.Session, workload WorkloadGenerator, rateLimiter RateLimiter) Result {
+func GetMode(name string) func(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) Result {
 	switch name {
 	case "write":
 		if rowsPerRequest == 1 {
@@ -85,6 +85,12 @@ func GetMode(name string) func(session *gocql.Session, workload WorkloadGenerato
 		log.Fatal("unknown mode: ", name)
 	}
 	panic("unreachable")
+}
+
+func PrintPartialResult(result *MergedResult) {
+	fmt.Println(result.Time, "\t", result.Operations, "\t", result.ClusteringRows,
+		"\t", time.Duration(result.Latency.Max()), "\t", time.Duration(result.Latency.ValueAtQuantile(99.9)), "\t", time.Duration(result.Latency.ValueAtQuantile(99)),
+		"\t", time.Duration(result.Latency.ValueAtQuantile(95)), "\t", time.Duration(result.Latency.ValueAtQuantile(90)), "\t", time.Duration(result.Latency.Mean()))
 }
 
 func main() {
@@ -210,10 +216,6 @@ func main() {
 		}()
 	}
 
-	result := RunConcurrently(maximumRate, func(i int, rateLimiter RateLimiter) Result {
-		return GetMode(mode)(session, GetWorkload(workload, i, partitionOffset), rateLimiter)
-	})
-
 	fmt.Println("Configuration")
 	fmt.Println("Mode:\t\t\t", mode)
 	fmt.Println("Workload:\t\t", workload)
@@ -239,6 +241,11 @@ func main() {
 		fmt.Println("Maximum rate:\t\t unlimited")
 	}
 	fmt.Println("Client compression:\t", clientCompression)
+
+	fmt.Println("\ntime\t\toperations/s\trows/s\t\tmax\t\t99.9th\t\t99th\t\t95th\t\t90th\t\tmean")
+	result := RunConcurrently(maximumRate, func(i int, resultChannel chan Result, rateLimiter RateLimiter) Result {
+		return GetMode(mode)(session, resultChannel, GetWorkload(workload, i, partitionOffset), rateLimiter)
+	})
 
 	fmt.Println("\nResults")
 	fmt.Println("Time (avg):\t", result.Time)

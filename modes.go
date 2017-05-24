@@ -52,6 +52,7 @@ func NewRateLimiter(maximumRate int, timeOffset time.Duration) RateLimiter {
 }
 
 type Result struct {
+	Final          bool
 	ElapsedTime    time.Duration
 	Operations     int
 	ClusteringRows int
@@ -65,6 +66,24 @@ type MergedResult struct {
 	OperationsPerSecond     float64
 	ClusteringRowsPerSecond float64
 	Latency                 *hdrhistogram.Histogram
+}
+
+func NewMergedResult() *MergedResult {
+	result := &MergedResult{}
+	result.Latency = NewHistogram()
+	return result
+}
+
+func (mr *MergedResult) AddResult(result Result) {
+	mr.Time += result.ElapsedTime
+	mr.Operations += result.Operations
+	mr.ClusteringRows += result.ClusteringRows
+	mr.OperationsPerSecond += float64(result.Operations) / result.ElapsedTime.Seconds()
+	mr.ClusteringRowsPerSecond += float64(result.ClusteringRows) / result.ElapsedTime.Seconds()
+	dropped := mr.Latency.Merge(result.Latency)
+	if dropped > 0 {
+		log.Print("dropped: ", dropped)
+	}
 }
 
 func NewHistogram() *hdrhistogram.Histogram {
@@ -81,7 +100,33 @@ func HandleError(err error) {
 	}
 }
 
-func RunConcurrently(maximumRate int, workload func(id int, rateLimiter RateLimiter) Result) MergedResult {
+func MergeResults(results []chan Result) (bool, *MergedResult) {
+	result := NewMergedResult()
+	final := false
+	for i, ch := range results {
+		res := <-ch
+		if !final && res.Final {
+			final = true
+			result = NewMergedResult()
+			for _, ch2 := range results[0:i] {
+				res = <-ch2
+				for !res.Final {
+					res = <-ch2
+				}
+				result.AddResult(res)
+			}
+		} else if final && !res.Final {
+			for !res.Final {
+				res = <-ch
+			}
+		}
+		result.AddResult(res)
+	}
+	result.Time /= time.Duration(concurrency)
+	return final, result
+}
+
+func RunConcurrently(maximumRate int, workload func(id int, resultChannel chan Result, rateLimiter RateLimiter) Result) *MergedResult {
 	var timeOffsetUnit int64
 	if maximumRate != 0 {
 		timeOffsetUnit = int64(time.Second) / int64(maximumRate)
@@ -95,45 +140,87 @@ func RunConcurrently(maximumRate int, workload func(id int, rateLimiter RateLimi
 		results[i] = make(chan Result, 1)
 	}
 
+	startTime := time.Now()
 	for i := 0; i < concurrency; i++ {
 		go func(i int) {
 			timeOffset := time.Duration(timeOffsetUnit * int64(i))
-			results[i] <- workload(i, NewRateLimiter(maximumRate, timeOffset))
+			results[i] <- workload(i, results[i], NewRateLimiter(maximumRate, timeOffset))
 			close(results[i])
 		}(i)
 	}
 
-	var result MergedResult
-	result.Latency = NewHistogram()
-	for _, ch := range results {
-		res := <-ch
-		result.Time += res.ElapsedTime
-		result.Operations += res.Operations
-		result.ClusteringRows += res.ClusteringRows
-		result.OperationsPerSecond += float64(res.Operations) / res.ElapsedTime.Seconds()
-		result.ClusteringRowsPerSecond += float64(res.ClusteringRows) / res.ElapsedTime.Seconds()
-		dropped := result.Latency.Merge(res.Latency)
-		if dropped > 0 {
-			log.Print("dropped: ", dropped)
-		}
-
+	final, result := MergeResults(results)
+	for !final {
+		result.Time = time.Now().Sub(startTime)
+		PrintPartialResult(result)
+		final, result = MergeResults(results)
 	}
-	result.Time /= time.Duration(concurrency)
 	return result
 }
 
-func DoWrites(session *gocql.Session, workload WorkloadGenerator, rateLimiter RateLimiter) Result {
+type ResultBuilder struct {
+	FullResult    *Result
+	PartialResult *Result
+}
+
+func NewResultBuilder() *ResultBuilder {
+	rb := &ResultBuilder{}
+	rb.FullResult = &Result{}
+	rb.PartialResult = &Result{}
+	rb.FullResult.Final = true
+	rb.FullResult.Latency = NewHistogram()
+	rb.PartialResult.Latency = NewHistogram()
+	return rb
+}
+
+func (rb *ResultBuilder) IncOps() {
+	rb.FullResult.Operations++
+	rb.PartialResult.Operations++
+}
+
+func (rb *ResultBuilder) IncRows() {
+	rb.FullResult.ClusteringRows++
+	rb.PartialResult.ClusteringRows++
+}
+
+func (rb *ResultBuilder) AddRows(n int) {
+	rb.FullResult.ClusteringRows += n
+	rb.PartialResult.ClusteringRows += n
+}
+
+func (rb *ResultBuilder) ResetPartialResult() {
+	rb.PartialResult = &Result{}
+	rb.PartialResult.Latency = NewHistogram()
+}
+
+func (rb *ResultBuilder) RecordLatency(latency time.Duration, rateLimiter RateLimiter) error {
+	err := rb.FullResult.Latency.RecordCorrectedValue(latency.Nanoseconds(), rateLimiter.ExpectedInterval())
+	if err != nil {
+		return err
+	}
+
+	err = rb.PartialResult.Latency.RecordCorrectedValue(latency.Nanoseconds(), rateLimiter.ExpectedInterval())
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func DoWrites(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) Result {
 	value := make([]byte, clusteringRowSize)
 	query := session.Query("INSERT INTO " + keyspaceName + "." + tableName + " (pk, ck, v) VALUES (?, ?, ?)")
 
-	var operations int
-	latencyHistogram := NewHistogram()
+	rb := NewResultBuilder()
 
 	start := time.Now()
+	partialStart := start
 	for !workload.IsDone() && atomic.LoadUint32(&stopAll) == 0 {
 		rateLimiter.Wait()
 
-		operations++
+		rb.IncOps()
+		rb.IncRows()
+
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
 		bound := query.Bind(pk, ck, value)
@@ -147,25 +234,33 @@ func DoWrites(session *gocql.Session, workload WorkloadGenerator, rateLimiter Ra
 		}
 
 		latency := requestEnd.Sub(requestStart)
-		err = latencyHistogram.RecordCorrectedValue(latency.Nanoseconds(), rateLimiter.ExpectedInterval())
+		err = rb.RecordLatency(latency, rateLimiter)
 		if err != nil {
 			HandleError(err)
 			break
 		}
+
+		now := time.Now()
+		if now.Sub(partialStart) > time.Second {
+			resultChannel <- *rb.PartialResult
+			rb.ResetPartialResult()
+			partialStart = now
+		}
 	}
 	end := time.Now()
 
-	return Result{end.Sub(start), operations, operations, latencyHistogram}
+	rb.FullResult.ElapsedTime = end.Sub(start)
+	return *rb.FullResult
 }
 
-func DoBatchedWrites(session *gocql.Session, workload WorkloadGenerator, rateLimiter RateLimiter) Result {
+func DoBatchedWrites(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) Result {
 	value := make([]byte, clusteringRowSize)
 	request := fmt.Sprintf("INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)", keyspaceName, tableName)
 
-	var result Result
-	result.Latency = NewHistogram()
+	rb := NewResultBuilder()
 
 	start := time.Now()
+	partialStart := start
 	for !workload.IsDone() && atomic.LoadUint32(&stopAll) == 0 {
 		rateLimiter.Wait()
 
@@ -179,8 +274,8 @@ func DoBatchedWrites(session *gocql.Session, workload WorkloadGenerator, rateLim
 			batch.Query(request, currentPk, ck, value)
 		}
 
-		result.Operations++
-		result.ClusteringRows += batchSize
+		rb.IncOps()
+		rb.AddRows(batchSize)
 
 		requestStart := time.Now()
 		err := session.ExecuteBatch(batch)
@@ -191,29 +286,38 @@ func DoBatchedWrites(session *gocql.Session, workload WorkloadGenerator, rateLim
 		}
 
 		latency := requestEnd.Sub(requestStart)
-		err = result.Latency.RecordCorrectedValue(latency.Nanoseconds(), rateLimiter.ExpectedInterval())
+		rb.RecordLatency(latency, rateLimiter)
 		if err != nil {
 			HandleError(err)
 			break
 		}
+
+		now := time.Now()
+		if now.Sub(partialStart) > time.Second {
+			resultChannel <- *rb.PartialResult
+			rb.ResetPartialResult()
+			partialStart = now
+		}
 	}
 	end := time.Now()
 
-	result.ElapsedTime = end.Sub(start)
-	return result
+	rb.FullResult.ElapsedTime = end.Sub(start)
+	return *rb.FullResult
 }
 
-func DoCounterUpdates(session *gocql.Session, workload WorkloadGenerator, rateLimiter RateLimiter) Result {
+func DoCounterUpdates(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) Result {
 	query := session.Query("UPDATE " + keyspaceName + "." + counterTableName + " SET c1 = c1 + 1, c2 = c2 + 1, c3 = c3 + 1, c4 = c4 + 1, c5 = c5 + 1 WHERE pk = ? AND ck = ?")
 
-	var operations int
-	latencyHistogram := NewHistogram()
+	rb := NewResultBuilder()
 
 	start := time.Now()
+	partialStart := start
 	for !workload.IsDone() && atomic.LoadUint32(&stopAll) == 0 {
 		rateLimiter.Wait()
 
-		operations++
+		rb.IncOps()
+		rb.IncRows()
+
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
 		bound := query.Bind(pk, ck)
@@ -227,18 +331,26 @@ func DoCounterUpdates(session *gocql.Session, workload WorkloadGenerator, rateLi
 		}
 
 		latency := requestEnd.Sub(requestStart)
-		err = latencyHistogram.RecordCorrectedValue(latency.Nanoseconds(), rateLimiter.ExpectedInterval())
+		rb.RecordLatency(latency, rateLimiter)
 		if err != nil {
 			HandleError(err)
 			break
 		}
+
+		now := time.Now()
+		if now.Sub(partialStart) > time.Second {
+			resultChannel <- *rb.PartialResult
+			rb.ResetPartialResult()
+			partialStart = now
+		}
 	}
 	end := time.Now()
 
-	return Result{end.Sub(start), operations, operations, latencyHistogram}
+	rb.FullResult.ElapsedTime = end.Sub(start)
+	return *rb.FullResult
 }
 
-func DoReads(session *gocql.Session, workload WorkloadGenerator, rateLimiter RateLimiter) Result {
+func DoReads(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) Result {
 	var request string
 	if inRestriction {
 		arr := make([]string, rowsPerRequest)
@@ -253,14 +365,14 @@ func DoReads(session *gocql.Session, workload WorkloadGenerator, rateLimiter Rat
 	}
 	query := session.Query(request)
 
-	var result Result
-	result.Latency = NewHistogram()
+	rb := NewResultBuilder()
 
 	start := time.Now()
+	partialStart := start
 	for !workload.IsDone() && atomic.LoadUint32(&stopAll) == 0 {
 		rateLimiter.Wait()
 
-		result.Operations++
+		rb.IncOps()
 		pk := workload.NextPartitionKey()
 
 		var bound *gocql.Query
@@ -287,7 +399,7 @@ func DoReads(session *gocql.Session, workload WorkloadGenerator, rateLimiter Rat
 		requestStart := time.Now()
 		iter := bound.Iter()
 		for iter.Scan(nil, nil, nil) {
-			result.ClusteringRows++
+			rb.IncRows()
 		}
 		requestEnd := time.Now()
 
@@ -298,14 +410,21 @@ func DoReads(session *gocql.Session, workload WorkloadGenerator, rateLimiter Rat
 		}
 
 		latency := requestEnd.Sub(requestStart)
-		err = result.Latency.RecordCorrectedValue(latency.Nanoseconds(), rateLimiter.ExpectedInterval())
+		rb.RecordLatency(latency, rateLimiter)
 		if err != nil {
 			HandleError(err)
 			break
 		}
+
+		now := time.Now()
+		if now.Sub(partialStart) > time.Second {
+			resultChannel <- *rb.PartialResult
+			rb.ResetPartialResult()
+			partialStart = now
+		}
 	}
 	end := time.Now()
 
-	result.ElapsedTime = end.Sub(start)
-	return result
+	rb.FullResult.ElapsedTime = end.Sub(start)
+	return *rb.FullResult
 }
