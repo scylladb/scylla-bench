@@ -87,7 +87,7 @@ func (mr *MergedResult) AddResult(result Result) {
 }
 
 func NewHistogram() *hdrhistogram.Histogram {
-	return hdrhistogram.New(time.Microsecond.Nanoseconds()*50, (timeout + timeout*2).Nanoseconds(), 3)
+	return hdrhistogram.New(time.Microsecond.Nanoseconds()*50, (timeout + timeout*2).Nanoseconds(), 5)
 }
 
 var reportedError uint32
