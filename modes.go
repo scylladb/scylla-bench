@@ -351,7 +351,7 @@ func DoReads(session *gocql.Session, resultChannel chan Result, workload Workloa
 		} else {
 			ck := workload.NextClusteringKey()
 			if provideUpperBound {
-				bound = query.Bind(pk, ck, ck+rowsPerRequest)
+				bound = query.Bind(pk, ck, ck+int64(rowsPerRequest))
 			} else {
 				bound = query.Bind(pk, ck)
 			}

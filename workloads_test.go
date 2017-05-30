@@ -10,17 +10,17 @@ import (
 func TestSequentialWorkload(t *testing.T) {
 	generator := rand.New(rand.NewSource(int64(time.Now().Nanosecond())))
 	testCases := []struct {
-		partitionOffset    int
-		partitionCount     int
-		clusteringRowCount int
+		partitionOffset    int64
+		partitionCount     int64
+		clusteringRowCount int64
 	}{
 		{10, 20, 30},
 		{0, 1, 1},
-		{generator.Intn(100), generator.Intn(100) + 100, generator.Intn(99) + 1},
-		{generator.Intn(100), generator.Intn(100), generator.Intn(100)},
-		{generator.Intn(100), generator.Intn(100) + 100, 1},
-		{0, generator.Intn(100) + 100, generator.Intn(99) + 1},
-		{0, generator.Intn(100) + 100, generator.Intn(99) + 1},
+		{generator.Int63n(100), generator.Int63n(100) + 100, generator.Int63n(99) + 1},
+		{generator.Int63n(100), generator.Int63n(100), generator.Int63n(100)},
+		{generator.Int63n(100), generator.Int63n(100) + 100, 1},
+		{0, generator.Int63n(100) + 100, generator.Int63n(99) + 1},
+		{0, generator.Int63n(100) + 100, generator.Int63n(99) + 1},
 	}
 
 	for i, tc := range testCases {
@@ -28,7 +28,7 @@ func TestSequentialWorkload(t *testing.T) {
 			wrkld := NewSequentialVisitAll(tc.partitionOffset, tc.partitionCount, tc.clusteringRowCount)
 
 			expectedPk := tc.partitionOffset
-			expectedCk := 0
+			expectedCk := int64(0)
 
 			for true {
 				if wrkld.IsDone() && expectedPk < tc.partitionOffset+tc.partitionCount {
@@ -79,16 +79,16 @@ func TestSequentialWorkload(t *testing.T) {
 func TestUniformWorkload(t *testing.T) {
 	generator := rand.New(rand.NewSource(int64(time.Now().Nanosecond())))
 	testCases := []struct {
-		partitionCount     int
-		clusteringRowCount int
+		partitionCount     int64
+		clusteringRowCount int64
 	}{
 		{20, 30},
 		{1, 1},
-		{generator.Intn(100) + 100, generator.Intn(99) + 1},
-		{generator.Intn(100), generator.Intn(100)},
-		{generator.Intn(100) + 100, 1},
-		{generator.Intn(100) + 100, generator.Intn(99) + 1},
-		{generator.Intn(100) + 100, generator.Intn(99) + 1},
+		{generator.Int63n(100) + 100, generator.Int63n(99) + 1},
+		{generator.Int63n(100), generator.Int63n(100)},
+		{generator.Int63n(100) + 100, 1},
+		{generator.Int63n(100) + 100, generator.Int63n(99) + 1},
+		{generator.Int63n(100) + 100, generator.Int63n(99) + 1},
 	}
 
 	for i, tc := range testCases {

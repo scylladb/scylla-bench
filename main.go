@@ -20,9 +20,9 @@ var concurrency int
 
 var testDuration time.Duration
 
-var partitionCount int
-var clusteringRowCount int
-var clusteringRowSize int
+var partitionCount int64
+var clusteringRowCount int64
+var clusteringRowSize int64
 
 var rowsPerRequest int
 var provideUpperBound bool
@@ -50,12 +50,12 @@ func PrepareDatabase(session *gocql.Session, replicationFactor int) {
 	}
 }
 
-func GetWorkload(name string, threadId int, partitionOffset int) WorkloadGenerator {
+func GetWorkload(name string, threadId int, partitionOffset int64) WorkloadGenerator {
 	switch name {
 	case "sequential":
-		pksPerThread := partitionCount / concurrency
-		thisOffset := pksPerThread * threadId
-		var thisSize int
+		pksPerThread := partitionCount / int64(concurrency)
+		thisOffset := pksPerThread * int64(threadId)
+		var thisSize int64
 		if threadId+1 == concurrency {
 			thisSize = partitionCount - thisOffset
 		} else {
@@ -105,7 +105,7 @@ func main() {
 	var maximumRate int
 	var pageSize int
 
-	var partitionOffset int
+	var partitionOffset int64
 
 	flag.StringVar(&mode, "mode", "", "operating mode: write, read")
 	flag.StringVar(&workload, "workload", "", "workload: sequential, uniform")
@@ -120,16 +120,16 @@ func main() {
 	flag.IntVar(&maximumRate, "max-rate", 0, "the maximum rate of outbound requests in op/s (0 for unlimited)")
 	flag.IntVar(&pageSize, "page-size", 1000, "page size")
 
-	flag.IntVar(&partitionCount, "partition-count", 10000, "number of partitions")
-	flag.IntVar(&clusteringRowCount, "clustering-row-count", 100, "number of clustering rows in a partition")
-	flag.IntVar(&clusteringRowSize, "clustering-row-size", 4, "size of a single clustering row")
+	flag.Int64Var(&partitionCount, "partition-count", 10000, "number of partitions")
+	flag.Int64Var(&clusteringRowCount, "clustering-row-count", 100, "number of clustering rows in a partition")
+	flag.Int64Var(&clusteringRowSize, "clustering-row-size", 4, "size of a single clustering row")
 
 	flag.IntVar(&rowsPerRequest, "rows-per-request", 1, "clustering rows per single request")
 	flag.BoolVar(&provideUpperBound, "provide-upper-bound", false, "whether read requests should provide an upper bound")
 	flag.BoolVar(&inRestriction, "in-restriction", false, "use IN restriction in read requests")
 	flag.DurationVar(&testDuration, "duration", 0, "duration of the test in seconds (0 for unlimited)")
 
-	flag.IntVar(&partitionOffset, "partition-offset", 0, "start of the partition range (only for sequential workload)")
+	flag.Int64Var(&partitionOffset, "partition-offset", 0, "start of the partition range (only for sequential workload)")
 
 	flag.StringVar(&keyspaceName, "keyspace", "scylla_bench", "keyspace to use")
 	flag.StringVar(&tableName, "table", "test", "table to use")

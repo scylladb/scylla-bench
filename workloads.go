@@ -6,24 +6,24 @@ import (
 )
 
 type WorkloadGenerator interface {
-	NextPartitionKey() int
-	NextClusteringKey() int
+	NextPartitionKey() int64
+	NextClusteringKey() int64
 	IsPartitionDone() bool
 	IsDone() bool
 }
 
 type SequentialVisitAll struct {
-	PartitionCount     int
-	ClusteringRowCount int
-	NextPartition      int
-	NextClusteringRow  int
+	PartitionCount     int64
+	ClusteringRowCount int64
+	NextPartition      int64
+	NextClusteringRow  int64
 }
 
-func NewSequentialVisitAll(partitionOffset int, partitionCount int, clusteringRowCount int) *SequentialVisitAll {
+func NewSequentialVisitAll(partitionOffset int64, partitionCount int64, clusteringRowCount int64) *SequentialVisitAll {
 	return &SequentialVisitAll{partitionOffset + partitionCount, clusteringRowCount, partitionOffset, 0}
 }
 
-func (sva *SequentialVisitAll) NextPartitionKey() int {
+func (sva *SequentialVisitAll) NextPartitionKey() int64 {
 	if sva.NextClusteringRow < sva.ClusteringRowCount {
 		return sva.NextPartition
 	}
@@ -33,7 +33,7 @@ func (sva *SequentialVisitAll) NextPartitionKey() int {
 	return pk
 }
 
-func (sva *SequentialVisitAll) NextClusteringKey() int {
+func (sva *SequentialVisitAll) NextClusteringKey() int64 {
 	ck := sva.NextClusteringRow
 	sva.NextClusteringRow++
 	return ck
@@ -49,21 +49,21 @@ func (sva *SequentialVisitAll) IsPartitionDone() bool {
 
 type RandomUniform struct {
 	Generator          *rand.Rand
-	PartitionCount     int
-	ClusteringRowCount int
+	PartitionCount     int64
+	ClusteringRowCount int64
 }
 
-func NewRandomUniform(i int, partitionCount int, clusteringRowCount int) *RandomUniform {
+func NewRandomUniform(i int, partitionCount int64, clusteringRowCount int64) *RandomUniform {
 	generator := rand.New(rand.NewSource(int64(time.Now().Nanosecond() * (i + 1))))
-	return &RandomUniform{generator, partitionCount, clusteringRowCount}
+	return &RandomUniform{generator, int64(partitionCount), int64(clusteringRowCount)}
 }
 
-func (ru *RandomUniform) NextPartitionKey() int {
-	return ru.Generator.Intn(ru.PartitionCount)
+func (ru *RandomUniform) NextPartitionKey() int64 {
+	return ru.Generator.Int63n(ru.PartitionCount)
 }
 
-func (ru *RandomUniform) NextClusteringKey() int {
-	return ru.Generator.Intn(ru.ClusteringRowCount)
+func (ru *RandomUniform) NextClusteringKey() int64 {
+	return ru.Generator.Int63n(ru.ClusteringRowCount)
 }
 
 func (ru *RandomUniform) IsDone() bool {
