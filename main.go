@@ -17,6 +17,7 @@ var tableName string
 var counterTableName string
 
 var concurrency int
+var maximumRate int
 
 var testDuration time.Duration
 
@@ -29,6 +30,8 @@ var provideUpperBound bool
 var inRestriction bool
 
 var timeout time.Duration
+
+var startTime time.Time
 
 var stopAll uint32
 
@@ -50,7 +53,7 @@ func PrepareDatabase(session *gocql.Session, replicationFactor int) {
 	}
 }
 
-func GetWorkload(name string, threadId int, partitionOffset int64) WorkloadGenerator {
+func GetWorkload(name string, threadId int, partitionOffset int64, mode string, writeRate int64, distribution string) WorkloadGenerator {
 	switch name {
 	case "sequential":
 		pksPerThread := partitionCount / int64(concurrency)
@@ -64,6 +67,14 @@ func GetWorkload(name string, threadId int, partitionOffset int64) WorkloadGener
 		return NewSequentialVisitAll(thisOffset+partitionOffset, thisSize, clusteringRowCount)
 	case "uniform":
 		return NewRandomUniform(threadId, partitionCount, clusteringRowCount)
+	case "timeseries":
+		if mode == "read" {
+			return NewTimeSeriesReader(threadId, concurrency, partitionCount, clusteringRowCount, writeRate, distribution, startTime)
+		} else if mode == "write" {
+			return NewTimeSeriesWriter(threadId, concurrency, partitionCount, clusteringRowCount, startTime, int64(maximumRate/concurrency))
+		} else {
+			log.Fatal("time series workload supports only write and read modes")
+		}
 	default:
 		log.Fatal("unknown workload: ", name)
 	}
@@ -102,10 +113,12 @@ func main() {
 	var nodes string
 	var clientCompression bool
 	var connectionCount int
-	var maximumRate int
 	var pageSize int
 
 	var partitionOffset int64
+
+	var writeRate int64
+	var distribution string
 
 	flag.StringVar(&mode, "mode", "", "operating mode: write, read")
 	flag.StringVar(&workload, "workload", "", "workload: sequential, uniform")
@@ -130,6 +143,11 @@ func main() {
 	flag.DurationVar(&testDuration, "duration", 0, "duration of the test in seconds (0 for unlimited)")
 
 	flag.Int64Var(&partitionOffset, "partition-offset", 0, "start of the partition range (only for sequential workload)")
+
+	var startTimestamp int64
+	flag.Int64Var(&writeRate, "write-rate", 0, "rate of writes (relevant only for time series reads)")
+	flag.Int64Var(&startTimestamp, "start-timestamp", 0, "start timestamp of the write load (relevant only for time series reads)")
+	flag.StringVar(&distribution, "distribution", "uniform", "distribution of keys (relevant only for time series reads)")
 
 	flag.StringVar(&keyspaceName, "keyspace", "scylla_bench", "keyspace to use")
 	flag.StringVar(&tableName, "table", "test", "table to use")
@@ -161,6 +179,10 @@ func main() {
 		if inRestriction || provideUpperBound {
 			log.Fatal("in-restriction and provide-uppder-bound flags make sense only in read mode")
 		}
+	}
+
+	if workload == "timeseries" && mode == "read" && writeRate == 0 {
+		log.Fatal("write rate must be provided for time series reads loads")
 	}
 
 	cluster := gocql.NewCluster(nodes)
@@ -241,10 +263,20 @@ func main() {
 		fmt.Println("Maximum rate:\t\t unlimited")
 	}
 	fmt.Println("Client compression:\t", clientCompression)
+	if workload == "timeseries" {
+		fmt.Println("Start timestamp:\t", startTime.UnixNano())
+		fmt.Println("Write rate:\t\t", int64(maximumRate)/partitionCount)
+	}
+
+	if startTimestamp != 0 {
+		startTime = time.Unix(0, startTimestamp)
+	} else {
+		startTime = time.Now()
+	}
 
 	fmt.Println("\ntime\t\toperations/s\trows/s\t\tmax\t\t99.9th\t\t99th\t\t95th\t\t90th\t\tmean")
 	result := RunConcurrently(maximumRate, func(i int, resultChannel chan Result, rateLimiter RateLimiter) {
-		GetMode(mode)(session, resultChannel, GetWorkload(workload, i, partitionOffset), rateLimiter)
+		GetMode(mode)(session, resultChannel, GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution), rateLimiter)
 	})
 
 	fmt.Println("\nResults")
