@@ -25,17 +25,18 @@ func (*UnlimitedRateLimiter) ExpectedInterval() int64 {
 }
 
 type MaximumRateLimiter struct {
-	Period      time.Duration
-	LastRequest time.Time
+	Period              time.Duration
+	StartTime           time.Time
+	CompletedOperations int64
 }
 
 func (mxrl *MaximumRateLimiter) Wait() {
-	nextRequest := mxrl.LastRequest.Add(mxrl.Period)
+	mxrl.CompletedOperations++
+	nextRequest := mxrl.StartTime.Add(mxrl.Period * time.Duration(mxrl.CompletedOperations))
 	now := time.Now()
 	if now.Before(nextRequest) {
 		time.Sleep(nextRequest.Sub(now))
 	}
-	mxrl.LastRequest = time.Now()
 }
 
 func (mxrl *MaximumRateLimiter) ExpectedInterval() int64 {
@@ -47,8 +48,7 @@ func NewRateLimiter(maximumRate int, timeOffset time.Duration) RateLimiter {
 		return &UnlimitedRateLimiter{}
 	}
 	period := time.Duration(int64(time.Second) / int64(maximumRate))
-	lastRequest := time.Now().Add(timeOffset)
-	return &MaximumRateLimiter{period, lastRequest}
+	return &MaximumRateLimiter{period, time.Now(), 0}
 }
 
 type Result struct {
