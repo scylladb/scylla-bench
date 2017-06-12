@@ -105,6 +105,14 @@ func PrintPartialResult(result *MergedResult) {
 		"\t", time.Duration(result.Latency.ValueAtQuantile(95)), "\t", time.Duration(result.Latency.ValueAtQuantile(90)), "\t", time.Duration(result.Latency.Mean()))
 }
 
+func toInt(value bool) int {
+	if value {
+		return 1
+	} else {
+		return 0
+	}
+}
+
 func main() {
 	var mode string
 	var workload string
@@ -122,7 +130,7 @@ func main() {
 	var distribution string
 
 	flag.StringVar(&mode, "mode", "", "operating mode: write, read")
-	flag.StringVar(&workload, "workload", "", "workload: sequential, uniform")
+	flag.StringVar(&workload, "workload", "", "workload: sequential, uniform, timeseries")
 	flag.StringVar(&consistencyLevel, "consistency-level", "quorum", "consistency level")
 	flag.IntVar(&replicationFactor, "replication-factor", 1, "replication factor")
 	flag.DurationVar(&timeout, "timeout", 5*time.Second, "request timeout")
@@ -150,7 +158,7 @@ func main() {
 	var startTimestamp int64
 	flag.Int64Var(&writeRate, "write-rate", 0, "rate of writes (relevant only for time series reads)")
 	flag.Int64Var(&startTimestamp, "start-timestamp", 0, "start timestamp of the write load (relevant only for time series reads)")
-	flag.StringVar(&distribution, "distribution", "uniform", "distribution of keys (relevant only for time series reads)")
+	flag.StringVar(&distribution, "distribution", "uniform", "distribution of keys (relevant only for time series reads): uniform, hnormal")
 
 	flag.StringVar(&keyspaceName, "keyspace", "scylla_bench", "keyspace to use")
 	flag.StringVar(&tableName, "table", "test", "table to use")
@@ -178,14 +186,23 @@ func main() {
 		log.Fatal("partition-offset has a meaning only in sequential workloads")
 	}
 
+	readModeTweaks := toInt(inRestriction) + toInt(provideUpperBound) + toInt(noLowerBound)
 	if mode != "read" {
-		if inRestriction || provideUpperBound {
-			log.Fatal("in-restriction and provide-uppder-bound flags make sense only in read mode")
+		if readModeTweaks != 0 {
+			log.Fatal("in-restriction, no-lower-bound and provide-uppder-bound flags make sense only in read mode")
 		}
+	} else if readModeTweaks > 1 {
+		log.Fatal("in-restriction, no-lower-bound and provide-uppder-bound flags are mutually exclusive")
 	}
 
 	if workload == "timeseries" && mode == "read" && writeRate == 0 {
 		log.Fatal("write rate must be provided for time series reads loads")
+	}
+	if workload == "timeseries" && mode == "read" && startTimestamp == 0 {
+		log.Fatal("start timestamp must be provided for time series reads loads")
+	}
+	if workload == "timeseries" && mode == "write" && int64(concurrency) > partitionCount {
+		log.Fatal("time series writes require concurrency less than or equal partition count")
 	}
 
 	cluster := gocql.NewCluster(nodes)
