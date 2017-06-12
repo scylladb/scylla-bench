@@ -327,6 +327,8 @@ func DoReads(session *gocql.Session, resultChannel chan Result, workload Workloa
 		request = fmt.Sprintf("SELECT * from %s.%s WHERE pk = ? AND ck IN (%s)", keyspaceName, tableName, strings.Join(arr, ", "))
 	} else if provideUpperBound {
 		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ?", keyspaceName, tableName)
+	} else if noLowerBound {
+		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? LIMIT %d", keyspaceName, tableName, rowsPerRequest)
 	} else {
 		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? AND ck >= ? LIMIT %d", keyspaceName, tableName, rowsPerRequest)
 	}
@@ -348,6 +350,8 @@ func DoReads(session *gocql.Session, resultChannel chan Result, workload Workloa
 				}
 			}
 			bound = query.Bind(args...)
+		} else if noLowerBound {
+			bound = query.Bind(pk)
 		} else {
 			ck := workload.NextClusteringKey()
 			if provideUpperBound {
