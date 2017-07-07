@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -205,7 +206,7 @@ func main() {
 		log.Fatal("time series writes require concurrency less than or equal partition count")
 	}
 
-	cluster := gocql.NewCluster(nodes)
+	cluster := gocql.NewCluster(strings.Split(nodes, ",")...)
 	cluster.NumConns = connectionCount
 	cluster.PageSize = pageSize
 	cluster.Timeout = timeout
