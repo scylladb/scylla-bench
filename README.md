@@ -39,7 +39,7 @@ INSERT INTO scylla_bench.test (pk, ck, v) VALUES (?, ?, ?)
 
 Otherwise, writes are sent in unlogged batches each containing at most `rows-per-request` insertions. All writes in a single batch refer to the same partition. The consequence of this is that in some configuration the number of rows written in a single requests can be actually smaller than the set value (e.g. `-clustering-row-count 2 -rows-per-request 4`).
 
-### Counter update mode (`-mode counter_update`)
+#### Counter update mode (`-mode counter_update`)
 
 Counter updates are written to a separate column family:
 ```
@@ -61,7 +61,7 @@ Each requests updates all five counters in a row and only one row per request is
 UPDATE scylla_bench.test_counters SET c1 = c1 + 1, c2 = c2 + 1, c3 = c3 + 1, c4 = c4 + 1, c5 = c5 + 1 WHERE pk = ? AND ck = ?
 ```
 
-### Read mode (`-mode read`)
+#### Read mode (`-mode read`)
 
 Read mode is essentially split into four sub-modes and offers most configurability. The default requests resemble single partition paging queries, there is a lower bound of clustering keys and a limit which is can be adjusted using flag `rows-per-request`:
 
@@ -87,7 +87,7 @@ Finally, scylla-bench can send a request with an IN restriction (flag `-in-restr
 SELECT * from %s.%s WHERE pk = ? AND ck IN (?, ...)
 ```
 
-### Counter read mode (`-mode counter_read`)
+#### Counter read mode (`-mode counter_read`)
 
 Counter read mode works in exactly the same as regular read mode (with the same configuration flags available) except that it reads data from the counter table `scylla_bench.test_counters`.
 
