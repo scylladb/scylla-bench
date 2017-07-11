@@ -318,19 +318,27 @@ func DoCounterUpdates(session *gocql.Session, resultChannel chan Result, workloa
 }
 
 func DoReads(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) {
+	DoReadsFromTable(tableName, session, resultChannel, workload, rateLimiter)
+}
+
+func DoCounterReads(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) {
+	DoReadsFromTable(counterTableName, session, resultChannel, workload, rateLimiter)
+}
+
+func DoReadsFromTable(table string, session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) {
 	var request string
 	if inRestriction {
 		arr := make([]string, rowsPerRequest)
 		for i := 0; i < rowsPerRequest; i++ {
 			arr[i] = "?"
 		}
-		request = fmt.Sprintf("SELECT * from %s.%s WHERE pk = ? AND ck IN (%s)", keyspaceName, tableName, strings.Join(arr, ", "))
+		request = fmt.Sprintf("SELECT * from %s.%s WHERE pk = ? AND ck IN (%s)", keyspaceName, table, strings.Join(arr, ", "))
 	} else if provideUpperBound {
-		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ?", keyspaceName, tableName)
+		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ?", keyspaceName, table)
 	} else if noLowerBound {
-		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? LIMIT %d", keyspaceName, tableName, rowsPerRequest)
+		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? LIMIT %d", keyspaceName, table, rowsPerRequest)
 	} else {
-		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? AND ck >= ? LIMIT %d", keyspaceName, tableName, rowsPerRequest)
+		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? AND ck >= ? LIMIT %d", keyspaceName, table, rowsPerRequest)
 	}
 	query := session.Query(request)
 
@@ -363,8 +371,14 @@ func DoReads(session *gocql.Session, resultChannel chan Result, workload Workloa
 
 		requestStart := time.Now()
 		iter := bound.Iter()
-		for iter.Scan(nil, nil, nil) {
-			rb.IncRows()
+		if table == tableName {
+			for iter.Scan(nil, nil, nil) {
+				rb.IncRows()
+			}
+		} else {
+			for iter.Scan(nil, nil, nil, nil, nil, nil, nil) {
+				rb.IncRows()
+			}
 		}
 		requestEnd := time.Now()
 

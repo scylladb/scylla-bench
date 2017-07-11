@@ -94,6 +94,8 @@ func GetMode(name string) func(session *gocql.Session, resultChannel chan Result
 		return DoCounterUpdates
 	case "read":
 		return DoReads
+	case "counter_read":
+		return DoCounterReads
 	default:
 		log.Fatal("unknown mode: ", name)
 	}
@@ -130,7 +132,7 @@ func main() {
 	var writeRate int64
 	var distribution string
 
-	flag.StringVar(&mode, "mode", "", "operating mode: write, read")
+	flag.StringVar(&mode, "mode", "", "operating mode: write, read, counter_update, counter_read")
 	flag.StringVar(&workload, "workload", "", "workload: sequential, uniform, timeseries")
 	flag.StringVar(&consistencyLevel, "consistency-level", "quorum", "consistency level")
 	flag.IntVar(&replicationFactor, "replication-factor", 1, "replication factor")
@@ -188,7 +190,7 @@ func main() {
 	}
 
 	readModeTweaks := toInt(inRestriction) + toInt(provideUpperBound) + toInt(noLowerBound)
-	if mode != "read" {
+	if mode != "read" && mode != "counter_read" {
 		if readModeTweaks != 0 {
 			log.Fatal("in-restriction, no-lower-bound and provide-uppder-bound flags make sense only in read mode")
 		}

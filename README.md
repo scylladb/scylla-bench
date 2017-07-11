@@ -87,6 +87,10 @@ Finally, scylla-bench can send a request with an IN restriction (flag `-in-restr
 SELECT * from %s.%s WHERE pk = ? AND ck IN (?, ...)
 ```
 
+### Counter read mode (`-mode counter_read`)
+
+Counter read mode works in exactly the same as regular read mode (with the same configuration flags available) except that it reads data from the counter table `scylla_bench.test_counters`.
+
 ### Workloads
 
 The second very important part of scylla-bench configuration is the workload. While mode chooses what kind of requests are to be sent to the cluster the workload decides which partitions and rows should be the target of these requests.
