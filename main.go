@@ -105,7 +105,7 @@ func GetMode(name string) func(session *gocql.Session, resultChannel chan Result
 func PrintPartialResult(result *MergedResult) {
 	fmt.Println(result.Time, "\t", result.Operations, "\t", result.ClusteringRows,
 		"\t", time.Duration(result.Latency.Max()), "\t", time.Duration(result.Latency.ValueAtQuantile(99.9)), "\t", time.Duration(result.Latency.ValueAtQuantile(99)),
-		"\t", time.Duration(result.Latency.ValueAtQuantile(95)), "\t", time.Duration(result.Latency.ValueAtQuantile(90)), "\t", time.Duration(result.Latency.Mean()))
+		"\t", time.Duration(result.Latency.ValueAtQuantile(95)), "\t", time.Duration(result.Latency.ValueAtQuantile(90)), "\t", time.Duration(result.Latency.ValueAtQuantile(50)))
 }
 
 func toInt(value bool) int {
@@ -298,7 +298,7 @@ func main() {
 		startTime = time.Now()
 	}
 
-	fmt.Println("\ntime\t\toperations/s\trows/s\t\tmax\t\t99.9th\t\t99th\t\t95th\t\t90th\t\tmean")
+	fmt.Println("\ntime\t\toperations/s\trows/s\t\tmax\t\t99.9th\t\t99th\t\t95th\t\t90th\t\tmedian")
 	result := RunConcurrently(maximumRate, func(i int, resultChannel chan Result, rateLimiter RateLimiter) {
 		GetMode(mode)(session, resultChannel, GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution), rateLimiter)
 	})
@@ -314,5 +314,5 @@ func main() {
 		"\n  99th:\t\t", time.Duration(result.Latency.ValueAtQuantile(99)),
 		"\n  95th:\t\t", time.Duration(result.Latency.ValueAtQuantile(95)),
 		"\n  90th:\t\t", time.Duration(result.Latency.ValueAtQuantile(90)),
-		"\n  mean:\t\t", time.Duration(result.Latency.Mean()))
+		"\n  median:\t", time.Duration(result.Latency.ValueAtQuantile(50)))
 }
