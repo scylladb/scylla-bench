@@ -37,6 +37,8 @@ var startTime time.Time
 
 var stopAll uint32
 
+var measureLatency bool
+
 func PrepareDatabase(session *gocql.Session, replicationFactor int) {
 	request := fmt.Sprintf("CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : %d }", keyspaceName, replicationFactor)
 	err := session.Query(request).Exec()
@@ -107,10 +109,14 @@ func PrintPartialResult(result *MergedResult) {
 	if errorRecordingLatency {
 		latencyError = "latency measurement error"
 	}
-	fmt.Println(result.Time, "\t", result.Operations, "\t", result.ClusteringRows, "\t", result.Errors,
-		"\t", time.Duration(result.Latency.Max()), "\t", time.Duration(result.Latency.ValueAtQuantile(99.9)), "\t", time.Duration(result.Latency.ValueAtQuantile(99)),
-		"\t", time.Duration(result.Latency.ValueAtQuantile(95)), "\t", time.Duration(result.Latency.ValueAtQuantile(90)), "\t", time.Duration(result.Latency.ValueAtQuantile(50)),
-		latencyError)
+	if measureLatency {
+		fmt.Println(result.Time, "\t", result.Operations, "\t", result.ClusteringRows, "\t", result.Errors,
+			"\t", time.Duration(result.Latency.Max()), "\t", time.Duration(result.Latency.ValueAtQuantile(99.9)), "\t", time.Duration(result.Latency.ValueAtQuantile(99)),
+			"\t", time.Duration(result.Latency.ValueAtQuantile(95)), "\t", time.Duration(result.Latency.ValueAtQuantile(90)), "\t", time.Duration(result.Latency.ValueAtQuantile(50)),
+			latencyError)
+	} else {
+		fmt.Println(result.Time, "\t", result.Operations, "\t", result.ClusteringRows, "\t", result.Errors)
+	}
 }
 
 func toInt(value bool) int {
@@ -162,6 +168,8 @@ func main() {
 	flag.DurationVar(&testDuration, "duration", 0, "duration of the test in seconds (0 for unlimited)")
 
 	flag.Int64Var(&partitionOffset, "partition-offset", 0, "start of the partition range (only for sequential workload)")
+
+	flag.BoolVar(&measureLatency, "measure-latency", true, "measure request latency")
 
 	var startTimestamp int64
 	flag.Int64Var(&writeRate, "write-rate", 0, "rate of writes (relevant only for time series reads)")
@@ -303,7 +311,12 @@ func main() {
 		startTime = time.Now()
 	}
 
-	fmt.Println("\ntime\t\toperations/s\trows/s\t\terrors\tmax\t\t99.9th\t\t99th\t\t95th\t\t90th\t\tmedian")
+	if measureLatency {
+		fmt.Println("\ntime\t\toperations/s\trows/s\t\terrors\tmax\t\t99.9th\t\t99th\t\t95th\t\t90th\t\tmedian")
+	} else {
+		fmt.Println("\ntime\t\toperations/s\trows/s\t\terrors")
+	}
+
 	result := RunConcurrently(maximumRate, func(i int, resultChannel chan Result, rateLimiter RateLimiter) {
 		GetMode(mode)(session, resultChannel, GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution), rateLimiter)
 	})
@@ -320,10 +333,12 @@ func main() {
 	if errorRecordingLatency {
 		fmt.Println("Latency measurements may be inaccurate")
 	}
-	fmt.Println("Latency:\n  max:\t\t", time.Duration(result.Latency.Max()),
-		"\n  99.9th:\t", time.Duration(result.Latency.ValueAtQuantile(99.9)),
-		"\n  99th:\t\t", time.Duration(result.Latency.ValueAtQuantile(99)),
-		"\n  95th:\t\t", time.Duration(result.Latency.ValueAtQuantile(95)),
-		"\n  90th:\t\t", time.Duration(result.Latency.ValueAtQuantile(90)),
-		"\n  median:\t", time.Duration(result.Latency.ValueAtQuantile(50)))
+	if measureLatency {
+		fmt.Println("Latency:\n  max:\t\t", time.Duration(result.Latency.Max()),
+			"\n  99.9th:\t", time.Duration(result.Latency.ValueAtQuantile(99.9)),
+			"\n  99th:\t\t", time.Duration(result.Latency.ValueAtQuantile(99)),
+			"\n  95th:\t\t", time.Duration(result.Latency.ValueAtQuantile(95)),
+			"\n  90th:\t\t", time.Duration(result.Latency.ValueAtQuantile(90)),
+			"\n  median:\t", time.Duration(result.Latency.ValueAtQuantile(50)))
+	}
 }

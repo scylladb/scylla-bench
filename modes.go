@@ -83,13 +83,18 @@ func (mr *MergedResult) AddResult(result Result) {
 	mr.OperationsPerSecond += float64(result.Operations) / result.ElapsedTime.Seconds()
 	mr.ClusteringRowsPerSecond += float64(result.ClusteringRows) / result.ElapsedTime.Seconds()
 	mr.Errors += result.Errors
-	dropped := mr.Latency.Merge(result.Latency)
-	if dropped > 0 {
-		log.Print("dropped: ", dropped)
+	if measureLatency {
+		dropped := mr.Latency.Merge(result.Latency)
+		if dropped > 0 {
+			log.Print("dropped: ", dropped)
+		}
 	}
 }
 
 func NewHistogram() *hdrhistogram.Histogram {
+	if !measureLatency {
+		return nil
+	}
 	return hdrhistogram.New(time.Microsecond.Nanoseconds()*50, (timeout + timeout*2).Nanoseconds(), 3)
 }
 
@@ -200,6 +205,10 @@ func (rb *ResultBuilder) ResetPartialResult() {
 }
 
 func (rb *ResultBuilder) RecordLatency(latency time.Duration, rateLimiter RateLimiter) error {
+	if !measureLatency {
+		return nil
+	}
+
 	err := rb.FullResult.Latency.RecordCorrectedValue(latency.Nanoseconds(), rateLimiter.ExpectedInterval())
 	if err != nil {
 		return err
