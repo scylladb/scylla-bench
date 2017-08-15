@@ -103,9 +103,14 @@ func GetMode(name string) func(session *gocql.Session, resultChannel chan Result
 }
 
 func PrintPartialResult(result *MergedResult) {
-	fmt.Println(result.Time, "\t", result.Operations, "\t", result.ClusteringRows,
+	latencyError := ""
+	if errorRecordingLatency {
+		latencyError = "latency measurement error"
+	}
+	fmt.Println(result.Time, "\t", result.Operations, "\t", result.ClusteringRows, "\t", result.Errors,
 		"\t", time.Duration(result.Latency.Max()), "\t", time.Duration(result.Latency.ValueAtQuantile(99.9)), "\t", time.Duration(result.Latency.ValueAtQuantile(99)),
-		"\t", time.Duration(result.Latency.ValueAtQuantile(95)), "\t", time.Duration(result.Latency.ValueAtQuantile(90)), "\t", time.Duration(result.Latency.ValueAtQuantile(50)))
+		"\t", time.Duration(result.Latency.ValueAtQuantile(95)), "\t", time.Duration(result.Latency.ValueAtQuantile(90)), "\t", time.Duration(result.Latency.ValueAtQuantile(50)),
+		latencyError)
 }
 
 func toInt(value bool) int {
@@ -298,7 +303,7 @@ func main() {
 		startTime = time.Now()
 	}
 
-	fmt.Println("\ntime\t\toperations/s\trows/s\t\tmax\t\t99.9th\t\t99th\t\t95th\t\t90th\t\tmedian")
+	fmt.Println("\ntime\t\toperations/s\trows/s\t\terrors\tmax\t\t99.9th\t\t99th\t\t95th\t\t90th\t\tmedian")
 	result := RunConcurrently(maximumRate, func(i int, resultChannel chan Result, rateLimiter RateLimiter) {
 		GetMode(mode)(session, resultChannel, GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution), rateLimiter)
 	})
@@ -307,8 +312,14 @@ func main() {
 	fmt.Println("Time (avg):\t", result.Time)
 	fmt.Println("Total ops:\t", result.Operations)
 	fmt.Println("Total rows:\t", result.ClusteringRows)
+	if result.Errors != 0 {
+		fmt.Println("Total errors:\t", result.Errors)
+	}
 	fmt.Println("Operations/s:\t", result.OperationsPerSecond)
 	fmt.Println("Rows/s:\t\t", result.ClusteringRowsPerSecond)
+	if errorRecordingLatency {
+		fmt.Println("Latency measurements may be inaccurate")
+	}
 	fmt.Println("Latency:\n  max:\t\t", time.Duration(result.Latency.Max()),
 		"\n  99.9th:\t", time.Duration(result.Latency.ValueAtQuantile(99.9)),
 		"\n  99th:\t\t", time.Duration(result.Latency.ValueAtQuantile(99)),

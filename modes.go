@@ -56,6 +56,7 @@ type Result struct {
 	ElapsedTime    time.Duration
 	Operations     int
 	ClusteringRows int
+	Errors         int
 	Latency        *hdrhistogram.Histogram
 }
 
@@ -65,6 +66,7 @@ type MergedResult struct {
 	ClusteringRows          int
 	OperationsPerSecond     float64
 	ClusteringRowsPerSecond float64
+	Errors                  int
 	Latency                 *hdrhistogram.Histogram
 }
 
@@ -80,6 +82,7 @@ func (mr *MergedResult) AddResult(result Result) {
 	mr.ClusteringRows += result.ClusteringRows
 	mr.OperationsPerSecond += float64(result.Operations) / result.ElapsedTime.Seconds()
 	mr.ClusteringRowsPerSecond += float64(result.ClusteringRows) / result.ElapsedTime.Seconds()
+	mr.Errors += result.Errors
 	dropped := mr.Latency.Merge(result.Latency)
 	if dropped > 0 {
 		log.Print("dropped: ", dropped)
@@ -87,10 +90,8 @@ func (mr *MergedResult) AddResult(result Result) {
 }
 
 func NewHistogram() *hdrhistogram.Histogram {
-	return hdrhistogram.New(time.Microsecond.Nanoseconds()*50, (timeout + timeout*2).Nanoseconds(), 5)
+	return hdrhistogram.New(time.Microsecond.Nanoseconds()*50, (timeout + timeout*2).Nanoseconds(), 3)
 }
-
-var reportedError uint32
 
 func HandleError(err error) {
 	if atomic.SwapUint32(&stopAll, 1) == 0 {
@@ -188,6 +189,11 @@ func (rb *ResultBuilder) AddRows(n int) {
 	rb.PartialResult.ClusteringRows += n
 }
 
+func (rb *ResultBuilder) IncErrors() {
+	rb.FullResult.Errors++
+	rb.PartialResult.Errors++
+}
+
 func (rb *ResultBuilder) ResetPartialResult() {
 	rb.PartialResult = &Result{}
 	rb.PartialResult.Latency = NewHistogram()
@@ -207,6 +213,8 @@ func (rb *ResultBuilder) RecordLatency(latency time.Duration, rateLimiter RateLi
 	return nil
 }
 
+var errorRecordingLatency bool
+
 func RunTest(resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter, test func(rb *ResultBuilder) (error, time.Duration)) {
 	rb := NewResultBuilder()
 
@@ -217,14 +225,14 @@ func RunTest(resultChannel chan Result, workload WorkloadGenerator, rateLimiter 
 
 		err, latency := test(rb)
 		if err != nil {
-			HandleError(err)
-			break
+			log.Print(err)
+			rb.IncErrors()
+			continue
 		}
 
 		err = rb.RecordLatency(latency, rateLimiter)
 		if err != nil {
-			HandleError(err)
-			break
+			errorRecordingLatency = true
 		}
 
 		now := time.Now()
@@ -245,9 +253,6 @@ func DoWrites(session *gocql.Session, resultChannel chan Result, workload Worklo
 	query := session.Query("INSERT INTO " + keyspaceName + "." + tableName + " (pk, ck, v) VALUES (?, ?, ?)")
 
 	RunTest(resultChannel, workload, rateLimiter, func(rb *ResultBuilder) (error, time.Duration) {
-		rb.IncOps()
-		rb.IncRows()
-
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
 		bound := query.Bind(pk, ck, value)
@@ -258,6 +263,9 @@ func DoWrites(session *gocql.Session, resultChannel chan Result, workload Worklo
 		if err != nil {
 			return err, time.Duration(0)
 		}
+
+		rb.IncOps()
+		rb.IncRows()
 
 		latency := requestEnd.Sub(requestStart)
 		return nil, latency
@@ -279,15 +287,15 @@ func DoBatchedWrites(session *gocql.Session, resultChannel chan Result, workload
 			batch.Query(request, currentPk, ck, value)
 		}
 
-		rb.IncOps()
-		rb.AddRows(batchSize)
-
 		requestStart := time.Now()
 		err := session.ExecuteBatch(batch)
 		requestEnd := time.Now()
 		if err != nil {
 			return err, time.Duration(0)
 		}
+
+		rb.IncOps()
+		rb.AddRows(batchSize)
 
 		latency := requestEnd.Sub(requestStart)
 		return nil, latency
@@ -298,9 +306,6 @@ func DoCounterUpdates(session *gocql.Session, resultChannel chan Result, workloa
 	query := session.Query("UPDATE " + keyspaceName + "." + counterTableName + " SET c1 = c1 + 1, c2 = c2 + 1, c3 = c3 + 1, c4 = c4 + 1, c5 = c5 + 1 WHERE pk = ? AND ck = ?")
 
 	RunTest(resultChannel, workload, rateLimiter, func(rb *ResultBuilder) (error, time.Duration) {
-		rb.IncOps()
-		rb.IncRows()
-
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
 		bound := query.Bind(pk, ck)
@@ -311,6 +316,9 @@ func DoCounterUpdates(session *gocql.Session, resultChannel chan Result, workloa
 		if err != nil {
 			return err, time.Duration(0)
 		}
+
+		rb.IncOps()
+		rb.IncRows()
 
 		latency := requestEnd.Sub(requestStart)
 		return nil, latency
@@ -343,7 +351,6 @@ func DoReadsFromTable(table string, session *gocql.Session, resultChannel chan R
 	query := session.Query(request)
 
 	RunTest(resultChannel, workload, rateLimiter, func(rb *ResultBuilder) (error, time.Duration) {
-		rb.IncOps()
 		pk := workload.NextPartitionKey()
 
 		var bound *gocql.Query
@@ -386,6 +393,8 @@ func DoReadsFromTable(table string, session *gocql.Session, resultChannel chan R
 		if err != nil {
 			return err, time.Duration(0)
 		}
+
+		rb.IncOps()
 
 		latency := requestEnd.Sub(requestStart)
 		return nil, latency
