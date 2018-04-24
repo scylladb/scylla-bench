@@ -197,3 +197,23 @@ func (*TimeSeriesRead) IsDone() bool {
 func (tsw *TimeSeriesRead) IsPartitionDone() bool {
 	return false
 }
+
+// Dummy workload generator for range scans
+type RangeScan struct {
+}
+
+func (*RangeScan) NextPartitionKey() int64 {
+	return 0
+}
+
+func (*RangeScan) NextClusteringKey() int64 {
+	return 0
+}
+
+func (*RangeScan) IsPartitionDone() bool {
+	return false
+}
+
+func (*RangeScan) IsDone() bool {
+	return false
+}

@@ -82,6 +82,8 @@ func GetWorkload(name string, threadId int, partitionOffset int64, mode string, 
 		} else {
 			log.Fatal("time series workload supports only write and read modes")
 		}
+	case "scan":
+		return &RangeScan{}
 	default:
 		log.Fatal("unknown workload: ", name)
 	}
@@ -101,6 +103,8 @@ func GetMode(name string) func(session *gocql.Session, resultChannel chan Result
 		return DoReads
 	case "counter_read":
 		return DoCounterReads
+	case "scan":
+		return DoScanTable
 	default:
 		log.Fatal("unknown mode: ", name)
 	}
@@ -146,7 +150,7 @@ func main() {
 	var writeRate int64
 	var distribution string
 
-	flag.StringVar(&mode, "mode", "", "operating mode: write, read, counter_update, counter_read")
+	flag.StringVar(&mode, "mode", "", "operating mode: write, read, counter_update, counter_read, scan")
 	flag.StringVar(&workload, "workload", "", "workload: sequential, uniform, timeseries")
 	flag.StringVar(&consistencyLevel, "consistency-level", "quorum", "consistency level")
 	flag.IntVar(&replicationFactor, "replication-factor", 1, "replication factor")
@@ -189,12 +193,19 @@ func main() {
 		flag.PrintDefaults()
 	}
 
-	if workload == "" {
-		log.Fatal("workload type needs to be specified")
-	}
-
 	if mode == "" {
 		log.Fatal("test mode needs to be specified")
+	}
+
+	if mode == "scan" {
+		if workload != "" {
+			log.Fatal("workload type cannot be scpecified for scan mode")
+		}
+		workload = "scan"
+	} else {
+		if workload == "" {
+			log.Fatal("workload type needs to be specified")
+		}
 	}
 
 	if workload == "uniform" && testDuration == 0 {

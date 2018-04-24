@@ -409,3 +409,27 @@ func DoReadsFromTable(table string, session *gocql.Session, resultChannel chan R
 		return nil, latency
 	})
 }
+
+func DoScanTable(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) {
+	request := fmt.Sprintf("SELECT * FROM %s.%s", keyspaceName, tableName)
+	query := session.Query(request)
+
+	RunTest(resultChannel, workload, rateLimiter, func(rb *ResultBuilder) (error, time.Duration) {
+		requestStart := time.Now()
+		iter := query.Iter()
+		for iter.Scan(nil, nil, nil) {
+			rb.IncRows()
+		}
+		requestEnd := time.Now()
+
+		err := iter.Close()
+		if err != nil {
+			return err, time.Duration(0)
+		}
+
+		rb.IncOps()
+
+		latency := requestEnd.Sub(requestStart)
+		return nil, latency
+	})
+}
