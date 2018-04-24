@@ -39,6 +39,9 @@ var stopAll uint32
 
 var measureLatency bool
 
+const with_latency_line_fmt = "\n%-15v  %15v  %7v  %7v  %-15v  %-15v  %-15v  %-15v  %-15v  %-15v  %v"
+const without_latency_line_fmt = "\n%-15v  %15v  %7v  %7v"
+
 func PrepareDatabase(session *gocql.Session, replicationFactor int) {
 	request := fmt.Sprintf("CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : %d }", keyspaceName, replicationFactor)
 	err := session.Query(request).Exec()
@@ -110,12 +113,12 @@ func PrintPartialResult(result *MergedResult) {
 		latencyError = "latency measurement error"
 	}
 	if measureLatency {
-		fmt.Println(result.Time, "\t", result.Operations, "\t", result.ClusteringRows, "\t", result.Errors,
-			"\t", time.Duration(result.Latency.Max()), "\t", time.Duration(result.Latency.ValueAtQuantile(99.9)), "\t", time.Duration(result.Latency.ValueAtQuantile(99)),
-			"\t", time.Duration(result.Latency.ValueAtQuantile(95)), "\t", time.Duration(result.Latency.ValueAtQuantile(90)), "\t", time.Duration(result.Latency.ValueAtQuantile(50)),
+		fmt.Printf(with_latency_line_fmt, result.Time, result.Operations, result.ClusteringRows, result.Errors,
+			time.Duration(result.Latency.Max()), time.Duration(result.Latency.ValueAtQuantile(99.9)), time.Duration(result.Latency.ValueAtQuantile(99)),
+			time.Duration(result.Latency.ValueAtQuantile(95)), time.Duration(result.Latency.ValueAtQuantile(90)), time.Duration(result.Latency.ValueAtQuantile(50)),
 			latencyError)
 	} else {
-		fmt.Println(result.Time, "\t", result.Operations, "\t", result.ClusteringRows, "\t", result.Errors)
+		fmt.Printf(without_latency_line_fmt, result.Time, result.Operations, result.ClusteringRows, result.Errors)
 	}
 }
 
@@ -312,9 +315,9 @@ func main() {
 	}
 
 	if measureLatency {
-		fmt.Println("\ntime\t\toperations/s\trows/s\t\terrors\tmax\t\t99.9th\t\t99th\t\t95th\t\t90th\t\tmedian")
+		fmt.Printf(with_latency_line_fmt, "time", "operations/s", "rows/s", "errors", "max", "99.9th", "99th", "95th", "90th", "median", "")
 	} else {
-		fmt.Println("\ntime\t\toperations/s\trows/s\t\terrors")
+		fmt.Printf(without_latency_line_fmt, "time", "operations/s", "rows/s", "errors")
 	}
 
 	result := RunConcurrently(maximumRate, func(i int, resultChannel chan Result, rateLimiter RateLimiter) {
