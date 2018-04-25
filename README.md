@@ -27,7 +27,7 @@ scylla-bench allows configuring the number of partitions, number of rows in a pa
 
 ### Modes
 
-scylla-bench can operate in one of three modes (flag `-mode`) which basically determine what kind of requests are sent to the server. Some of the modes allow additional, further configuration.
+scylla-bench can operate in severeal modes (flag `-mode`) which basically determine what kind of requests are sent to the server. Some of the modes allow additional, further configuration.
 
 #### Write mode (`-mode write`)
 
@@ -91,6 +91,16 @@ SELECT * from %s.%s WHERE pk = ? AND ck IN (?, ...)
 
 Counter read mode works in exactly the same as regular read mode (with the same configuration flags available) except that it reads data from the counter table `scylla_bench.test_counters`.
 
+#### Scan mode (`-mode scan`)
+
+Scan the entire table. This mode does not allow the `workload` to be configured. It is important to note that range-scans put a significant load on the cluster and also take a long time to complete.
+Thus it is advisable to pass a significantly larger timeout (in the minutes range) and low concurrency.
+Essentially the following query is executed:
+
+```
+SELECT * FROM scylla_bench.test
+```
+
 ### Workloads
 
 The second very important part of scylla-bench configuration is the workload. While mode chooses what kind of requests are to be sent to the cluster the workload decides which partitions and rows should be the target of these requests.
@@ -148,5 +158,6 @@ Note that if the effective write rate is lower than the specified one the reader
 2. Read test: `scylla-bench -workload uniform -mode read -concurrency 128 -duration 15m -nodes some_node`
 3. Read latency test: `scylla-bench -workload uniform -mode read -duration 15m -concurrency 32 -max-rate 32000 -nodes 192.168.8.4`
 4. Counter write test: `scylla-bench -workload uniform -mode counter_update -duration 30m -concurrency 128`
+5. Full table scan test: `scylla-bench -mode scan -timeout 5m -concurrency 1`
 
 
