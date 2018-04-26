@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -257,13 +259,32 @@ func RunTest(resultChannel chan Result, workload WorkloadGenerator, rateLimiter 
 	resultChannel <- *rb.FullResult
 }
 
+func generateData(pk int64, ck int64, size int64) []byte {
+	value := make([]byte, size)
+	if validateData {
+		dataPattern := strconv.FormatInt(pk*ck*(pk+ck), 10)
+		dataLen := len(dataPattern)
+		cnt := int(size) / dataLen
+		tail := int(size) % dataLen
+		var data string
+		if cnt > 0 {
+			data = strings.Repeat(dataPattern, cnt)
+		}
+		if tail > 0 {
+			data += dataPattern[:tail]
+		}
+		copy(value, []byte(data))
+	}
+	return value
+}
+
 func DoWrites(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) {
-	value := make([]byte, clusteringRowSize)
 	query := session.Query("INSERT INTO " + keyspaceName + "." + tableName + " (pk, ck, v) VALUES (?, ?, ?)")
 
 	RunTest(resultChannel, workload, rateLimiter, func(rb *ResultBuilder) (error, time.Duration) {
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
+		value := generateData(pk, ck, clusteringRowSize)
 		bound := query.Bind(pk, ck, value)
 
 		requestStart := time.Now()
@@ -282,7 +303,6 @@ func DoWrites(session *gocql.Session, resultChannel chan Result, workload Worklo
 }
 
 func DoBatchedWrites(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) {
-	value := make([]byte, clusteringRowSize)
 	request := fmt.Sprintf("INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)", keyspaceName, tableName)
 
 	RunTest(resultChannel, workload, rateLimiter, func(rb *ResultBuilder) (error, time.Duration) {
@@ -293,6 +313,7 @@ func DoBatchedWrites(session *gocql.Session, resultChannel chan Result, workload
 		for !workload.IsPartitionDone() && atomic.LoadUint32(&stopAll) == 0 && batchSize < rowsPerRequest {
 			ck := workload.NextClusteringKey()
 			batchSize++
+			value := generateData(currentPk, ck, clusteringRowSize)
 			batch.Query(request, currentPk, ck, value)
 		}
 
@@ -312,12 +333,13 @@ func DoBatchedWrites(session *gocql.Session, resultChannel chan Result, workload
 }
 
 func DoCounterUpdates(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) {
-	query := session.Query("UPDATE " + keyspaceName + "." + counterTableName + " SET c1 = c1 + 1, c2 = c2 + 1, c3 = c3 + 1, c4 = c4 + 1, c5 = c5 + 1 WHERE pk = ? AND ck = ?")
+	query := session.Query("UPDATE " + keyspaceName + "." + counterTableName +
+		" SET c1 = c1 + ?, c2 = c2 + ?, c3 = c3 + ?, c4 = c4 + ?, c5 = c5 + ? WHERE pk = ? AND ck = ?")
 
 	RunTest(resultChannel, workload, rateLimiter, func(rb *ResultBuilder) (error, time.Duration) {
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
-		bound := query.Bind(pk, ck)
+		bound := query.Bind(ck, ck+1, ck+2, ck+3, ck+4, pk, ck)
 
 		requestStart := time.Now()
 		err := bound.Exec()
@@ -385,15 +407,31 @@ func DoReadsFromTable(table string, session *gocql.Session, resultChannel chan R
 			}
 		}
 
+		var resPk, resCk int64
+		var value []byte
 		requestStart := time.Now()
 		iter := bound.Iter()
 		if table == tableName {
-			for iter.Scan(nil, nil, nil) {
+			for iter.Scan(&resPk, &resCk, &value) {
 				rb.IncRows()
+				if validateData {
+					valueExpected := generateData(resPk, resCk, clusteringRowSize)
+					if bytes.Compare(value, valueExpected) != 0 {
+						rb.IncErrors()
+						log.Print("data corruption:", resPk, resCk, value, valueExpected)
+					}
+				}
 			}
 		} else {
-			for iter.Scan(nil, nil, nil, nil, nil, nil, nil) {
+			var c1, c2, c3, c4, c5 int64
+			for iter.Scan(&resPk, &resCk, &c1, &c2, &c3, &c4, &c5) {
 				rb.IncRows()
+				if validateData {
+					if c1 != resCk || c2 != resCk+1 || c3 != resCk+2 || c4 != resCk+3 || c5 != resCk+4 {
+						rb.IncErrors()
+						log.Print("counter data corruption:", resPk, resCk, c1, c2, c3, c4, c5)
+					}
+				}
 			}
 		}
 		requestEnd := time.Now()
