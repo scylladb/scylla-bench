@@ -243,6 +243,9 @@ func main() {
 	if workload == "timeseries" && mode == "write" && int64(concurrency) > partitionCount {
 		log.Fatal("time series writes require concurrency less than or equal partition count")
 	}
+	if workload == "timeseries" && mode == "write" && maximumRate == 0 {
+		log.Fatal("max-rate must be provided for time series write loads")
+	}
 
 	cluster := gocql.NewCluster(strings.Split(nodes, ",")...)
 	cluster.NumConns = connectionCount
