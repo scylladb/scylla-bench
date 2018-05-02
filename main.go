@@ -17,6 +17,7 @@ var keyspaceName string
 var tableName string
 var counterTableName string
 
+var mode string
 var concurrency int
 var maximumRate int
 
@@ -38,25 +39,33 @@ var startTime time.Time
 var stopAll uint32
 
 var measureLatency bool
+var validateData bool
 
 const with_latency_line_fmt = "\n%-15v  %15v  %7v  %7v  %-15v  %-15v  %-15v  %-15v  %-15v  %-15v  %v"
 const without_latency_line_fmt = "\n%-15v  %15v  %7v  %7v"
 
-func PrepareDatabase(session *gocql.Session, replicationFactor int) {
-	request := fmt.Sprintf("CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : %d }", keyspaceName, replicationFactor)
+func Query(session *gocql.Session, request string) {
 	err := session.Query(request).Exec()
 	if err != nil {
 		log.Fatal(err)
 	}
+}
 
-	err = session.Query("CREATE TABLE IF NOT EXISTS " + keyspaceName + "." + tableName + " (pk bigint, ck bigint, v blob, PRIMARY KEY(pk, ck)) WITH compression = { }").Exec()
-	if err != nil {
-		log.Fatal(err)
-	}
+func PrepareDatabase(session *gocql.Session, replicationFactor int) {
+	Query(session, fmt.Sprintf("CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : %d }", keyspaceName, replicationFactor))
 
-	err = session.Query("CREATE TABLE IF NOT EXISTS " + keyspaceName + "." + counterTableName + " (pk bigint, ck bigint, c1 counter, c2 counter, c3 counter, c4 counter, c5 counter, PRIMARY KEY(pk, ck)) WITH compression = { }").Exec()
-	if err != nil {
-		log.Fatal(err)
+	Query(session, "CREATE TABLE IF NOT EXISTS "+keyspaceName+"."+tableName+" (pk bigint, ck bigint, v blob, PRIMARY KEY(pk, ck)) WITH compression = { }")
+
+	Query(session, "CREATE TABLE IF NOT EXISTS "+keyspaceName+"."+counterTableName+
+		" (pk bigint, ck bigint, c1 counter, c2 counter, c3 counter, c4 counter, c5 counter, PRIMARY KEY(pk, ck)) WITH compression = { }")
+
+	if validateData {
+		switch mode {
+		case "write":
+			Query(session, "TRUNCATE TABLE "+keyspaceName+"."+tableName)
+		case "counter_update":
+			Query(session, "TRUNCATE TABLE "+keyspaceName+"."+counterTableName)
+		}
 	}
 }
 
@@ -135,7 +144,6 @@ func toInt(value bool) int {
 }
 
 func main() {
-	var mode string
 	var workload string
 	var consistencyLevel string
 	var replicationFactor int
@@ -177,6 +185,7 @@ func main() {
 	flag.Int64Var(&partitionOffset, "partition-offset", 0, "start of the partition range (only for sequential workload)")
 
 	flag.BoolVar(&measureLatency, "measure-latency", true, "measure request latency")
+	flag.BoolVar(&validateData, "validate-data", false, "write meaningful data and validate while reading")
 
 	var startTimestamp int64
 	flag.Int64Var(&writeRate, "write-rate", 0, "rate of writes (relevant only for time series reads)")
@@ -233,6 +242,9 @@ func main() {
 	}
 	if workload == "timeseries" && mode == "write" && int64(concurrency) > partitionCount {
 		log.Fatal("time series writes require concurrency less than or equal partition count")
+	}
+	if workload == "timeseries" && mode == "write" && maximumRate == 0 {
+		log.Fatal("max-rate must be provided for time series write loads")
 	}
 
 	cluster := gocql.NewCluster(strings.Split(nodes, ",")...)

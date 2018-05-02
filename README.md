@@ -115,7 +115,7 @@ This workload sequentially visits all partitions and rows in them. If the concur
 
 The first loader will write partitions [0, 5), the second [5, 10) and the third [10, 15).
 
-The sequantial workload is useful for initial population of the database (in write mode) or warming up the cache for in-memory tests (in read mode).
+The sequential workload is useful for initial population of the database (in write mode) or warming up the cache for in-memory tests (in read mode).
 
 #### Uniform workload (`-workload unifrom`)
 
@@ -129,7 +129,7 @@ Time series workload is the most complex one and behaves differently depending w
 
 ##### Write mode
 
-In write mode time series workload divdes the set of partitions between all goroutines (it is required that `-partition-count` >= `-concurrency`). Then each goroutine prepends to its partitions (partitions are chosen in a round-robind manner) new rows. Newer rows have smaller clustering keys than the older ones.
+In write mode time series workload divides the set of partitions between all goroutines (it is required that `-partition-count` >= `-concurrency`). Then each goroutine prepends to its partitions (partitions are chosen in a round-robind manner) new rows. Newer rows have smaller clustering keys than the older ones.
 
 Once the partition reches `clustering-row-count` rows the goroutine will switch to a new partiton key. This means that the total partition count will be larger than `-partition-count`, since in time series workload that flag specifies only the number of partitions to which data is concurrently written.
 
@@ -152,6 +152,9 @@ Note that if the effective write rate is lower than the specified one the reader
 * `-timeout` sets client timeout (default: 5s).
 * `-client-compression` enables or disables client compression (default: enabled).
 
+* `-validate-data` defines data integrity verification. If set then some none-zero data will be written in such a way that it can be validated during read operation.
+Note that this option should be set for both write and read (counter_update and counter_read) modes.
+
 ## Examples
 
 1. Sequential write to populate the database: `scylla-bench -workload sequential -mode write -nodes 127.0.0.1`
@@ -159,5 +162,5 @@ Note that if the effective write rate is lower than the specified one the reader
 3. Read latency test: `scylla-bench -workload uniform -mode read -duration 15m -concurrency 32 -max-rate 32000 -nodes 192.168.8.4`
 4. Counter write test: `scylla-bench -workload uniform -mode counter_update -duration 30m -concurrency 128`
 5. Full table scan test: `scylla-bench -mode scan -timeout 5m -concurrency 1`
-
-
+6. Write to populate database with non-zero data: `scylla-bench -workload sequential -mode write -nodes 127.0.0.1 -clustering-row-size 16 -validate-data`
+7. Read with data verification: `scylla-bench -workload uniform -mode write -nodes 127.0.0.1 -clustering-row-size 16 -validate-data  -duration 10m`
