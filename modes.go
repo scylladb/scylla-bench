@@ -427,7 +427,14 @@ func DoReadsFromTable(table string, session *gocql.Session, resultChannel chan R
 			for iter.Scan(&resPk, &resCk, &c1, &c2, &c3, &c4, &c5) {
 				rb.IncRows()
 				if validateData {
-					if c1 != resCk || c2 != resCk+1 || c3 != resCk+2 || c4 != resCk+3 || c5 != resCk+4 {
+					// in case of uniform workload the same row can be updated number of times
+					var updateNum int64
+					if resCk == 0 {
+						updateNum = c2
+					} else {
+						updateNum = c1 / resCk
+					}
+					if c1 != resCk*updateNum || c2 != c1+updateNum || c3 != c1+updateNum*2 || c4 != c1+updateNum*3 || c5 != c1+updateNum*4 {
 						rb.IncErrors()
 						log.Print("counter data corruption:", resPk, resCk, c1, c2, c3, c4, c5)
 					}
