@@ -41,8 +41,8 @@ var stopAll uint32
 var measureLatency bool
 var validateData bool
 
-const with_latency_line_fmt = "\n%-15v  %15v  %7v  %7v  %-15v  %-15v  %-15v  %-15v  %-15v  %-15v  %v"
-const without_latency_line_fmt = "\n%-15v  %15v  %7v  %7v"
+const withLatencyLineFmt = "\n%-15v  %15v  %7v  %7v  %-15v  %-15v  %-15v  %-15v  %-15v  %-15v  %-15v  %v"
+const withoutLatencyLineFmt = "\n%-15v  %15v  %7v  %7v"
 
 func Query(session *gocql.Session, request string) {
 	err := session.Query(request).Exec()
@@ -126,12 +126,13 @@ func PrintPartialResult(result *MergedResult) {
 		latencyError = "latency measurement error"
 	}
 	if measureLatency {
-		fmt.Printf(with_latency_line_fmt, result.Time, result.Operations, result.ClusteringRows, result.Errors,
+		fmt.Printf(withLatencyLineFmt, result.Time, result.Operations, result.ClusteringRows, result.Errors,
 			time.Duration(result.Latency.Max()), time.Duration(result.Latency.ValueAtQuantile(99.9)), time.Duration(result.Latency.ValueAtQuantile(99)),
-			time.Duration(result.Latency.ValueAtQuantile(95)), time.Duration(result.Latency.ValueAtQuantile(90)), time.Duration(result.Latency.ValueAtQuantile(50)),
+			time.Duration(result.Latency.ValueAtQuantile(95)), time.Duration(result.Latency.ValueAtQuantile(90)),
+			time.Duration(result.Latency.ValueAtQuantile(50)), time.Duration(result.Latency.Mean()),
 			latencyError)
 	} else {
-		fmt.Printf(without_latency_line_fmt, result.Time, result.Operations, result.ClusteringRows, result.Errors)
+		fmt.Printf(withoutLatencyLineFmt, result.Time, result.Operations, result.ClusteringRows, result.Errors)
 	}
 }
 
@@ -338,9 +339,9 @@ func main() {
 	}
 
 	if measureLatency {
-		fmt.Printf(with_latency_line_fmt, "time", "operations/s", "rows/s", "errors", "max", "99.9th", "99th", "95th", "90th", "median", "")
+		fmt.Printf(withLatencyLineFmt, "time", "operations/s", "rows/s", "errors", "max", "99.9th", "99th", "95th", "90th", "median", "mean", "")
 	} else {
-		fmt.Printf(without_latency_line_fmt, "time", "operations/s", "rows/s", "errors")
+		fmt.Printf(withoutLatencyLineFmt, "time", "operations/s", "rows/s", "errors")
 	}
 
 	result := RunConcurrently(maximumRate, func(i int, resultChannel chan Result, rateLimiter RateLimiter) {
@@ -365,6 +366,7 @@ func main() {
 			"\n  99th:\t\t", time.Duration(result.Latency.ValueAtQuantile(99)),
 			"\n  95th:\t\t", time.Duration(result.Latency.ValueAtQuantile(95)),
 			"\n  90th:\t\t", time.Duration(result.Latency.ValueAtQuantile(90)),
-			"\n  median:\t", time.Duration(result.Latency.ValueAtQuantile(50)))
+			"\n  median:\t", time.Duration(result.Latency.ValueAtQuantile(50)),
+			"\n  mean:\t\t", time.Duration(result.Latency.Mean()))
 	}
 }
