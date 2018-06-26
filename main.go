@@ -301,6 +301,12 @@ func main() {
 		}()
 	}
 
+	if startTimestamp != 0 {
+		startTime = time.Unix(0, startTimestamp)
+	} else {
+		startTime = time.Now()
+	}
+
 	fmt.Println("Configuration")
 	fmt.Println("Mode:\t\t\t", mode)
 	fmt.Println("Workload:\t\t", workload)
@@ -330,12 +336,6 @@ func main() {
 	if workload == "timeseries" {
 		fmt.Println("Start timestamp:\t", startTime.UnixNano())
 		fmt.Println("Write rate:\t\t", int64(maximumRate)/partitionCount)
-	}
-
-	if startTimestamp != 0 {
-		startTime = time.Unix(0, startTimestamp)
-	} else {
-		startTime = time.Now()
 	}
 
 	if measureLatency {
