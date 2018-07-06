@@ -32,9 +32,11 @@ type WorkloadGenerator interface {
 	NextClusteringKey() int64
 	IsPartitionDone() bool
 	IsDone() bool
+	Restart()
 }
 
 type SequentialVisitAll struct {
+	PartitionOffset    int64
 	PartitionCount     int64
 	ClusteringRowCount int64
 	NextPartition      int64
@@ -42,7 +44,7 @@ type SequentialVisitAll struct {
 }
 
 func NewSequentialVisitAll(partitionOffset int64, partitionCount int64, clusteringRowCount int64) *SequentialVisitAll {
-	return &SequentialVisitAll{partitionOffset + partitionCount, clusteringRowCount, partitionOffset, 0}
+	return &SequentialVisitAll{partitionOffset, partitionOffset + partitionCount, clusteringRowCount, partitionOffset, 0}
 }
 
 func (sva *SequentialVisitAll) NextTokenRange() TokenRange {
@@ -67,6 +69,11 @@ func (sva *SequentialVisitAll) NextClusteringKey() int64 {
 
 func (sva *SequentialVisitAll) IsDone() bool {
 	return sva.NextPartition >= sva.PartitionCount || (sva.NextPartition+1 == sva.PartitionCount && sva.NextClusteringRow >= sva.ClusteringRowCount)
+}
+
+func (sva *SequentialVisitAll) Restart() {
+	sva.NextClusteringRow = 0
+	sva.NextPartition = sva.PartitionOffset
 }
 
 func (sva *SequentialVisitAll) IsPartitionDone() bool {
@@ -102,6 +109,9 @@ func (ru *RandomUniform) IsDone() bool {
 
 func (ru *RandomUniform) IsPartitionDone() bool {
 	return false
+}
+
+func (ru *RandomUniform) Restart() {
 }
 
 type TimeSeriesWrite struct {
@@ -155,6 +165,9 @@ func (*TimeSeriesWrite) IsDone() bool {
 
 func (tsw *TimeSeriesWrite) IsPartitionDone() bool {
 	return tsw.MoveToNextPartition
+}
+
+func (*TimeSeriesWrite) Restart() {
 }
 
 type TimeSeriesRead struct {
@@ -226,6 +239,9 @@ func (tsw *TimeSeriesRead) IsPartitionDone() bool {
 	return false
 }
 
+func (tsw *TimeSeriesRead) Restart() {
+}
+
 type RangeScan struct {
 	TotalRangeCount int
 	RangeOffset	    int
@@ -283,4 +299,8 @@ func (*RangeScan) IsPartitionDone() bool {
 
 func (rs *RangeScan) IsDone() bool {
 	return rs.NextRange >= rs.RangeCount
+}
+
+func (rs *RangeScan) Restart() {
+	rs.NextRange = rs.RangeOffset
 }

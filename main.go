@@ -37,6 +37,7 @@ var (
 	rangeCount int
 
 	timeout time.Duration
+	iterations uint
 
 	startTime time.Time
 
@@ -202,6 +203,7 @@ func main() {
 	flag.IntVar(&rangeCount, "range-count", 1, "number of ranges to split the token space into (relevant only for scan mode)")
 
 	flag.DurationVar(&testDuration, "duration", 0, "duration of the test in seconds (0 for unlimited)")
+	flag.UintVar(&iterations, "iterations", 1, "number of iterations to run (0 for unlimited, relevant only for workloads that have a defined number of ops to execute)")
 
 	flag.Int64Var(&partitionOffset, "partition-offset", 0, "start of the partition range (only for sequential workload)")
 
@@ -246,6 +248,10 @@ func main() {
 
 	if workload == "uniform" && testDuration == 0 {
 		log.Fatal("uniform workload requires limited test duration")
+	}
+
+	if iterations > 1 && workload != "sequential" && workload != "scan" {
+		log.Fatal("iterations only supported for the sequential and scan workload")
 	}
 
 	if partitionOffset != 0 && workload != "sequential" {

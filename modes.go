@@ -226,12 +226,40 @@ func (rb *ResultBuilder) RecordLatency(latency time.Duration, rateLimiter RateLi
 
 var errorRecordingLatency bool
 
+type TestIterator struct {
+	iteration uint
+	workload  WorkloadGenerator
+}
+
+func NewTestIterator(workload WorkloadGenerator) *TestIterator {
+	return &TestIterator{0, workload}
+}
+
+func (ti *TestIterator) IsDone() bool {
+	if atomic.LoadUint32(&stopAll) != 0 {
+		return true;
+	}
+
+	if ti.workload.IsDone() {
+		if ti.iteration + 1 == iterations {
+			return true
+		} else {
+			ti.workload.Restart()
+			ti.iteration++
+			return false
+		}
+	} else {
+		return false
+	}
+}
+
 func RunTest(resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter, test func(rb *ResultBuilder) (error, time.Duration)) {
 	rb := NewResultBuilder()
 
 	start := time.Now()
 	partialStart := start
-	for !workload.IsDone() && atomic.LoadUint32(&stopAll) == 0 {
+	iter := NewTestIterator(workload)
+	for !iter.IsDone() {
 		rateLimiter.Wait()
 
 		err, latency := test(rb)
