@@ -108,6 +108,8 @@ Essentially the following query is executed:
 
     SELECT * FROM scylla_bench.test WHERE token(pk) >= ? AND token(pk) <= ?
 
+The number of iterations to run can be specified with the `-iterations` flag. The default is 1.
+
 ### Workloads
 
 The second very important part of scylla-bench configuration is the workload. While mode chooses what kind of requests are to be sent to the cluster the workload decides which partitions and rows should be the target of these requests.
@@ -123,6 +125,7 @@ This workload sequentially visits all partitions and rows in them. If the concur
 The first loader will write partitions [0, 5), the second [5, 10) and the third [10, 15).
 
 The sequential workload is useful for initial population of the database (in write mode) or warming up the cache for in-memory tests (in read mode).
+The number of iterations to run can be specified with the `-iterations` flag. The default is 1.
 
 #### Uniform workload (`-workload unifrom`)
 
@@ -161,6 +164,8 @@ Note that if the effective write rate is lower than the specified one the reader
 
 * `-validate-data` defines data integrity verification. If set then some none-zero data will be written in such a way that it can be validated during read operation.
 Note that this option should be set for both write and read (counter_update and counter_read) modes.
+
+* `-iterations` sets the Number of iterations to run the given workloads. This is only relevant for workloads that have a finite number of steps. Currently the only such workloads are [sequential](#sequential-workload--workload-sequential) and [scan](#scan-mode--mode-scan). Can be combined with `-duration` to limit a run by both number of iterations and time. Set to 0 for infinite iterations. Defaults to 1.
 
 ## Examples
 
