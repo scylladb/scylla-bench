@@ -456,12 +456,14 @@ func DoReadsFromTable(table string, session *gocql.Session, resultChannel chan R
 }
 
 func DoScanTable(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) {
-	request := fmt.Sprintf("SELECT * FROM %s.%s", keyspaceName, tableName)
+	request := fmt.Sprintf("SELECT * FROM %s.%s WHERE token(pk) >= ? AND token(pk) <= ?", keyspaceName, tableName)
 	query := session.Query(request)
 
 	RunTest(resultChannel, workload, rateLimiter, func(rb *ResultBuilder) (error, time.Duration) {
 		requestStart := time.Now()
-		iter := query.Iter()
+		currentRange := workload.NextTokenRange()
+		bound := query.Bind(currentRange.Start, currentRange.End)
+		iter := bound.Iter()
 		for iter.Scan(nil, nil, nil) {
 			rb.IncRows()
 		}
