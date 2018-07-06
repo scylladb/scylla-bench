@@ -15,7 +15,19 @@ func MinInt64(a int64, b int64) int64 {
 	}
 }
 
+const (
+	minToken int64 = -(1 << 63)
+	maxToken int64 = (1 << 63) - 1
+)
+
+// Bounds are inclusive
+type TokenRange struct {
+	Start int64
+	End int64
+}
+
 type WorkloadGenerator interface {
+	NextTokenRange() TokenRange
 	NextPartitionKey() int64
 	NextClusteringKey() int64
 	IsPartitionDone() bool
@@ -31,6 +43,10 @@ type SequentialVisitAll struct {
 
 func NewSequentialVisitAll(partitionOffset int64, partitionCount int64, clusteringRowCount int64) *SequentialVisitAll {
 	return &SequentialVisitAll{partitionOffset + partitionCount, clusteringRowCount, partitionOffset, 0}
+}
+
+func (sva *SequentialVisitAll) NextTokenRange() TokenRange {
+	panic("SequentialVisitAll does not support NextTokenRange()")
 }
 
 func (sva *SequentialVisitAll) NextPartitionKey() int64 {
@@ -68,6 +84,10 @@ func NewRandomUniform(i int, partitionCount int64, clusteringRowCount int64) *Ra
 	return &RandomUniform{generator, int64(partitionCount), int64(clusteringRowCount)}
 }
 
+func (ru *RandomUniform) NextTokenRange() TokenRange {
+	panic("RandomUniform does not support NextTokenRange()")
+}
+
 func (ru *RandomUniform) NextPartitionKey() int64 {
 	return ru.Generator.Int63n(ru.PartitionCount)
 }
@@ -103,6 +123,10 @@ func NewTimeSeriesWriter(threadId int, threadCount int, pkCount int64, ckCount i
 	pkOffset := int64(threadId)
 	return &TimeSeriesWrite{pkStride, pkOffset, pkCount, pkOffset - pkStride, 0,
 		ckCount, 0, startTime, period, false}
+}
+
+func (tsw *TimeSeriesWrite) NextTokenRange() TokenRange {
+	panic("TimeSeriesWrite does not support NextTokenRange()")
 }
 
 func (tsw *TimeSeriesWrite) NextPartitionKey() int64 {
@@ -173,6 +197,10 @@ func RandomInt64(generator *rand.Rand, halfNormalDist bool, maxValue int64) int6
 	}
 }
 
+func (tsw *TimeSeriesRead) NextTokenRange() TokenRange {
+	panic("TimeSeriesRead does not support NextTokenRange()")
+}
+
 func (tsw *TimeSeriesRead) NextPartitionKey() int64 {
 	tsw.PkPosition += tsw.PkStride
 	if tsw.PkPosition >= tsw.PkCount {
@@ -198,8 +226,47 @@ func (tsw *TimeSeriesRead) IsPartitionDone() bool {
 	return false
 }
 
-// Dummy workload generator for range scans
 type RangeScan struct {
+	TotalRangeCount int
+	RangeOffset	    int
+	RangeCount      int
+	NextRange       int
+}
+
+func NewRangeScan(totalRangeCount int, rangeOffset int, rangeCount int) *RangeScan {
+	return &RangeScan{totalRangeCount, rangeOffset, rangeOffset + rangeCount, rangeOffset}
+}
+
+func (rs* RangeScan) NextTokenRange() TokenRange {
+	// Special case, no range splitting
+	if rs.TotalRangeCount == 1 {
+		rs.NextRange++;
+		return TokenRange{minToken, maxToken}
+	}
+
+	// This is in fact -1 compared to the real number of tokens, which
+	// is 2**64. But this is fine, as the worst that can happen is that
+	// due to the inprecise calculation of tokensPerRange more tokens
+	// will be in the very last range than should be, which is
+	// tolerable.
+	const tokenCount uint64 = ^uint64(0)
+	// Due to the special handling of TotalRangeCount == 1 above, this
+	// is guaranteed to safely fit into an int64
+	tokensPerRange := int64(tokenCount / uint64(rs.TotalRangeCount))
+
+	currentRange := rs.NextRange
+	rs.NextRange++;
+
+	firstToken := minToken + int64(currentRange) * tokensPerRange
+	var lastToken int64
+	// Make sure the very last range streches all the way to maxToken.
+	if rs.NextRange == rs.TotalRangeCount {
+		lastToken = maxToken
+	} else {
+		lastToken = firstToken + tokensPerRange - 1
+	}
+
+	return TokenRange{firstToken, lastToken}
 }
 
 func (*RangeScan) NextPartitionKey() int64 {
@@ -214,6 +281,6 @@ func (*RangeScan) IsPartitionDone() bool {
 	return false
 }
 
-func (*RangeScan) IsDone() bool {
-	return false
+func (rs *RangeScan) IsDone() bool {
+	return rs.NextRange >= rs.RangeCount
 }

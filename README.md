@@ -93,13 +93,20 @@ Counter read mode works in exactly the same as regular read mode (with the same 
 
 #### Scan mode (`-mode scan`)
 
-Scan the entire table. This mode does not allow the `workload` to be configured. It is important to note that range-scans put a significant load on the cluster and also take a long time to complete.
-Thus it is advisable to pass a significantly larger timeout (in the minutes range) and low concurrency.
+Scan the entire table. This mode does not allow the `workload` to be configured (it has its own workload called `scan`). The scan mode allows for the token-space to be split into a user configurable sub-ranges and for querying these sub-ranges concurrently. The algorithm used is that descibed by [Avi's efficient range scans blog post](https://www.scylladb.com/2017/02/13/efficient-full-table-scans-with-scylla-1-6/).
+The amount of sub-ranges that the token-space will be split into can be set by the `-range-count` flag. The recommended number to set this to is:
+
+    -range-count = (nodes in cluster) ✕ (cores in node) ✕ 300
+
+The number of sub-ranges to be read concurrency can be set by the `-concurrency` flag as usual. The recommended concurrency is:
+
+    -concurrency = range-count/100
+
+For more details on these numbers see the above mentioned blog post.
+
 Essentially the following query is executed:
 
-```
-SELECT * FROM scylla_bench.test
-```
+    SELECT * FROM scylla_bench.test WHERE token(pk) >= ? AND token(pk) <= ?
 
 ### Workloads
 

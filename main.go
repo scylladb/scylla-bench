@@ -34,6 +34,8 @@ var (
 	inRestriction     bool
 	noLowerBound      bool
 
+	rangeCount int
+
 	timeout time.Duration
 
 	startTime time.Time
@@ -97,7 +99,15 @@ func GetWorkload(name string, threadId int, partitionOffset int64, mode string, 
 			log.Fatal("time series workload supports only write and read modes")
 		}
 	case "scan":
-		return &RangeScan{}
+		rangesPerThread := rangeCount / concurrency
+		thisOffset := rangesPerThread * threadId
+		var thisCount int
+		if threadId+1 == concurrency {
+			thisCount = rangeCount - thisOffset
+		} else {
+			thisCount = rangesPerThread
+		}
+		return NewRangeScan(rangeCount, thisOffset, thisCount)
 	default:
 		log.Fatal("unknown workload: ", name)
 	}
@@ -189,6 +199,7 @@ func main() {
 	flag.BoolVar(&provideUpperBound, "provide-upper-bound", false, "whether read requests should provide an upper bound")
 	flag.BoolVar(&inRestriction, "in-restriction", false, "use IN restriction in read requests")
 	flag.BoolVar(&noLowerBound, "no-lower-bound", false, "do not provide lower bound in read requests")
+	flag.IntVar(&rangeCount, "range-count", 1, "number of ranges to split the token space into (relevant only for scan mode)")
 
 	flag.DurationVar(&testDuration, "duration", 0, "duration of the test in seconds (0 for unlimited)")
 
@@ -223,6 +234,10 @@ func main() {
 			log.Fatal("workload type cannot be scpecified for scan mode")
 		}
 		workload = "scan"
+		if concurrency > rangeCount {
+			concurrency = rangeCount
+			log.Printf("adjusting concurrency to the highest useful value of %v", concurrency)
+		}
 	} else {
 		if workload == "" {
 			log.Fatal("workload type needs to be specified")
