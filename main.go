@@ -85,7 +85,8 @@ func GetWorkload(name string, threadId int, partitionOffset int64, mode string, 
 		return NewRandomUniform(threadId, partitionCount, clusteringRowCount)
 	case "timeseries":
 		if mode == "read" {
-			return NewTimeSeriesReader(threadId, concurrency, partitionCount, clusteringRowCount, writeRate, distribution, startTime)
+			return NewTimeSeriesWriter(threadId, concurrency, partitionCount, clusteringRowCount, startTime, writeRate)
+			//return NewTimeSeriesReader(threadId, concurrency, partitionCount, clusteringRowCount, writeRate, distribution, startTime)
 		} else if mode == "write" {
 			return NewTimeSeriesWriter(threadId, concurrency, partitionCount, clusteringRowCount, startTime, int64(maximumRate/concurrency))
 		} else {

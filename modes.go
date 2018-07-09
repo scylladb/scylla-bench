@@ -235,6 +235,9 @@ func RunTest(resultChannel chan Result, workload WorkloadGenerator, rateLimiter 
 		rateLimiter.Wait()
 
 		err, latency := test(rb)
+		if latency < 0 {
+			continue
+		}
 		if err != nil {
 			log.Print(err)
 			rb.IncErrors()
@@ -411,6 +414,10 @@ func DoReadsFromTable(table string, session *gocql.Session, resultChannel chan R
 		var value []byte
 		requestStart := time.Now()
 		iter := bound.Iter()
+		if iter.NumRows() == 0 {
+			// don't count requests for non-existing partition keys returning 0 rows
+			return nil, -1
+		}
 		if table == tableName {
 			for iter.Scan(&resPk, &resCk, &value) {
 				rb.IncRows()
