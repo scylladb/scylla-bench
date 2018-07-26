@@ -11,38 +11,43 @@ import (
 	"time"
 
 	"github.com/gocql/gocql"
+	"github.com/hailocab/go-hostpool"
 )
 
-var keyspaceName string
-var tableName string
-var counterTableName string
+var (
+	keyspaceName     string
+	tableName        string
+	counterTableName string
 
-var mode string
-var concurrency int
-var maximumRate int
+	mode        string
+	concurrency int
+	maximumRate int
 
-var testDuration time.Duration
+	testDuration time.Duration
 
-var partitionCount int64
-var clusteringRowCount int64
-var clusteringRowSize int64
+	partitionCount     int64
+	clusteringRowCount int64
+	clusteringRowSize  int64
 
-var rowsPerRequest int
-var provideUpperBound bool
-var inRestriction bool
-var noLowerBound bool
+	rowsPerRequest    int
+	provideUpperBound bool
+	inRestriction     bool
+	noLowerBound      bool
 
-var timeout time.Duration
+	timeout time.Duration
 
-var startTime time.Time
+	startTime time.Time
 
-var stopAll uint32
+	stopAll uint32
 
-var measureLatency bool
-var validateData bool
+	measureLatency bool
+	validateData   bool
+)
 
-const withLatencyLineFmt = "\n%-15v  %15v  %7v  %7v  %-15v  %-15v  %-15v  %-15v  %-15v  %-15v  %-15v  %v"
-const withoutLatencyLineFmt = "\n%-15v  %15v  %7v  %7v"
+const (
+	withLatencyLineFmt    = "\n%-15v  %15v  %7v  %7v  %-15v  %-15v  %-15v  %-15v  %-15v  %-15v  %-15v  %v"
+	withoutLatencyLineFmt = "\n%-15v  %15v  %7v  %7v"
+)
 
 func Query(session *gocql.Session, request string) {
 	err := session.Query(request).Exec()
@@ -145,19 +150,23 @@ func toInt(value bool) int {
 }
 
 func main() {
-	var workload string
-	var consistencyLevel string
-	var replicationFactor int
+	var (
+		workload          string
+		consistencyLevel  string
+		replicationFactor int
 
-	var nodes string
-	var clientCompression bool
-	var connectionCount int
-	var pageSize int
+		nodes             string
+		clientCompression bool
+		connectionCount   int
+		pageSize          int
 
-	var partitionOffset int64
+		partitionOffset int64
 
-	var writeRate int64
-	var distribution string
+		writeRate    int64
+		distribution string
+
+		hostSelectionPolicy string
+	)
 
 	flag.StringVar(&mode, "mode", "", "operating mode: write, read, counter_update, counter_read, scan")
 	flag.StringVar(&workload, "workload", "", "workload: sequential, uniform, timeseries")
@@ -195,6 +204,8 @@ func main() {
 
 	flag.StringVar(&keyspaceName, "keyspace", "scylla_bench", "keyspace to use")
 	flag.StringVar(&tableName, "table", "test", "table to use")
+
+	flag.StringVar(&hostSelectionPolicy, "host-selection-policy", "token-aware", "set the driver host selection policy (round-robin,token-aware,dc-aware),default 'token-aware'")
 	flag.Parse()
 	counterTableName = "test_counters"
 
@@ -252,6 +263,12 @@ func main() {
 	cluster.NumConns = connectionCount
 	cluster.PageSize = pageSize
 	cluster.Timeout = timeout
+	policy, err := newHostSelectionPolicy(hostSelectionPolicy, strings.Split(nodes, ","))
+	if err != nil {
+		log.Fatal(err)
+	}
+	cluster.PoolConfig.HostSelectionPolicy = policy
+
 	switch consistencyLevel {
 	case "any":
 		cluster.Consistency = gocql.Any
@@ -368,5 +385,18 @@ func main() {
 			"\n  90th:\t\t", time.Duration(result.Latency.ValueAtQuantile(90)),
 			"\n  median:\t", time.Duration(result.Latency.ValueAtQuantile(50)),
 			"\n  mean:\t\t", time.Duration(result.Latency.Mean()))
+	}
+}
+
+func newHostSelectionPolicy(policy string, hosts []string) (gocql.HostSelectionPolicy, error) {
+	switch policy {
+	case "round-robin":
+		return gocql.RoundRobinHostPolicy(), nil
+	case "host-pool":
+		return gocql.HostPoolHostPolicy(hostpool.New(hosts)), nil
+	case "token-aware":
+		return gocql.TokenAwareHostPolicy(gocql.RoundRobinHostPolicy()), nil
+	default:
+		return nil, fmt.Errorf("unknown host selection policy, %s", policy)
 	}
 }
