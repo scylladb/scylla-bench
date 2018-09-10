@@ -110,6 +110,47 @@ Essentially the following query is executed:
 
 The number of iterations to run can be specified with the `-iterations` flag. The default is 1.
 
+#### User mode (`-mode user`)
+
+User mode allows for running a benchmark against custom schema with configurable workload. All the benchmark details are configured via a [YAML profile file](https://cassandra.apache.org/doc/latest/tools/cassandra_stress.html#profile).
+In this mode data is generated according to column specification and inserted in batches per one or multiple partitions. Batches are executed concurrently, which is configured by the `-concurrency` flag, while the number of batches can be increased by the `-iterations` one (or `-n`). The default number of concurrent inserts is equal to the number of available CPU cores and default number of iterations is `1`. For example the following profile file:
+
+```yaml
+keyspace: staff
+
+keyspace_definition: |
+ CREATE KEYSPACE staff WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+
+table: staff_activities
+
+table_definition: |
+  CREATE TABLE staff_activities (
+      name text,
+      when int,
+      what text,
+      PRIMARY KEY(name, when, what)
+  )
+
+columnspec:
+  - name: name
+    size: uniform(8..20)
+    population: uniform(1..100)
+  - name: what
+    cluster: fixed(15)
+
+insert:
+  partitions: fixed(1)
+  select: fixed(10)/10
+  batchtype: UNLOGGED
+```
+```
+$ scylla-bench -mode user -profile profile.yaml -ops insert=1 -n 10 -nodes 127.0.0.1
+```
+
+Performs 10 iterations, inserting in each one 15 rows (`columnspec.*.cluster`) for 1 partition (`insert.partitions`).
+
+Currently only `insert` operations are supported.
+
 ### Workloads
 
 The second very important part of scylla-bench configuration is the workload. While mode chooses what kind of requests are to be sent to the cluster the workload decides which partitions and rows should be the target of these requests.
