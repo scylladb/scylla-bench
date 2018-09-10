@@ -35,9 +35,12 @@ var (
 	inRestriction     bool
 	noLowerBound      bool
 
+	ops         string
+	profileFile string
+
 	rangeCount int
 
-	timeout time.Duration
+	timeout    time.Duration
 	iterations uint
 
 	startTime time.Time
@@ -111,10 +114,15 @@ func GetWorkload(name string, threadId int, partitionOffset int64, mode string, 
 		}
 		return NewRangeScan(rangeCount, thisOffset, thisCount)
 	default:
+		if mode == "user" {
+			return nil
+		}
 		log.Fatal("unknown workload: ", name)
 	}
 	panic("unreachable")
 }
+
+var user = NewUserMode()
 
 func GetMode(name string) func(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) {
 	switch name {
@@ -131,6 +139,8 @@ func GetMode(name string) func(session *gocql.Session, resultChannel chan Result
 		return DoCounterReads
 	case "scan":
 		return DoScanTable
+	case "user":
+		return user.Do
 	default:
 		log.Fatal("unknown mode: ", name)
 	}
@@ -203,8 +213,12 @@ func main() {
 	flag.BoolVar(&noLowerBound, "no-lower-bound", false, "do not provide lower bound in read requests")
 	flag.IntVar(&rangeCount, "range-count", 1, "number of ranges to split the token space into (relevant only for scan mode)")
 
+	flag.StringVar(&profileFile, "profile", "", "YAML profile to load in user mode")
+	flag.StringVar(&ops, "ops", "", "Comma-separated list of operations to execite in user mode")
+
 	flag.DurationVar(&testDuration, "duration", 0, "duration of the test in seconds (0 for unlimited)")
 	flag.UintVar(&iterations, "iterations", 1, "number of iterations to run (0 for unlimited, relevant only for workloads that have a defined number of ops to execute)")
+	flag.UintVar(&iterations, "n", 1, "number of iterations to run (short option)")
 
 	flag.Int64Var(&partitionOffset, "partition-offset", 0, "start of the partition range (only for sequential workload)")
 
@@ -242,7 +256,7 @@ func main() {
 			log.Printf("adjusting concurrency to the highest useful value of %v", concurrency)
 		}
 	} else {
-		if workload == "" {
+		if workload == "" && mode != "user" {
 			log.Fatal("workload type needs to be specified")
 		}
 	}
@@ -251,8 +265,11 @@ func main() {
 		log.Fatal("uniform workload requires limited test duration")
 	}
 
-	if iterations > 1 && workload != "sequential" && workload != "scan" {
+	if iterations > 1 && workload != "sequential" && workload != "scan" && mode != "user" {
 		log.Fatal("iterations only supported for the sequential and scan workload")
+	}
+	if iterations == 0 && mode == "user" {
+		log.Fatal("unlimited iterations are not supported for user mode")
 	}
 
 	if partitionOffset != 0 && workload != "sequential" {
@@ -323,7 +340,9 @@ func main() {
 	}
 	defer session.Close()
 
-	PrepareDatabase(session, replicationFactor)
+	if mode != "user" {
+		PrepareDatabase(session, replicationFactor)
+	}
 
 	interrupted := make(chan os.Signal, 1)
 	signal.Notify(interrupted, os.Interrupt)
@@ -387,6 +406,12 @@ func main() {
 		GetMode(mode)(session, resultChannel, GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution), rateLimiter)
 	})
 
+	// When executing user mode ended with a fatal error (e.g. missing or
+	// ill-formed profile file) op count is 0 - do not print results.
+	if mode == "user" && result.Operations == 0 {
+		return
+	}
+
 	fmt.Println("\nResults")
 	fmt.Println("Time (avg):\t", result.Time)
 	fmt.Println("Total ops:\t", result.Operations)
@@ -407,6 +432,9 @@ func main() {
 			"\n  90th:\t\t", time.Duration(result.Latency.ValueAtQuantile(90)),
 			"\n  median:\t", time.Duration(result.Latency.ValueAtQuantile(50)),
 			"\n  mean:\t\t", time.Duration(result.Latency.Mean()))
+	}
+	if mode == "user" {
+		fmt.Print(user.Summary())
 	}
 }
 
