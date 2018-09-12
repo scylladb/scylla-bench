@@ -98,6 +98,10 @@ func TestForEachPermutation(t *testing.T) {
 			[][]interface{}{{1}, {2, 3}, {4, 5, 6}},
 			[][]interface{}{{1, 2, 4}, {1, 2, 5}, {1, 2, 6}, {1, 3, 4}, {1, 3, 5}, {1, 3, 6}},
 		},
+		"empty set": {
+			[][]interface{}{{1, 2}, {}, {4, 5}},
+			nil,
+		},
 	}
 	for name, cas := range cases {
 		t.Run(name, func(t *testing.T) {
