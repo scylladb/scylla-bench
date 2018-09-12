@@ -49,29 +49,63 @@ func Product(d ...Distribution) int64 {
 	return max(n/ratio, 1)
 }
 
+// Generator is used to generate data for a column basing on random seeds.
+// Generator keep tracks of the seeds to ensure proper population of
+// generated values.
+type Generator struct {
+	mu    sync.Mutex // protects seeds
+	seeds map[seed]struct{}
+}
+
+type seed struct {
+	column string
+	value  int64
+}
+
+// NewGenerator gives new generator value.
+func NewGenerator() *Generator {
+	return &Generator{
+		seeds: make(map[seed]struct{}),
+	}
+}
+
 // Generate fills the out argument with random data. The argument must be a pointer.
 // Currently supported types are int and string. The function returns true if
 // the argument was successfully filled with random data, false otherwise.
 // The seed argument controls the uniqueness distribution of the generated
 // data.
 // The size argument controls the size in bytes of the generated data.
-func Generate(v interface{}, seed, size Distribution) bool {
+func (g *Generator) Generate(col *ColumnSpec, out interface{}) bool {
 	const pad = "x"
-	switch v := v.(type) {
-	case *int:
-		*v = int(seed.Generate())
-		return true
-	case *string:
-		p := make([]byte, 8)
-		binary.LittleEndian.PutUint64(p, uint64(seed.Generate()))
-		*v = hex.EncodeToString(p)
-		if n := int(size.Generate()) - len(*v); n > 0 {
-			*v += strings.Repeat(pad, n)
-		}
-		return true
-	default:
+	seed, ok := g.generate(col.Name, col.Population)
+	if !ok {
 		return false
 	}
+	switch out := out.(type) {
+	case *int:
+		*out = int(seed)
+	case *string:
+		p := make([]byte, 8)
+		binary.LittleEndian.PutUint64(p, uint64(seed))
+		*out = hex.EncodeToString(p)
+		if n := int(col.Size.Generate()) - len(*out); n > 0 {
+			*out += strings.Repeat(pad, n)
+		}
+	default:
+		panic(fmt.Errorf("unsupported type: %T", out))
+	}
+	return true
+}
+
+func (g *Generator) generate(column string, d Distribution) (int64, bool) {
+	s := seed{column, d.Generate()}
+	g.mu.Lock()
+	_, ok := g.seeds[s]
+	if !ok {
+		g.seeds[s] = struct{}{}
+	}
+	g.mu.Unlock()
+	return s.value, !ok
 }
 
 // ParseDistribution parses a distribution string. See "Supported types" section

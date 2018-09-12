@@ -151,10 +151,7 @@ func (um *UserMode) setup(s *gocql.Session) error {
 	if err != nil {
 		return fmt.Errorf("error parsing %q usermode: %s", profileFile, err)
 	}
-	um.driver = &usermode.Driver{
-		Profile: q,
-		Session: s,
-	}
+	um.driver = usermode.NewDriver(q, s)
 	if b, ok := um.ops["keyspace"]; b || !ok {
 		if err := um.driver.CreateKeyspace(); err != nil {
 			return fmt.Errorf("error preparing keyspace: %s", err)
