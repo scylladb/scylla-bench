@@ -17,20 +17,29 @@ import (
 // TODO(rjeczalik): Add support for more column types (currently only "int" and
 // "text" are supported).
 type Driver struct {
-	Profile *Profile
-	Session *gocql.Session
+	profile *Profile
+	session *gocql.Session
+	table   *gocql.TableMetadata
+	gen     *Generator
+	stmt    string   // insert statement
+	pkeys   []string // partition keys
+	ckeys   []string // clustering keys
+	keys    []string // the rest
+}
 
-	table *gocql.TableMetadata
-	stmt  string   // insert statement
-	pkeys []string // partition keys
-	ckeys []string // clustering keys
-	keys  []string // the rest
+// NewDriver gives new driver value.
+func NewDriver(p *Profile, s *gocql.Session) *Driver {
+	return &Driver{
+		profile: p,
+		session: s,
+		gen:     NewGenerator(),
+	}
 }
 
 // CreateKeyspace creates a workspace using user-provided CQL.
 // If the keyspace already exists, it is used as-is.
-func (r *Driver) CreateKeyspace() error {
-	switch err := r.Session.Query(r.Profile.KeyspaceDefinition).Exec().(type) {
+func (d *Driver) CreateKeyspace() error {
+	switch err := d.session.Query(d.profile.KeyspaceDefinition).Exec().(type) {
 	case *gocql.RequestErrAlreadyExists:
 		return nil // ignore
 	default:
@@ -40,13 +49,13 @@ func (r *Driver) CreateKeyspace() error {
 
 // CreateTable creates a table using user-provided CQL.
 // If the table already exists, it is truncated.
-func (r *Driver) CreateTable() error {
-	stmt := fixTableStmt(r.Profile.TableDefinition, r.Profile.Keyspace, r.Profile.Table)
-	switch err := r.Session.Query(stmt).Exec().(type) {
+func (d *Driver) CreateTable() error {
+	stmt := fixTableStmt(d.profile.TableDefinition, d.profile.Keyspace, d.profile.Table)
+	switch err := d.session.Query(stmt).Exec().(type) {
 	case *gocql.RequestErrAlreadyExists:
-		return nonil(r.truncateTable(), r.readMeta())
+		return nonil(d.truncateTable(), d.readMeta())
 	case nil:
-		return r.readMeta()
+		return d.readMeta()
 	default:
 		return err
 	}
@@ -56,8 +65,8 @@ func (r *Driver) CreateTable() error {
 func (d *Driver) Summary() string {
 	var buf bytes.Buffer
 	fmt.Fprintln(&buf, "--------------")
-	fmt.Fprintln(&buf, "Keyspace Name:", d.Profile.Keyspace)
-	fmt.Fprintln(&buf, "Table Name:", d.Profile.Table)
+	fmt.Fprintln(&buf, "Keyspace Name:", d.profile.Keyspace)
+	fmt.Fprintln(&buf, "Table Name:", d.profile.Table)
 	fmt.Fprintln(&buf, "Generator Configs:")
 	for _, name := range flattenStrings(d.pkeys, d.ckeys, d.keys) {
 		col := d.colSpec(name)
@@ -69,9 +78,9 @@ func (d *Driver) Summary() string {
 		}
 	}
 	fmt.Fprintln(&buf, "Insert Settings:")
-	fmt.Fprintln(&buf, "  Partitions:", d.Profile.Insert.Partitions)
-	fmt.Fprintln(&buf, "  Batch Type:", d.Profile.Insert.BatchType)
-	fmt.Fprintln(&buf, "  Select:", d.Profile.Insert.Select)
+	fmt.Fprintln(&buf, "  Partitions:", d.profile.Insert.Partitions)
+	fmt.Fprintln(&buf, "  Batch Type:", d.profile.Insert.BatchType)
+	fmt.Fprintln(&buf, "  Select:", d.profile.Insert.Select)
 	return buf.String()
 }
 
@@ -81,34 +90,37 @@ func (d *Driver) Summary() string {
 //
 // TODO(rjeczalik): Currently scylla-bench inserts more rows than cassandra-stress
 // does due to unhandled insert.visits distributions.
-func (r *Driver) BatchInsert(ctx context.Context) error {
+func (d *Driver) BatchInsert(ctx context.Context) error {
 	tr := ContextTrace(ctx)
-	batch := r.Session.NewBatch(r.batchType())
+	batch := d.session.NewBatch(d.batchType())
 	var cols []*ColumnSpec
-	for _, name := range r.ckeys {
-		cols = append(cols, r.colSpec(name))
+	for _, name := range d.ckeys {
+		cols = append(cols, d.colSpec(name))
 	}
-	partitions := r.Profile.Insert.Partitions.Generate()
+	partitions := d.profile.Insert.Partitions.Generate()
 	var info ExecutedBatchInfo
 	for i := int64(0); i < partitions; i++ {
-		pk := r.generateMany(r.pkeys...)
+		pk := d.generateMany(d.pkeys...)
+		if len(pk) != len(d.pkeys) {
+			continue // at least one of the keys overlap, skip
+		}
 		// Generate values for all cluster keys in the amount given
 		// by the column specification.
 		var ckeys [][]interface{}
 		for _, col := range cols {
-			n := int(Product(col.Cluster, r.Profile.Insert.Select)) // apply ratio
-			ckeys = append(ckeys, r.generate(col.Name, n))
+			n := int(Product(col.Cluster, d.profile.Insert.Select)) // apply ratio
+			ckeys = append(ckeys, d.generate(col.Name, n))
 		}
 		// Having n sets of all available cluster keys for this iteration,
 		// combine their permutations into a set of ck tuples, one for
 		// each query (row).
 		info.Size += forEachPermutation(ckeys, func(ck []interface{}) {
-			row := flattenValues(pk, ck, r.generateMany(r.keys...))
-			batch.Query(r.stmt, row...)
+			row := flattenValues(pk, ck, d.generateMany(d.keys...))
+			batch.Query(d.stmt, row...)
 		})
 	}
 	start := time.Now()
-	err := r.Session.ExecuteBatch(batch)
+	err := d.session.ExecuteBatch(batch)
 	info.Latency = time.Since(start)
 	info.Err = err
 	tr.ExecutedBatch(info)
@@ -116,11 +128,13 @@ func (r *Driver) BatchInsert(ctx context.Context) error {
 }
 
 func (d *Driver) generateMany(names ...string) []interface{} {
-	var v []interface{}
+	many := make([]interface{}, 0, len(names))
 	for _, name := range names {
-		v = append(v, d.generate(name, 1)[0])
+		if v := d.generate(name, 1); v != nil {
+			many = append(many, v[0])
+		}
 	}
-	return v
+	return many
 }
 
 func (d *Driver) generate(name string, n int) []interface{} {
@@ -129,19 +143,19 @@ func (d *Driver) generate(name string, n int) []interface{} {
 		return nil
 	}
 	spec := d.colSpec(col.Name)
-	vals := make([]interface{}, n)
-	for i := range vals {
+	var vals []interface{}
+	for i := 0; i < n; i++ {
 		v := col.Type.New()
-		if !Generate(v, spec.Population, spec.Size) {
-			return nil
+		if !d.gen.Generate(spec, v) {
+			continue
 		}
-		vals[i] = reflect.ValueOf(v).Elem().Interface()
+		vals = append(vals, reflect.ValueOf(v).Elem().Interface())
 	}
 	return vals
 }
 
-func (r *Driver) colSpec(name string) *ColumnSpec {
-	for _, col := range r.Profile.ColumnSpec {
+func (d *Driver) colSpec(name string) *ColumnSpec {
+	for _, col := range d.profile.ColumnSpec {
 		if col.Name == name {
 			return &col
 		}
@@ -154,8 +168,8 @@ func (r *Driver) colSpec(name string) *ColumnSpec {
 	}
 }
 
-func (r *Driver) batchType() gocql.BatchType {
-	switch strings.ToLower(r.Profile.Insert.BatchType) {
+func (d *Driver) batchType() gocql.BatchType {
+	switch strings.ToLower(d.profile.Insert.BatchType) {
 	case "logged":
 		return gocql.LoggedBatch
 	case "counter":
@@ -165,47 +179,47 @@ func (r *Driver) batchType() gocql.BatchType {
 	}
 }
 
-func (r *Driver) readMeta() error {
-	keyspace, err := r.Session.KeyspaceMetadata(r.Profile.Keyspace)
+func (d *Driver) readMeta() error {
+	keyspace, err := d.session.KeyspaceMetadata(d.profile.Keyspace)
 	if err != nil {
 		return err
 	}
 	var ok bool
-	if r.table, ok = keyspace.Tables[r.Profile.Table]; !ok {
-		return fmt.Errorf("no metadata found for table %q", r.Profile.Table)
+	if d.table, ok = keyspace.Tables[d.profile.Table]; !ok {
+		return fmt.Errorf("no metadata found for table %q", d.profile.Table)
 	}
 	uniq := make(map[string]struct{})
-	for _, col := range r.table.PartitionKey {
-		r.pkeys = append(r.pkeys, col.Name)
+	for _, col := range d.table.PartitionKey {
+		d.pkeys = append(d.pkeys, col.Name)
 		uniq[col.Name] = struct{}{}
 	}
-	for _, col := range r.table.ClusteringColumns {
-		r.ckeys = append(r.ckeys, col.Name)
+	for _, col := range d.table.ClusteringColumns {
+		d.ckeys = append(d.ckeys, col.Name)
 		uniq[col.Name] = struct{}{}
 	}
-	for _, col := range r.table.Columns {
+	for _, col := range d.table.Columns {
 		switch typ := col.Type.Type(); typ {
 		case gocql.TypeInt, gocql.TypeText:
 			if _, ok := uniq[col.Name]; !ok {
-				r.keys = append(r.keys, col.Name)
+				d.keys = append(d.keys, col.Name)
 			}
 		default:
 			return fmt.Errorf("unsupported %q type for %q column", typ, col.Name)
 		}
 	}
-	sort.Strings(r.keys) // deterministic batches
+	sort.Strings(d.keys) // deterministic batches
 
-	r.stmt = makeInsertStmt(r.fullname(), flattenStrings(r.pkeys, r.ckeys, r.keys)...)
+	d.stmt = makeInsertStmt(d.fullname(), flattenStrings(d.pkeys, d.ckeys, d.keys)...)
 
 	return nil
 }
 
-func (r *Driver) truncateTable() error {
-	return r.Session.Query("TRUNCATE TABLE " + r.fullname()).Exec()
+func (d *Driver) truncateTable() error {
+	return d.session.Query("TRUNCATE TABLE " + d.fullname()).Exec()
 }
 
-func (r *Driver) fullname() string {
-	return r.Profile.Keyspace + "." + r.Profile.Table
+func (d *Driver) fullname() string {
+	return d.profile.Keyspace + "." + d.profile.Table
 }
 
 // NOTE(rjeczalik): Currently gocql.Query supports neither keyspace configuration
@@ -236,6 +250,11 @@ func makeInsertStmt(table string, cols ...string) string {
 }
 
 func forEachPermutation(sets [][]interface{}, fn func(perm []interface{})) int {
+	for _, set := range sets {
+		if len(set) == 0 {
+			return 0
+		}
+	}
 	indices, n := make([]int, len(sets)), 0
 iterate:
 	for {
