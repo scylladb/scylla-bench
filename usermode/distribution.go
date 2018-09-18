@@ -71,14 +71,16 @@ func NewGenerator() *Generator {
 
 // Generate fills the out argument with random data. The argument must be a pointer.
 // Currently supported types are int and string. The function returns true if
-// the argument was successfully filled with random data, false otherwise.
-// The seed argument controls the uniqueness distribution of the generated
+// a unique seed was generated for the argument and it successfully filled with random data,
+// false otherwise.
+// If uniq argument is false, the function reuses the seeds and always returns true.
+// The col.Population argument controls the uniqueness distribution of the generated
 // data.
-// The size argument controls the size in bytes of the generated data.
-func (g *Generator) Generate(col *ColumnSpec, out interface{}) bool {
+// The col.Size argument controls the size in bytes of the generated data.
+func (g *Generator) Generate(col *ColumnSpec, out interface{}, uniq bool) bool {
 	const pad = "x"
 	seed, ok := g.generate(col.Name, col.Population)
-	if !ok {
+	if uniq && !ok {
 		return false
 	}
 	switch out := out.(type) {
