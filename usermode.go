@@ -25,6 +25,7 @@ type UserMode struct {
 	driver *usermode.Driver
 	ops    map[string]bool
 	ctx    context.Context
+	cancel func()
 	ch     chan int
 	err    error
 }
@@ -34,9 +35,10 @@ func NewUserMode() *UserMode {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	um := &UserMode{
-		ops: make(map[string]bool),
-		ch:  make(chan int),
-		ctx: ctx,
+		ops:    make(map[string]bool),
+		ch:     make(chan int),
+		ctx:    ctx,
+		cancel: cancel,
 	}
 	um.wg.Add(1)
 
@@ -48,27 +50,6 @@ func NewUserMode() *UserMode {
 		}
 	}
 
-	ticker := time.NewTicker(1 * time.Second)
-	go func() {
-		defer ticker.Stop()
-		defer cancel()
-
-		for range ticker.C {
-			if atomic.LoadUint32(&stopAll) != 0 {
-				return
-			}
-		}
-	}()
-	go func() {
-		defer close(um.ch)
-		for i := 0; i < int(iterations); i++ {
-			select {
-			case um.ch <- i:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
 	return um
 }
 
@@ -93,10 +74,10 @@ func (um *UserMode) Do(s *gocql.Session, ch chan Result, _ WorkloadGenerator, rl
 	start := time.Now()
 
 	if um.ops["insert"] || len(um.ops) == 0 {
+		ctx := usermode.WithTrace(um.ctx, um.makeTrace(ch, rb, rl))
+
 		for range um.ch {
 			rl.Wait()
-
-			ctx := usermode.WithTrace(um.ctx, um.makeTrace(ch, rb, rl))
 
 			if err := um.driver.BatchInsert(ctx); err != nil {
 				log.Println(err)
@@ -109,6 +90,7 @@ func (um *UserMode) Do(s *gocql.Session, ch chan Result, _ WorkloadGenerator, rl
 }
 
 func (um *UserMode) makeTrace(ch chan<- Result, rb *ResultBuilder, rl RateLimiter) *usermode.Trace {
+	last := time.Now()
 	return &usermode.Trace{
 		ExecutedBatch: func(info usermode.ExecutedBatchInfo) {
 			if info.Err != nil {
@@ -118,8 +100,11 @@ func (um *UserMode) makeTrace(ch chan<- Result, rb *ResultBuilder, rl RateLimite
 				rb.AddRows(info.Size)
 				rb.RecordLatency(info.Latency, rl)
 			}
-			ch <- *rb.PartialResult
-			rb.ResetPartialResult()
+			if now := time.Now(); now.Sub(last) > time.Second {
+				ch <- *rb.PartialResult
+				rb.ResetPartialResult()
+				last = now
+			}
 		},
 	}
 }
@@ -162,7 +147,51 @@ func (um *UserMode) setup(s *gocql.Session) error {
 			return fmt.Errorf("error preparing table: %s", err)
 		}
 	}
+	go um.waitForStop()
+	if testDuration > 0 {
+		go um.loopFor(testDuration)
+	} else {
+		go um.loop(int(iterations))
+	}
 	return nil
+}
+
+func (um *UserMode) waitForStop() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	defer um.cancel()
+
+	for range ticker.C {
+		if atomic.LoadUint32(&stopAll) != 0 {
+			return
+		}
+	}
+}
+
+func (um *UserMode) loopFor(d time.Duration) {
+	defer close(um.ch)
+	t := time.After(d)
+	for i := 0; ; i++ {
+		select {
+		case um.ch <- i:
+		case <-t:
+			return
+		case <-um.ctx.Done():
+			return
+		}
+	}
+
+}
+
+func (um *UserMode) loop(n int) {
+	defer close(um.ch)
+	for i := 0; i < n; i++ {
+		select {
+		case um.ch <- i:
+		case <-um.ctx.Done():
+			return
+		}
+	}
 }
 
 func (um *UserMode) init(s *gocql.Session, ch chan<- Result) error {
