@@ -100,7 +100,7 @@ func (d *Driver) BatchInsert(ctx context.Context) error {
 	partitions := d.profile.Insert.Partitions.Generate()
 	var info ExecutedBatchInfo
 	for i := int64(0); i < partitions; i++ {
-		pk := d.generateMany(d.pkeys...)
+		pk := d.generateMany(true, d.pkeys...)
 		if len(pk) != len(d.pkeys) {
 			continue // at least one of the keys overlap, skip
 		}
@@ -109,13 +109,13 @@ func (d *Driver) BatchInsert(ctx context.Context) error {
 		var ckeys [][]interface{}
 		for _, col := range cols {
 			n := int(Product(col.Cluster, d.profile.Insert.Select)) // apply ratio
-			ckeys = append(ckeys, d.generate(col.Name, n))
+			ckeys = append(ckeys, d.generate(col.Name, n, true))
 		}
 		// Having n sets of all available cluster keys for this iteration,
 		// combine their permutations into a set of ck tuples, one for
 		// each query (row).
 		info.Size += forEachPermutation(ckeys, func(ck []interface{}) {
-			row := flattenValues(pk, ck, d.generateMany(d.keys...))
+			row := flattenValues(pk, ck, d.generateMany(false, d.keys...))
 			batch.Query(d.stmt, row...)
 		})
 	}
@@ -127,17 +127,17 @@ func (d *Driver) BatchInsert(ctx context.Context) error {
 	return err
 }
 
-func (d *Driver) generateMany(names ...string) []interface{} {
+func (d *Driver) generateMany(uniq bool, names ...string) []interface{} {
 	many := make([]interface{}, 0, len(names))
 	for _, name := range names {
-		if v := d.generate(name, 1); v != nil {
+		if v := d.generate(name, 1, uniq); v != nil {
 			many = append(many, v[0])
 		}
 	}
 	return many
 }
 
-func (d *Driver) generate(name string, n int) []interface{} {
+func (d *Driver) generate(name string, n int, uniq bool) []interface{} {
 	col, ok := d.table.Columns[name]
 	if !ok {
 		return nil
@@ -146,7 +146,7 @@ func (d *Driver) generate(name string, n int) []interface{} {
 	var vals []interface{}
 	for i := 0; i < n; i++ {
 		v := col.Type.New()
-		if !d.gen.Generate(spec, v) {
+		if !d.gen.Generate(spec, v, uniq) {
 			continue
 		}
 		vals = append(vals, reflect.ValueOf(v).Elem().Interface())
