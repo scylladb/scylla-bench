@@ -134,7 +134,7 @@ func (g *Generator) generateSeed(column string, d Distribution) (int64, bool) {
 func ParseDistribution(s string) (Distribution, error) {
 	i := strings.IndexRune(s, '(')
 	if i == -1 || i == 0 {
-		return nil, errInvalid
+		return nil, errors.New("invalid distribution specifification: missing parameter list start delimiter '('")
 	}
 	j := strings.IndexRune(s, ')')
 	if j == -1 || i > j {
