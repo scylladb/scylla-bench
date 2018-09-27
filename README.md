@@ -167,6 +167,19 @@ Note that this option should be set for both write and read (counter_update and 
 
 * `-iterations` sets the Number of iterations to run the given workloads. This is only relevant for workloads that have a finite number of steps. Currently the only such workloads are [sequential](#sequential-workload--workload-sequential) and [scan](#scan-mode--mode-scan). Can be combined with `-duration` to limit a run by both number of iterations and time. Set to 0 for infinite iterations. Defaults to 1.
 
+### Random value distributions
+
+scylla-bench supports random values for certain command line arguments. The list of these arguments is:
+* `-clustering-row-size`
+
+There are three distributions supported:
+* `fixed:VALUE`, always generates `VALUE`.
+* `uniform:MIN..MAX`, generates a uniformly distributed value in the interval `[MIN, MAX)`.
+
+Example: `-clustering-row-size=uniform:100..1000`
+
+All command line arguments that accept a random distribution, also accept a single number, in which case a Fixed distribution will be used. This ensures backward compatibility.
+
 ## Examples
 
 1. Sequential write to populate the database: `scylla-bench -workload sequential -mode write -nodes 127.0.0.1`
