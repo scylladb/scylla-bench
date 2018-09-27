@@ -287,7 +287,7 @@ func RunTest(resultChannel chan Result, workload WorkloadGenerator, rateLimiter 
 	resultChannel <- *rb.FullResult
 }
 
-func generateData(pk int64, ck int64, size int64) []byte {
+func GenerateData(pk int64, ck int64, size int64) []byte {
 	value := make([]byte, size)
 	if validateData {
 		dataPattern := strconv.FormatInt(pk*ck*(pk+ck), 10)
@@ -312,7 +312,7 @@ func DoWrites(session *gocql.Session, resultChannel chan Result, workload Worklo
 	RunTest(resultChannel, workload, rateLimiter, func(rb *ResultBuilder) (error, time.Duration) {
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
-		value := generateData(pk, ck, clusteringRowSize)
+		value := GenerateData(pk, ck, clusteringRowSize)
 		bound := query.Bind(pk, ck, value)
 
 		requestStart := time.Now()
@@ -341,7 +341,7 @@ func DoBatchedWrites(session *gocql.Session, resultChannel chan Result, workload
 		for !workload.IsPartitionDone() && atomic.LoadUint32(&stopAll) == 0 && batchSize < rowsPerRequest {
 			ck := workload.NextClusteringKey()
 			batchSize++
-			value := generateData(currentPk, ck, clusteringRowSize)
+			value := GenerateData(currentPk, ck, clusteringRowSize)
 			batch.Query(request, currentPk, ck, value)
 		}
 
@@ -443,7 +443,7 @@ func DoReadsFromTable(table string, session *gocql.Session, resultChannel chan R
 			for iter.Scan(&resPk, &resCk, &value) {
 				rb.IncRows()
 				if validateData {
-					valueExpected := generateData(resPk, resCk, clusteringRowSize)
+					valueExpected := GenerateData(resPk, resCk, clusteringRowSize)
 					if bytes.Compare(value, valueExpected) != 0 {
 						rb.IncErrors()
 						log.Print("data corruption:", resPk, resCk, value, valueExpected)
