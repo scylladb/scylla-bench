@@ -416,7 +416,7 @@ func DoWrites(session *gocql.Session, resultChannel chan Result, workload Worklo
 	RunTest(resultChannel, workload, rateLimiter, func(rb *ResultBuilder) (error, time.Duration) {
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
-		value := GenerateData(pk, ck, clusteringRowSize)
+		value := GenerateData(pk, ck, clusteringRowSizeDist.Generate())
 		bound := query.Bind(pk, ck, value)
 
 		requestStart := time.Now()
@@ -445,7 +445,7 @@ func DoBatchedWrites(session *gocql.Session, resultChannel chan Result, workload
 		for !workload.IsPartitionDone() && atomic.LoadUint32(&stopAll) == 0 && batchSize < rowsPerRequest {
 			ck := workload.NextClusteringKey()
 			batchSize++
-			value := GenerateData(currentPk, ck, clusteringRowSize)
+			value := GenerateData(currentPk, ck, clusteringRowSizeDist.Generate())
 			batch.Query(request, currentPk, ck, value)
 		}
 

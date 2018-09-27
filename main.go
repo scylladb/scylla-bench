@@ -63,9 +63,9 @@ var (
 
 	testDuration time.Duration
 
-	partitionCount     int64
-	clusteringRowCount int64
-	clusteringRowSize  int64
+	partitionCount         int64
+	clusteringRowCount     int64
+	clusteringRowSizeDist  random.Distribution
 
 	rowsPerRequest    int
 	provideUpperBound bool
@@ -232,7 +232,7 @@ func main() {
 
 	flag.Int64Var(&partitionCount, "partition-count", 10000, "number of partitions")
 	flag.Int64Var(&clusteringRowCount, "clustering-row-count", 100, "number of clustering rows in a partition")
-	flag.Int64Var(&clusteringRowSize, "clustering-row-size", 4, "size of a single clustering row")
+	flag.Var(MakeDistributionValue(&clusteringRowSizeDist, random.Fixed{4}), "clustering-row-size", "size of a single clustering row, can use random values")
 
 	flag.IntVar(&rowsPerRequest, "rows-per-request", 1, "clustering rows per single request")
 	flag.BoolVar(&provideUpperBound, "provide-upper-bound", false, "whether read requests should provide an upper bound")
@@ -393,7 +393,7 @@ func main() {
 		fmt.Println("Partition offset:\t", partitionOffset)
 	}
 	fmt.Println("Clustering rows:\t", clusteringRowCount)
-	fmt.Println("Clustering row size:\t", clusteringRowSize)
+	fmt.Println("Clustering row size:\t", clusteringRowSizeDist)
 	fmt.Println("Rows per request:\t", rowsPerRequest)
 	if mode == "read" {
 		fmt.Println("Provide upper bound:\t", provideUpperBound)
