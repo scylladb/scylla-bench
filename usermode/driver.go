@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/scylladb/scylla-bench/random"
+
 	"github.com/gocql/gocql"
 )
 
@@ -20,7 +22,7 @@ type Driver struct {
 	profile *Profile
 	session *gocql.Session
 	table   *gocql.TableMetadata
-	gen     *Generator
+	gen     *random.Generator
 	stmt    string   // insert statement
 	pkeys   []string // partition keys
 	ckeys   []string // clustering keys
@@ -32,7 +34,7 @@ func NewDriver(p *Profile, s *gocql.Session) *Driver {
 	return &Driver{
 		profile: p,
 		session: s,
-		gen:     NewGenerator(),
+		gen:     random.NewGenerator(),
 	}
 }
 
@@ -108,7 +110,7 @@ func (d *Driver) BatchInsert(ctx context.Context) error {
 		// by the column specification.
 		var ckeys [][]interface{}
 		for _, col := range cols {
-			n := int(Product(col.Cluster, d.profile.Insert.Select)) // apply ratio
+			n := int(random.Product(col.Cluster, d.profile.Insert.Select)) // apply ratio
 			ckeys = append(ckeys, d.generate(col.Name, n, true))
 		}
 		// Having n sets of all available cluster keys for this iteration,
@@ -146,8 +148,12 @@ func (d *Driver) generate(name string, n int, uniq bool) []interface{} {
 	var vals []interface{}
 	for i := 0; i < n; i++ {
 		v := col.Type.New()
-		if !d.gen.Generate(spec, v, uniq) {
-			continue
+		if uniq {
+			if !d.gen.GenerateUnique(spec.Name, spec.Population, spec.Size, v) {
+				continue
+			}
+		} else {
+			d.gen.Generate(spec.Population, spec.Size, v)
 		}
 		vals = append(vals, reflect.ValueOf(v).Elem().Interface())
 	}

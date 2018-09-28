@@ -1,6 +1,9 @@
 package usermode_test
 
-import "github.com/scylladb/scylla-bench/usermode"
+import (
+	"github.com/scylladb/scylla-bench/random"
+	"github.com/scylladb/scylla-bench/usermode"
+)
 
 var ExampleYaml = []byte(`columnspec:
 - name: host
@@ -29,65 +32,65 @@ table_definition: cql
 var Example = &usermode.Profile{
 	ColumnSpec: []usermode.ColumnSpec{{
 		Name: "host",
-		Population: &usermode.Uniform{
+		Population: &random.Uniform{
 			Min: 1,
 			Max: 600,
 		},
-		Size: &usermode.Fixed{
+		Size: &random.Fixed{
 			Value: 32,
 		},
 	}, {
 		Name: "bucket_time",
-		Population: &usermode.Uniform{
+		Population: &random.Uniform{
 			Min: 1,
 			Max: 288,
 		},
-		Size: &usermode.Fixed{
+		Size: &random.Fixed{
 			Value: 18,
 		},
 	}, {
 		Name: "service",
-		Population: &usermode.Uniform{
+		Population: &random.Uniform{
 			Min: 1000,
 			Max: 2000,
 		},
-		Size: &usermode.Uniform{
+		Size: &random.Uniform{
 			Min: 10,
 			Max: 100,
 		},
 	}, {
 		Name: "time",
-		Cluster: &usermode.Fixed{
+		Cluster: &random.Fixed{
 			Value: 15,
 		},
-		Population: &usermode.Uniform{
+		Population: &random.Uniform{
 			Min: 1,
 			Max: 1000000000,
 		},
-		Size: &usermode.Uniform{
+		Size: &random.Uniform{
 			Min: 4,
 			Max: 8,
 		},
 	}, {
 		Name: "state",
-		Size: &usermode.Fixed{
+		Size: &random.Fixed{
 			Value: 4,
 		},
-		Population: &usermode.Uniform{
+		Population: &random.Uniform{
 			Min: 1,
 			Max: 1000000000,
 		},
 	}},
 	Insert: &usermode.Insert{
 		BatchType: "UNLOGGED",
-		Partitions: &usermode.Fixed{
+		Partitions: &random.Fixed{
 			Value: 1,
 		},
-		Visits: &usermode.Fixed{
+		Visits: &random.Fixed{
 			Value: 1,
 		},
-		Select: &usermode.Ratio{
-			Distribution: &usermode.Fixed{
+		Select: &random.Ratio{
+			Distribution: &random.Fixed{
 				Value: 10,
 			},
 			Value: 10,
