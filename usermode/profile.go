@@ -1,6 +1,8 @@
 package usermode
 
 import (
+	"github.com/scylladb/scylla-bench/random"
+
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -23,19 +25,19 @@ type Profile struct {
 // ColumnSpec describes a metadata of a column.
 type ColumnSpec struct {
 	Name       string
-	Size       Distribution
-	Population Distribution
-	Cluster    Distribution
+	Size       random.Distribution
+	Population random.Distribution
+	Cluster    random.Distribution
 }
 
 // DefaultColumnSpec describes default metadata for a column.
 var DefaultColumnSpec = &ColumnSpec{
-	Cluster: &Fixed{Value: 1},
-	Population: &Uniform{
+	Cluster: &random.Fixed{Value: 1},
+	Population: &random.Uniform{
 		Min: 1,
 		Max: 1000000000,
 	},
-	Size: &Uniform{
+	Size: &random.Uniform{
 		Min: 4,
 		Max: 8,
 	},
@@ -44,19 +46,19 @@ var DefaultColumnSpec = &ColumnSpec{
 // Insert describes the way data is populated across columns.
 type Insert struct {
 	BatchType  string
-	Partitions Distribution
-	Visits     Distribution
-	Select     *Ratio
+	Partitions random.Distribution
+	Visits     random.Distribution
+	Select     *random.Ratio
 }
 
 // see https://git.io/fACz6
 func newDefaultInsert() *Insert {
 	return &Insert{
 		BatchType:  "UNLOGGED",
-		Partitions: &Fixed{Value: 1},
-		Visits:     &Fixed{Value: 1},
-		Select: &Ratio{
-			Distribution: &Fixed{Value: 1},
+		Partitions: &random.Fixed{Value: 1},
+		Visits:     &random.Fixed{Value: 1},
+		Select: &random.Ratio{
+			Distribution: &random.Fixed{Value: 1},
 			Value:        1,
 		},
 	}
@@ -100,21 +102,21 @@ func ParseProfile(p []byte) (*Profile, error) {
 		var col = ColumnSpec{Name: spec.Name}
 
 		if spec.Size != "" {
-			if col.Size, err = ParseDistribution(spec.Size); err != nil {
+			if col.Size, err = random.ParseDistribution(spec.Size); err != nil {
 				return nil, err
 			}
 		} else {
 			col.Size = DefaultColumnSpec.Size
 		}
 		if spec.Population != "" {
-			if col.Population, err = ParseDistribution(spec.Population); err != nil {
+			if col.Population, err = random.ParseDistribution(spec.Population); err != nil {
 				return nil, err
 			}
 		} else {
 			col.Population = DefaultColumnSpec.Population
 		}
 		if spec.Cluster != "" {
-			if col.Cluster, err = ParseDistribution(spec.Cluster); err != nil {
+			if col.Cluster, err = random.ParseDistribution(spec.Cluster); err != nil {
 				return nil, err
 			}
 		}
@@ -127,17 +129,17 @@ func ParseProfile(p []byte) (*Profile, error) {
 		q.Insert.BatchType = i.BatchType
 
 		if i.Partitions != "" {
-			if q.Insert.Partitions, err = ParseDistribution(i.Partitions); err != nil {
+			if q.Insert.Partitions, err = random.ParseDistribution(i.Partitions); err != nil {
 				return nil, err
 			}
 		}
 		if i.Visits != "" {
-			if q.Insert.Visits, err = ParseDistribution(i.Visits); err != nil {
+			if q.Insert.Visits, err = random.ParseDistribution(i.Visits); err != nil {
 				return nil, err
 			}
 		}
 		if i.Select != "" {
-			if q.Insert.Select, err = ParseRatio(i.Select); err != nil {
+			if q.Insert.Select, err = random.ParseRatio(i.Select); err != nil {
 				return nil, err
 			}
 		}
