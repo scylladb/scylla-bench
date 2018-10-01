@@ -129,18 +129,33 @@ func (g *Generator) generateSeed(column string, d Distribution) (int64, bool) {
 //
 //   https://cassandra.apache.org/doc/latest/tools/cassandra_stress.html#profile
 //
+// In addition to the c-s style syntax, a shorter, more bash friendly syntax is
+// also supported. This replaces the '(' and ')' surrounding the parameter list
+// with a single ':' separating the distribution name from the parameter list.
+// Example: fixed:12, uniform:10..100
+//
 // TODO(rjeczalik): Add support for inverted distributions.
 // TODO(rjeczalik): Add support for short syntax declaration (e.g. "uniform(1..1K)").
 // TODO(rjeczalik): Add support for more distribution types.
 func ParseDistribution(s string) (Distribution, error) {
+	var j int
 	i := strings.IndexRune(s, '(')
 	if i == -1 || i == 0 {
-		return nil, errors.New("missing parameter list start delimiter '('")
+		i = strings.IndexRune(s, ':') // alternative bash-friendly syntax
+		if i == -1 || i == 0 {
+			return nil, errors.New("missing parameter list start delimiter '(' or ':'")
+		} else if j = strings.IndexRune(s, ')'); j != -1 {
+			return nil, errors.New("unexpected parameter list end delimiter ')' when using alternative ':' syntax")
+		} else {
+			j = len(s)
+		}
+	} else {
+		j = strings.IndexRune(s, ')')
+		if j == -1 || i > j {
+			return nil, errors.New("missing parameter list end delimiter ')'")
+		}
 	}
-	j := strings.IndexRune(s, ')')
-	if j == -1 || i > j {
-		return nil, errors.New("missing parameter list end delimiter ')'")
-	}
+
 	typ, val := s[:i], s[i+1:j]
 	if typ[0] == '~' {
 		return nil, errors.New("unsupported inverted distribution: " + typ)
@@ -203,13 +218,13 @@ type Ratio struct {
 //   }
 //
 func ParseRatio(s string) (*Ratio, error) {
-	d, err := ParseDistribution(s)
-	if err != nil {
-		return nil, err
-	}
 	i := strings.IndexRune(s, '/')
 	if i == -1 {
 		return nil, errInvalid
+	}
+	d, err := ParseDistribution(s[0:i])
+	if err != nil {
+		return nil, err
 	}
 	n, err := strconv.ParseUint(s[i+1:], 10, 32)
 	if err != nil {
