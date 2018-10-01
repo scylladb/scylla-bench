@@ -3,7 +3,6 @@ package random
 import (
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 var errInvalid = errors.New("invalid input value")
@@ -134,11 +135,11 @@ func (g *Generator) generateSeed(column string, d Distribution) (int64, bool) {
 func ParseDistribution(s string) (Distribution, error) {
 	i := strings.IndexRune(s, '(')
 	if i == -1 || i == 0 {
-		return nil, errors.New("invalid distribution specifification: missing parameter list start delimiter '('")
+		return nil, errors.New("missing parameter list start delimiter '('")
 	}
 	j := strings.IndexRune(s, ')')
 	if j == -1 || i > j {
-		return nil, errInvalid
+		return nil, errors.New("missing parameter list end delimiter ')'")
 	}
 	typ, val := s[:i], s[i+1:j]
 	if typ[0] == '~' {
@@ -148,7 +149,7 @@ func ParseDistribution(s string) (Distribution, error) {
 	case "fixed":
 		n, err := strconv.ParseUint(val, 10, 32)
 		if err != nil {
-			return nil, errInvalid
+			return nil, errors.Wrap(err, "value for fixed distribution is invalid")
 		}
 		return &Fixed{
 			Value: int64(n),
@@ -156,18 +157,18 @@ func ParseDistribution(s string) (Distribution, error) {
 	case "uniform":
 		p := strings.Split(s[i+1:j], "..")
 		if len(p) != 2 {
-			return nil, errInvalid
+			return nil, errors.New("interval for uniform distribution has invalid format, expected: min..max")
 		}
 		min, err := strconv.ParseUint(p[0], 10, 32)
 		if err != nil {
-			return nil, errInvalid
+			return nil, errors.Wrap(err, "min parameter uniform distribution is invalid")
 		}
 		max, err := strconv.ParseUint(p[1], 10, 32)
 		if err != nil {
-			return nil, errInvalid
+			return nil, errors.Wrap(err, "max parameter for uniform distribution is invalid")
 		}
 		if max < min {
-			return nil, errInvalid
+			return nil, errors.New("interval for uniform distribution is invalid: min >= max")
 		}
 		return &Uniform{
 			Min: int64(min),
