@@ -49,7 +49,7 @@ func TestParseDistribution(t *testing.T) {
 			false,
 		},
 		"invalid uniform #3": {
-			`uniform(..)`,
+			`uniform(10..abc)`,
 			nil,
 			false,
 		},
