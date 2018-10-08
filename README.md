@@ -167,6 +167,11 @@ Note that this option should be set for both write and read (counter_update and 
 
 * `-iterations` sets the Number of iterations to run the given workloads. This is only relevant for workloads that have a finite number of steps. Currently the only such workloads are [sequential](#sequential-workload--workload-sequential) and [scan](#scan-mode--mode-scan). Can be combined with `-duration` to limit a run by both number of iterations and time. Set to 0 for infinite iterations. Defaults to 1.
 
+* `keyspace` defines keyspace name to use
+* `table` defines table name to work with
+* `username` - cql username for authentication
+* `password` - cql password for authentication
+
 ### Random value distributions
 
 scylla-bench supports random values for certain command line arguments. The list of these arguments is:

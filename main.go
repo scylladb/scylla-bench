@@ -56,6 +56,8 @@ var (
 	keyspaceName     string
 	tableName        string
 	counterTableName string
+	username         string
+	password         string
 
 	mode        string
 	concurrency int
@@ -255,8 +257,11 @@ func main() {
 
 	flag.StringVar(&keyspaceName, "keyspace", "scylla_bench", "keyspace to use")
 	flag.StringVar(&tableName, "table", "test", "table to use")
+	flag.StringVar(&username, "username", "", "cql username for authentication")
+	flag.StringVar(&password, "password", "", "cql password for authentication")
 
 	flag.StringVar(&hostSelectionPolicy, "host-selection-policy", "token-aware", "set the driver host selection policy (round-robin,token-aware,dc-aware),default 'token-aware'")
+
 	flag.Parse()
 	counterTableName = "test_counters"
 
@@ -352,6 +357,13 @@ func main() {
 	}
 	if clientCompression {
 		cluster.Compressor = &gocql.SnappyCompressor{}
+	}
+
+	if username != "" && password != "" {
+		cluster.Authenticator = gocql.PasswordAuthenticator{
+			Username: username,
+			Password: password,
+		}
 	}
 
 	session, err := cluster.CreateSession()
