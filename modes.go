@@ -262,7 +262,7 @@ func RunTest(resultChannel chan Result, workload WorkloadGenerator, rateLimiter 
 	start := time.Now()
 	partialStart := start
 	iter := NewTestIterator(workload)
-	for !iter.IsDone() {
+	for !iter.IsDone() && atomic.LoadUint32(&stopAll) == 0 {
 		rateLimiter.Wait()
 
 		err, latency := test(rb)
