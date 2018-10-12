@@ -380,6 +380,10 @@ func main() {
 		<-interrupted
 		fmt.Println("\ninterrupted")
 		atomic.StoreUint32(&stopAll, 1)
+
+		<-interrupted
+		fmt.Println("\nkilled")
+		os.Exit(1)
 	}()
 
 	if testDuration > 0 {
