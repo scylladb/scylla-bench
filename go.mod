@@ -12,3 +12,5 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/stretchr/testify v1.3.0 // indirect
 )
+
+replace github.com/gocql/gocql => github.com/scylladb/gocql v1.0.1
