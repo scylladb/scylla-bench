@@ -438,7 +438,7 @@ func DoBatchedWrites(session *gocql.Session, resultChannel chan Result, workload
 	request := fmt.Sprintf("INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)", keyspaceName, tableName)
 
 	RunTest(resultChannel, workload, rateLimiter, func(rb *ResultBuilder) (error, time.Duration) {
-		batch := gocql.NewBatch(gocql.UnloggedBatch)
+		batch := session.NewBatch(gocql.UnloggedBatch)
 		batchSize := 0
 
 		currentPk := workload.NextPartitionKey()
