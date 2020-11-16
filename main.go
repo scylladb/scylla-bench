@@ -21,7 +21,7 @@ type DistributionValue struct {
 	Dist *random.Distribution
 }
 
-func MakeDistributionValue (dist *random.Distribution, defaultDist random.Distribution) *DistributionValue {
+func MakeDistributionValue(dist *random.Distribution, defaultDist random.Distribution) *DistributionValue {
 	*dist = defaultDist
 	return &DistributionValue{dist}
 }
@@ -65,9 +65,9 @@ var (
 
 	testDuration time.Duration
 
-	partitionCount         int64
-	clusteringRowCount     int64
-	clusteringRowSizeDist  random.Distribution
+	partitionCount        int64
+	clusteringRowCount    int64
+	clusteringRowSizeDist random.Distribution
 
 	rowsPerRequest    int
 	provideUpperBound bool
@@ -76,7 +76,7 @@ var (
 
 	rangeCount int
 
-	timeout time.Duration
+	timeout    time.Duration
 	iterations uint
 
 	startTime time.Time
