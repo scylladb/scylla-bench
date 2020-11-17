@@ -217,6 +217,8 @@ func main() {
 		distribution string
 
 		hostSelectionPolicy string
+
+		tls bool
 	)
 
 	flag.StringVar(&mode, "mode", "", "operating mode: write, read, counter_update, counter_read, scan")
@@ -259,6 +261,8 @@ func main() {
 	flag.StringVar(&tableName, "table", "test", "table to use")
 	flag.StringVar(&username, "username", "", "cql username for authentication")
 	flag.StringVar(&password, "password", "", "cql password for authentication")
+
+	flag.BoolVar(&tls, "tls", false, "use TLS encryption")
 
 	flag.StringVar(&hostSelectionPolicy, "host-selection-policy", "token-aware", "set the driver host selection policy (round-robin,token-aware,dc-aware),default 'token-aware'")
 
@@ -327,6 +331,9 @@ func main() {
 	cluster.NumConns = connectionCount
 	cluster.PageSize = pageSize
 	cluster.Timeout = timeout
+	if tls {
+		cluster.SslOpts = &gocql.SslOptions{}
+	}
 	policy, err := newHostSelectionPolicy(hostSelectionPolicy, strings.Split(nodes, ","))
 	if err != nil {
 		log.Fatal(err)

@@ -171,6 +171,7 @@ Note that this option should be set for both write and read (counter_update and 
 * `table` defines table name to work with
 * `username` - cql username for authentication
 * `password` - cql password for authentication
+* `tls` - use TLS encryption
 
 ### Random value distributions
 
