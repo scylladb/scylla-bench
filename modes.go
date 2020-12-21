@@ -431,9 +431,10 @@ func createWriteTestFuncWithConfig(
 	config = config.normalized()
 	return func(w *worker.Worker) (time.Duration, error) {
 		request := fmt.Sprintf(
-			"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)",
+			"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?) %s",
 			config.KeyspaceName,
 			config.TableName,
+			extraClause,
 		)
 		query := session.Query(request)
 		defer query.Release()
@@ -521,9 +522,10 @@ func DoBatchedWritesWithConfig(
 ) {
 	config = config.normalized()
 	request := fmt.Sprintf(
-		"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)",
+		"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?) %s",
 		config.KeyspaceName,
 		config.TableName,
+		extraClause,
 	)
 
 	RunTest(
@@ -641,7 +643,7 @@ func DoCounterUpdatesWithConfig(
 			ck := workload.NextClusteringKey()
 
 			query := session.Query("UPDATE "+config.KeyspaceName+"."+config.CounterTableName+
-				" SET c1 = c1 + ?, c2 = c2 + ?, c3 = c3 + ?, c4 = c4 + ?, c5 = c5 + ? WHERE pk = ? AND ck = ?").
+				" "+extraClause+" SET c1 = c1 + ?, c2 = c2 + ?, c3 = c3 + ?, c4 = c4 + ?, c5 = c5 + ? WHERE pk = ? AND ck = ?").
 				Bind(ck, ck+1, ck+2, ck+3, ck+4, pk, ck)
 			defer query.Release()
 			queryStr := ""
@@ -715,42 +717,46 @@ func BuildReadQueryStringWithConfig(config ExecutionConfig, table, orderBy strin
 	switch {
 	case config.InRestriction:
 		return fmt.Sprintf(
-			"SELECT %s FROM %s.%s WHERE pk = ? AND ck IN (%s) %s %s",
+			"SELECT %s FROM %s.%s WHERE pk = ? AND ck IN (%s) %s %s %s",
 			selectFields,
 			config.KeyspaceName,
 			table,
 			strings.TrimRight(strings.Repeat("?,", config.RowsPerRequest), ","),
 			orderBy,
 			bypassCacheClause,
+			extraClause,
 		)
 	case config.ProvideUpperBound:
 		return fmt.Sprintf(
-			"SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ? %s %s",
+			"SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ? %s %s %s",
 			selectFields,
 			config.KeyspaceName,
 			table,
 			orderBy,
 			bypassCacheClause,
+			extraClause,
 		)
 	case config.NoLowerBound:
 		return fmt.Sprintf(
-			"SELECT %s FROM %s.%s WHERE pk = ? %s LIMIT %d %s",
+			"SELECT %s FROM %s.%s WHERE pk = ? %s LIMIT %d %s %s",
 			selectFields,
 			config.KeyspaceName,
 			table,
 			orderBy,
 			config.RowsPerRequest,
 			bypassCacheClause,
+			extraClause,
 		)
 	default:
 		return fmt.Sprintf(
-			"SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? %s LIMIT %d %s",
+			"SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? %s LIMIT %d %s %s",
 			selectFields,
 			config.KeyspaceName,
 			table,
 			orderBy,
 			config.RowsPerRequest,
 			bypassCacheClause,
+			extraClause,
 		)
 	}
 }
@@ -876,6 +882,7 @@ func createReadTestFuncWithConfig(
 	}
 }
 
+
 func DoReadsFromTableWithConfig(
 	config ExecutionConfig,
 	table string,
@@ -901,7 +908,7 @@ func DoReadsFromTable(
 
 func DoScanTableWithConfig(config ExecutionConfig, session *gocql.Session, w *worker.Worker, workload workloads.Generator, rateLimiter ratelimiter.RateLimiter, _ bool) {
 	config = config.normalized()
-	request := fmt.Sprintf("SELECT * FROM %s.%s WHERE token(pk) >= ? AND token(pk) <= ?", config.KeyspaceName, config.TableName)
+	request := fmt.Sprintf("SELECT * FROM %s.%s WHERE token(pk) >= ? AND token(pk) <= ? %s", config.KeyspaceName, config.TableName, extraClause)
 
 	RunTest(config, w, workload, rateLimiter, func(rb *worker.Worker) (time.Duration, error) {
 		query := session.Query(request)
@@ -1003,9 +1010,10 @@ func createMixedWriteTestFuncWithConfig(
 	config = config.normalized()
 	return func(rb *worker.Worker) (time.Duration, error) {
 		request := fmt.Sprintf(
-			"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)",
+			"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?) %s",
 			config.KeyspaceName,
 			config.TableName,
+			extraClause,
 		)
 		query := session.Query(request)
 		defer query.Release()
