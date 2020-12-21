@@ -85,6 +85,8 @@ var (
 
 	measureLatency bool
 	validateData   bool
+
+	extraClause string
 )
 
 const (
@@ -251,6 +253,7 @@ func main() {
 
 	flag.BoolVar(&measureLatency, "measure-latency", true, "measure request latency")
 	flag.BoolVar(&validateData, "validate-data", false, "write meaningful data and validate while reading")
+	flag.StringVar(&extraClause, "extra-clause", "", "extra CQL clause to be appended to the end of used statements")
 
 	var startTimestamp int64
 	flag.Int64Var(&writeRate, "write-rate", 0, "rate of writes (relevant only for time series reads)")
