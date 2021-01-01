@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"log"
@@ -207,6 +208,11 @@ func main() {
 		replicationFactor int
 
 		nodes             string
+		caCertFile        string
+		clientCertFile    string
+		clientKeyFile     string
+		serverName        string
+		hostVerification  bool
 		clientCompression bool
 		connectionCount   int
 		pageSize          int
@@ -217,8 +223,7 @@ func main() {
 		distribution string
 
 		hostSelectionPolicy string
-
-		tls bool
+		tlsEncryption bool
 	)
 
 	flag.StringVar(&mode, "mode", "", "operating mode: write, read, counter_update, counter_read, scan")
@@ -262,7 +267,12 @@ func main() {
 	flag.StringVar(&username, "username", "", "cql username for authentication")
 	flag.StringVar(&password, "password", "", "cql password for authentication")
 
-	flag.BoolVar(&tls, "tls", false, "use TLS encryption")
+	flag.BoolVar(&tlsEncryption, "tls", false, "use TLS encryption")
+	flag.StringVar(&serverName, "tls-server-name", "", "TLS server hostname")
+	flag.BoolVar(&hostVerification, "tls-host-verification", false, "verify server certificate")
+	flag.StringVar(&caCertFile, "tls-ca-cert-file", "", "path to CA certificate file, needed to enable encryption")
+	flag.StringVar(&clientCertFile, "tls-client-cert-file", "", "path to client certificate file, needed to enable client certificate authentication")
+	flag.StringVar(&clientKeyFile, "tls-client-key-file", "", "path to client key file, needed to enable client certificate authentication")
 
 	flag.StringVar(&hostSelectionPolicy, "host-selection-policy", "token-aware", "set the driver host selection policy (round-robin,token-aware,dc-aware),default 'token-aware'")
 
@@ -331,9 +341,6 @@ func main() {
 	cluster.NumConns = connectionCount
 	cluster.PageSize = pageSize
 	cluster.Timeout = timeout
-	if tls {
-		cluster.SslOpts = &gocql.SslOptions{}
-	}
 	policy, err := newHostSelectionPolicy(hostSelectionPolicy, strings.Split(nodes, ","))
 	if err != nil {
 		log.Fatal(err)
@@ -371,6 +378,51 @@ func main() {
 			Username: username,
 			Password: password,
 		}
+	}
+
+	if tlsEncryption {
+		sslOpts := &gocql.SslOptions{
+			Config: &tls.Config{
+				ServerName: serverName,
+			},
+			EnableHostVerification: hostVerification,
+		}
+
+		if caCertFile != "" {
+			if _, err := os.Stat(caCertFile); err != nil {
+				log.Fatal(err)
+			}
+			sslOpts.CaPath = caCertFile
+		}
+
+		if clientKeyFile != "" {
+			if _, err := os.Stat(clientKeyFile); err != nil {
+				log.Fatal(err)
+			}
+			sslOpts.KeyPath = clientKeyFile
+		}
+
+		if clientCertFile != "" {
+			if _, err := os.Stat(clientCertFile); err != nil {
+				log.Fatal(err)
+			}
+			sslOpts.CertPath = clientCertFile
+		}
+
+		if clientKeyFile != "" && clientCertFile == "" {
+			log.Fatal("tls-client-cert-file is required when tls-client-key-file is provided")
+		}
+		if clientCertFile != "" && clientKeyFile == "" {
+			log.Fatal("tls-client-key-file is required when tls-client-cert-file is provided")
+		}
+
+		if hostVerification {
+			if serverName == "" {
+				log.Fatal("tls-server-name is required when tls-host-verification is enabled")
+			}
+		}
+
+		cluster.SslOpts = sslOpts
 	}
 
 	session, err := cluster.CreateSession()
