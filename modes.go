@@ -18,15 +18,15 @@ import (
 
 type RateLimiter interface {
 	Wait()
-	ExpectedInterval() int64
+	Expected() time.Time
 }
 
 type UnlimitedRateLimiter struct{}
 
 func (*UnlimitedRateLimiter) Wait() {}
 
-func (*UnlimitedRateLimiter) ExpectedInterval() int64 {
-	return 0
+func (*UnlimitedRateLimiter) Expected() time.Time {
+	return time.Time{}
 }
 
 type MaximumRateLimiter struct {
@@ -44,8 +44,8 @@ func (mxrl *MaximumRateLimiter) Wait() {
 	}
 }
 
-func (mxrl *MaximumRateLimiter) ExpectedInterval() int64 {
-	return mxrl.Period.Nanoseconds()
+func (mxrl *MaximumRateLimiter) Expected() time.Time {
+	return mxrl.StartTime.Add(mxrl.Period * time.Duration(mxrl.CompletedOperations))
 }
 
 func NewRateLimiter(maximumRate int, timeOffset time.Duration) RateLimiter {
@@ -209,22 +209,15 @@ func (rb *ResultBuilder) ResetPartialResult() {
 	rb.PartialResult.Latency = NewHistogram()
 }
 
-func (rb *ResultBuilder) RecordLatency(latency time.Duration, rateLimiter RateLimiter) error {
+func (rb *ResultBuilder) RecordLatency(start time.Time, end time.Time) {
 	if !measureLatency {
-		return nil
+		return
 	}
 
-	err := rb.FullResult.Latency.RecordCorrectedValue(latency.Nanoseconds(), rateLimiter.ExpectedInterval())
-	if err != nil {
-		return err
-	}
+	value := end.Sub(start)
 
-	err = rb.PartialResult.Latency.RecordCorrectedValue(latency.Nanoseconds(), rateLimiter.ExpectedInterval())
-	if err != nil {
-		return err
-	}
-
-	return nil
+	_ = rb.FullResult.Latency.RecordValue(value.Nanoseconds())
+	_ = rb.PartialResult.Latency.RecordValue(value.Nanoseconds())
 }
 
 var errorRecordingLatency bool
@@ -265,17 +258,19 @@ func RunTest(resultChannel chan Result, workload WorkloadGenerator, rateLimiter 
 	for !iter.IsDone() {
 		rateLimiter.Wait()
 
-		err, latency := test(rb)
+		start := rateLimiter.Expected()
+		if start.IsZero() {
+			start = time.Now()
+		}
+
+		err, _ := test(rb)
 		if err != nil {
 			log.Print(err)
 			rb.IncErrors()
 			continue
 		}
 
-		err = rb.RecordLatency(latency, rateLimiter)
-		if err != nil {
-			errorRecordingLatency = true
-		}
+		rb.RecordLatency(start, time.Now())
 
 		now := time.Now()
 		if now.Sub(partialStart) > time.Second {
