@@ -178,7 +178,7 @@ func GetWorkload(name string, threadId int, partitionOffset int64, mode string, 
 		}
 		return NewRangeScan(rangeCount, thisOffset, thisCount)
 	default:
-		log.Fatal("unknown workload: ", name)
+		log.Fatal("unknown workload: ", name, ". Available workloads: sequential, uniform, timeseries, scan")
 	}
 	panic("unreachable")
 }
@@ -199,7 +199,7 @@ func GetMode(name string) func(session *gocql.Session, resultChannel chan Result
 	case "scan":
 		return DoScanTable
 	default:
-		log.Fatal("unknown mode: ", name)
+		log.Fatal("unknown mode: ", name, ". Available modes: write, counter_update, read, counter_read, scan")
 	}
 	panic("unreachable")
 }
