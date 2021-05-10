@@ -15,6 +15,7 @@ import (
 	"github.com/gocql/gocql"
 	"github.com/hailocab/go-hostpool"
 	"github.com/pkg/errors"
+	. "github.com/scylladb/scylla-bench/libs"
 	"github.com/scylladb/scylla-bench/random"
 )
 
@@ -87,39 +88,6 @@ var (
 	measureLatency bool
 	validateData   bool
 )
-
-const (
-	withLatencyLineFmt    = "\n%5v %7v %7v %6v %-6v %-6v %-6v %-6v %-6v %-6v %-6v %v"
-	withoutLatencyLineFmt = "\n%5v %7v %7v %6v"
-)
-
-// time.Duration objects are printed using time.Duration.String(), and that
-// has hardcoded logic on the precision of its output, which is usually
-// excessive. For example, durations more than a second are printed with
-// 9 digits after the decimal point, and duration between 1ms and 1s
-// are printed as ms with 6 digits after the decimal point.
-// The Round function here rounds the duration in a way that printing it
-// will result in up to "digits" digits after the decimal point.
-func Round(d time.Duration) time.Duration {
-	switch {
-	case d < time.Microsecond:
-		// Nanoseconds, no additional digits of precision
-		d = d.Round(time.Nanosecond)
-	case d < time.Millisecond:
-		// Microseconds, no additional digits of precision
-		d = d.Round(time.Microsecond)
-	case d < time.Millisecond * time.Duration(10):
-		// 1-10 milliseconds, show an additional digit of precision
-		d = d.Round(time.Millisecond / time.Duration(10))
-	case d < time.Second:
-		// 10ms-1sec, show integer number of milliseconds.
-		d = d.Round(time.Millisecond)
-	default:
-		// >1sec, show one additional digit of precision.
-		d = d.Round(time.Second / time.Duration(10))
-	}
-	return d
-}
 
 func Query(session *gocql.Session, request string) {
 	err := session.Query(request).Exec()
@@ -203,22 +171,6 @@ func GetMode(name string) func(session *gocql.Session, resultChannel chan Result
 		log.Fatal("unknown mode: ", name)
 	}
 	panic("unreachable")
-}
-
-func PrintPartialResult(result *MergedResult) {
-	latencyError := ""
-	if errorRecordingLatency {
-		latencyError = "latency measurement error"
-	}
-	if measureLatency {
-		fmt.Printf(withLatencyLineFmt, Round(result.Time), result.Operations, result.ClusteringRows, result.Errors,
-			Round(time.Duration(result.Latency.Max())), Round(time.Duration(result.Latency.ValueAtQuantile(99.9))), Round(time.Duration(result.Latency.ValueAtQuantile(99))),
-			Round(time.Duration(result.Latency.ValueAtQuantile(95))), Round(time.Duration(result.Latency.ValueAtQuantile(90))),
-			Round(time.Duration(result.Latency.ValueAtQuantile(50))), Round(time.Duration(result.Latency.Mean())),
-			latencyError)
-	} else {
-		fmt.Printf(withoutLatencyLineFmt, Round(result.Time), result.Operations, result.ClusteringRows, result.Errors)
-	}
 }
 
 func toInt(value bool) int {
@@ -518,9 +470,9 @@ func main() {
 	}
 
 	if measureLatency {
-		fmt.Printf(withLatencyLineFmt, "time", "ops/s", "rows/s", "errors", "max", "99.9th", "99th", "95th", "90th", "median", "mean", "")
+		PrintLatencyHeader()
 	} else {
-		fmt.Printf(withoutLatencyLineFmt, "time", "ops/s", "rows/s", "errors")
+		PrintWithoutLatencyHeader()
 	}
 
 	result := RunConcurrently(maximumRate, func(i int, resultChannel chan Result, rateLimiter RateLimiter) {
