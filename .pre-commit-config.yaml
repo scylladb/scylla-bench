@@ -1,0 +1,27 @@
+repos:
+- repo: .pre-commit/
+  rev: v0.4.0
+  hooks:
+    - id: go-fmt
+    - id: go-vet
+# To many errors, to be fixed afterwards
+#    - id: go-lint
+    - id: go-imports
+# Throw two errors, needed to be addressed later
+#    - id: go-cyclo
+#      args: [-over=15]
+    - id: validate-toml
+    - id: no-go-testing
+    - id: golangci-lint
+    - id: go-critic
+    - id: go-unit-tests
+    - id: go-build
+    - id: go-mod-tidy
+
+- repo: local
+  hooks:
+    - id: go-tests
+      name: go-tests
+      entry: bash -c 'go clean -testcache && go test ./...'
+      language: system
+      pass_filenames: false
