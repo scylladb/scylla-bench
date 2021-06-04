@@ -14,6 +14,7 @@ import (
 	"github.com/codahale/hdrhistogram"
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
+	. "github.com/scylladb/scylla-bench/pkg/workloads"
 )
 
 type RateLimiter interface {
@@ -103,14 +104,6 @@ func NewHistogram() *hdrhistogram.Histogram {
 	return hdrhistogram.New(time.Microsecond.Nanoseconds()*50, (timeout + timeout*2).Nanoseconds(), 3)
 }
 
-func HandleError(err error) {
-	if atomic.SwapUint32(&stopAll, 1) == 0 {
-		log.Print(err)
-		fmt.Println("\nstopping")
-		atomic.StoreUint32(&stopAll, 1)
-	}
-}
-
 func MergeResults(results []chan Result) (bool, *MergedResult) {
 	result := NewMergedResult()
 	final := false
@@ -162,7 +155,7 @@ func RunConcurrently(maximumRate int, workload func(id int, resultChannel chan R
 
 	final, result := MergeResults(results)
 	for !final {
-		result.Time = time.Now().Sub(startTime)
+		result.Time = time.Since(startTime)
 		PrintPartialResult(result)
 		final, result = MergeResults(results)
 	}
@@ -233,11 +226,11 @@ func NewTestIterator(workload WorkloadGenerator) *TestIterator {
 
 func (ti *TestIterator) IsDone() bool {
 	if atomic.LoadUint32(&stopAll) != 0 {
-		return true;
+		return true
 	}
 
 	if ti.workload.IsDone() {
-		if ti.iteration + 1 == iterations {
+		if ti.iteration+1 == iterations {
 			return true
 		} else {
 			ti.workload.Restart()
@@ -287,33 +280,49 @@ func RunTest(resultChannel chan Result, workload WorkloadGenerator, rateLimiter 
 
 const (
 	generatedDataHeaderSize int64 = 24
-	generatedDataMinSize int64 = generatedDataHeaderSize + 33
+	generatedDataMinSize    int64 = generatedDataHeaderSize + 33
 )
 
 func GenerateData(pk int64, ck int64, size int64) []byte {
 	if !validateData {
-		return make([]byte, size);
+		return make([]byte, size)
 	}
 
 	buf := new(bytes.Buffer)
 
 	if size < generatedDataHeaderSize {
-		binary.Write(buf, binary.LittleEndian, int8(size))
-		binary.Write(buf, binary.LittleEndian, pk ^ ck)
+		if err := binary.Write(buf, binary.LittleEndian, int8(size)); err != nil {
+			panic(err)
+		}
+		if err := binary.Write(buf, binary.LittleEndian, pk^ck); err != nil {
+			panic(err)
+		}
 	} else {
-		binary.Write(buf, binary.LittleEndian, size)
-		binary.Write(buf, binary.LittleEndian, pk)
-		binary.Write(buf, binary.LittleEndian, ck)
+		if err := binary.Write(buf, binary.LittleEndian, size); err != nil {
+			panic(err)
+		}
+		if err := binary.Write(buf, binary.LittleEndian, pk); err != nil {
+			panic(err)
+		}
+		if err := binary.Write(buf, binary.LittleEndian, ck); err != nil {
+			panic(err)
+		}
 		if size < generatedDataMinSize {
 			for i := generatedDataHeaderSize; i < size; i++ {
-				binary.Write(buf, binary.LittleEndian, int8(0))
+				if err := binary.Write(buf, binary.LittleEndian, int8(0)); err != nil {
+					panic(err)
+				}
 			}
 		} else {
-			payload := make([]byte, size - generatedDataHeaderSize - sha256.Size)
+			payload := make([]byte, size-generatedDataHeaderSize-sha256.Size)
 			rand.Read(payload)
 			csum := sha256.Sum256(payload)
-			binary.Write(buf, binary.LittleEndian, payload)
-			binary.Write(buf, binary.LittleEndian, csum)
+			if err := binary.Write(buf, binary.LittleEndian, payload); err != nil {
+				panic(err)
+			}
+			if err := binary.Write(buf, binary.LittleEndian, csum); err != nil {
+				panic(err)
+			}
 		}
 	}
 
@@ -380,7 +389,7 @@ func ValidateData(pk int64, ck int64, data []byte) error {
 	}
 
 	// Validate checksum over the payload
-	payload := make([]byte, size - generatedDataHeaderSize - sha256.Size)
+	payload := make([]byte, size-generatedDataHeaderSize-sha256.Size)
 	err = binary.Read(buf, binary.LittleEndian, payload)
 	if err != nil {
 		return errors.Wrap(err, "failed to verify checksum, cannot read payload from value")
@@ -493,17 +502,18 @@ func DoCounterReads(session *gocql.Session, resultChannel chan Result, workload 
 
 func DoReadsFromTable(table string, session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) {
 	var request string
-	if inRestriction {
+	switch {
+	case inRestriction:
 		arr := make([]string, rowsPerRequest)
 		for i := 0; i < rowsPerRequest; i++ {
 			arr[i] = "?"
 		}
 		request = fmt.Sprintf("SELECT * from %s.%s WHERE pk = ? AND ck IN (%s)", keyspaceName, table, strings.Join(arr, ", "))
-	} else if provideUpperBound {
+	case provideUpperBound:
 		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ?", keyspaceName, table)
-	} else if noLowerBound {
+	case noLowerBound:
 		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? LIMIT %d", keyspaceName, table, rowsPerRequest)
-	} else {
+	default:
 		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? AND ck >= ? LIMIT %d", keyspaceName, table, rowsPerRequest)
 	}
 	query := session.Query(request)
@@ -512,7 +522,8 @@ func DoReadsFromTable(table string, session *gocql.Session, resultChannel chan R
 		pk := workload.NextPartitionKey()
 
 		var bound *gocql.Query
-		if inRestriction {
+		switch {
+		case inRestriction:
 			args := make([]interface{}, 1, rowsPerRequest+1)
 			args[0] = pk
 			for i := 0; i < rowsPerRequest; i++ {
@@ -523,9 +534,9 @@ func DoReadsFromTable(table string, session *gocql.Session, resultChannel chan R
 				}
 			}
 			bound = query.Bind(args...)
-		} else if noLowerBound {
+		case noLowerBound:
 			bound = query.Bind(pk)
-		} else {
+		default:
 			ck := workload.NextClusteringKey()
 			if provideUpperBound {
 				bound = query.Bind(pk, ck, ck+int64(rowsPerRequest))

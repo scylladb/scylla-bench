@@ -1,4 +1,4 @@
-package main
+package workloads
 
 import (
 	"fmt"
@@ -30,7 +30,7 @@ func TestSequentialWorkload(t *testing.T) {
 			expectedPk := tc.partitionOffset
 			expectedCk := int64(0)
 
-			for true {
+			for {
 				if wrkld.IsDone() && expectedPk < tc.partitionOffset+tc.partitionCount {
 					t.Errorf("got end of stream; expected %d", expectedPk)
 				}
@@ -66,10 +66,8 @@ func TestSequentialWorkload(t *testing.T) {
 					}
 					expectedCk = 0
 					expectedPk++
-				} else {
-					if wrkld.IsPartitionDone() {
-						t.Errorf("got end of partition; expected %d", expectedCk)
-					}
+				} else if wrkld.IsPartitionDone() {
+					t.Errorf("got end of partition; expected %d", expectedCk)
 				}
 			}
 		})

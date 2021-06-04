@@ -15,6 +15,7 @@ import (
 	"github.com/gocql/gocql"
 	"github.com/hailocab/go-hostpool"
 	"github.com/pkg/errors"
+	. "github.com/scylladb/scylla-bench/pkg/workloads"
 	"github.com/scylladb/scylla-bench/random"
 )
 
@@ -40,7 +41,7 @@ func (v *DistributionValue) Set(s string) error {
 		if i < 1 {
 			return errors.New("value for fixed distribution is invalid: value has to be positive")
 		}
-		*v.Dist = random.Fixed{i}
+		*v.Dist = random.Fixed{Value: i}
 		return nil
 	}
 
@@ -108,7 +109,7 @@ func Round(d time.Duration) time.Duration {
 	case d < time.Millisecond:
 		// Microseconds, no additional digits of precision
 		d = d.Round(time.Microsecond)
-	case d < time.Millisecond * time.Duration(10):
+	case d < time.Millisecond*time.Duration(10):
 		// 1-10 milliseconds, show an additional digit of precision
 		d = d.Round(time.Millisecond / time.Duration(10))
 	case d < time.Second:
@@ -161,11 +162,12 @@ func GetWorkload(name string, threadId int, partitionOffset int64, mode string, 
 	case "uniform":
 		return NewRandomUniform(threadId, partitionCount, clusteringRowCount)
 	case "timeseries":
-		if mode == "read" {
+		switch mode {
+		case "read":
 			return NewTimeSeriesReader(threadId, concurrency, partitionCount, clusteringRowCount, writeRate, distribution, startTime)
-		} else if mode == "write" {
+		case "write":
 			return NewTimeSeriesWriter(threadId, concurrency, partitionCount, clusteringRowCount, startTime, int64(maximumRate/concurrency))
-		} else {
+		default:
 			log.Fatal("time series workload supports only write and read modes")
 		}
 	case "scan":
@@ -251,7 +253,7 @@ func main() {
 		distribution string
 
 		hostSelectionPolicy string
-		tlsEncryption bool
+		tlsEncryption       bool
 	)
 
 	flag.StringVar(&mode, "mode", "", "operating mode: write, read, counter_update, counter_read, scan")
@@ -269,7 +271,7 @@ func main() {
 
 	flag.Int64Var(&partitionCount, "partition-count", 10000, "number of partitions")
 	flag.Int64Var(&clusteringRowCount, "clustering-row-count", 100, "number of clustering rows in a partition")
-	flag.Var(MakeDistributionValue(&clusteringRowSizeDist, random.Fixed{4}), "clustering-row-size", "size of a single clustering row, can use random values")
+	flag.Var(MakeDistributionValue(&clusteringRowSizeDist, random.Fixed{Value: 4}), "clustering-row-size", "size of a single clustering row, can use random values")
 
 	flag.IntVar(&rowsPerRequest, "rows-per-request", 1, "clustering rows per single request")
 	flag.BoolVar(&provideUpperBound, "provide-upper-bound", false, "whether read requests should provide an upper bound")
@@ -325,10 +327,8 @@ func main() {
 			concurrency = rangeCount
 			log.Printf("adjusting concurrency to the highest useful value of %v", concurrency)
 		}
-	} else {
-		if workload == "" {
-			log.Fatal("workload type needs to be specified")
-		}
+	} else if workload == "" {
+		log.Fatal("workload type needs to be specified")
 	}
 
 	if workload == "uniform" && testDuration == 0 {
