@@ -1,4 +1,4 @@
-package main
+package workloads
 
 import (
 	"log"
@@ -23,7 +23,7 @@ const (
 // Bounds are inclusive
 type TokenRange struct {
 	Start int64
-	End int64
+	End   int64
 }
 
 type WorkloadGenerator interface {
@@ -244,7 +244,7 @@ func (tsw *TimeSeriesRead) Restart() {
 
 type RangeScan struct {
 	TotalRangeCount int
-	RangeOffset	    int
+	RangeOffset     int
 	RangeCount      int
 	NextRange       int
 }
@@ -253,10 +253,10 @@ func NewRangeScan(totalRangeCount int, rangeOffset int, rangeCount int) *RangeSc
 	return &RangeScan{totalRangeCount, rangeOffset, rangeOffset + rangeCount, rangeOffset}
 }
 
-func (rs* RangeScan) NextTokenRange() TokenRange {
+func (rs *RangeScan) NextTokenRange() TokenRange {
 	// Special case, no range splitting
 	if rs.TotalRangeCount == 1 {
-		rs.NextRange++;
+		rs.NextRange++
 		return TokenRange{minToken, maxToken}
 	}
 
@@ -271,9 +271,9 @@ func (rs* RangeScan) NextTokenRange() TokenRange {
 	tokensPerRange := int64(tokenCount / uint64(rs.TotalRangeCount))
 
 	currentRange := rs.NextRange
-	rs.NextRange++;
+	rs.NextRange++
 
-	firstToken := minToken + int64(currentRange) * tokensPerRange
+	firstToken := minToken + int64(currentRange)*tokensPerRange
 	var lastToken int64
 	// Make sure the very last range streches all the way to maxToken.
 	if rs.NextRange == rs.TotalRangeCount {

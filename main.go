@@ -12,9 +12,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/scylladb/scylla-bench/pkg/results"
+
 	"github.com/gocql/gocql"
 	"github.com/hailocab/go-hostpool"
 	"github.com/pkg/errors"
+	. "github.com/scylladb/scylla-bench/pkg/workloads"
 	"github.com/scylladb/scylla-bench/random"
 )
 
@@ -40,7 +43,7 @@ func (v *DistributionValue) Set(s string) error {
 		if i < 1 {
 			return errors.New("value for fixed distribution is invalid: value has to be positive")
 		}
-		*v.Dist = random.Fixed{i}
+		*v.Dist = random.Fixed{Value: i}
 		return nil
 	}
 
@@ -88,39 +91,6 @@ var (
 	validateData   bool
 )
 
-const (
-	withLatencyLineFmt    = "\n%5v %7v %7v %6v %-6v %-6v %-6v %-6v %-6v %-6v %-6v %v"
-	withoutLatencyLineFmt = "\n%5v %7v %7v %6v"
-)
-
-// time.Duration objects are printed using time.Duration.String(), and that
-// has hardcoded logic on the precision of its output, which is usually
-// excessive. For example, durations more than a second are printed with
-// 9 digits after the decimal point, and duration between 1ms and 1s
-// are printed as ms with 6 digits after the decimal point.
-// The Round function here rounds the duration in a way that printing it
-// will result in up to "digits" digits after the decimal point.
-func Round(d time.Duration) time.Duration {
-	switch {
-	case d < time.Microsecond:
-		// Nanoseconds, no additional digits of precision
-		d = d.Round(time.Nanosecond)
-	case d < time.Millisecond:
-		// Microseconds, no additional digits of precision
-		d = d.Round(time.Microsecond)
-	case d < time.Millisecond * time.Duration(10):
-		// 1-10 milliseconds, show an additional digit of precision
-		d = d.Round(time.Millisecond / time.Duration(10))
-	case d < time.Second:
-		// 10ms-1sec, show integer number of milliseconds.
-		d = d.Round(time.Millisecond)
-	default:
-		// >1sec, show one additional digit of precision.
-		d = d.Round(time.Second / time.Duration(10))
-	}
-	return d
-}
-
 func Query(session *gocql.Session, request string) {
 	err := session.Query(request).Exec()
 	if err != nil {
@@ -161,11 +131,12 @@ func GetWorkload(name string, threadId int, partitionOffset int64, mode string, 
 	case "uniform":
 		return NewRandomUniform(threadId, partitionCount, clusteringRowCount)
 	case "timeseries":
-		if mode == "read" {
+		switch mode {
+		case "read":
 			return NewTimeSeriesReader(threadId, concurrency, partitionCount, clusteringRowCount, writeRate, distribution, startTime)
-		} else if mode == "write" {
+		case "write":
 			return NewTimeSeriesWriter(threadId, concurrency, partitionCount, clusteringRowCount, startTime, int64(maximumRate/concurrency))
-		} else {
+		default:
 			log.Fatal("time series workload supports only write and read modes")
 		}
 	case "scan":
@@ -184,7 +155,7 @@ func GetWorkload(name string, threadId int, partitionOffset int64, mode string, 
 	panic("unreachable")
 }
 
-func GetMode(name string) func(session *gocql.Session, resultChannel chan Result, workload WorkloadGenerator, rateLimiter RateLimiter) {
+func GetMode(name string) func(session *gocql.Session, testResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
 	switch name {
 	case "write":
 		if rowsPerRequest == 1 {
@@ -203,22 +174,6 @@ func GetMode(name string) func(session *gocql.Session, resultChannel chan Result
 		log.Fatal("unknown mode: ", name)
 	}
 	panic("unreachable")
-}
-
-func PrintPartialResult(result *MergedResult) {
-	latencyError := ""
-	if errorRecordingLatency {
-		latencyError = "latency measurement error"
-	}
-	if measureLatency {
-		fmt.Printf(withLatencyLineFmt, Round(result.Time), result.Operations, result.ClusteringRows, result.Errors,
-			Round(time.Duration(result.Latency.Max())), Round(time.Duration(result.Latency.ValueAtQuantile(99.9))), Round(time.Duration(result.Latency.ValueAtQuantile(99))),
-			Round(time.Duration(result.Latency.ValueAtQuantile(95))), Round(time.Duration(result.Latency.ValueAtQuantile(90))),
-			Round(time.Duration(result.Latency.ValueAtQuantile(50))), Round(time.Duration(result.Latency.Mean())),
-			latencyError)
-	} else {
-		fmt.Printf(withoutLatencyLineFmt, Round(result.Time), result.Operations, result.ClusteringRows, result.Errors)
-	}
 }
 
 func toInt(value bool) int {
@@ -251,7 +206,7 @@ func main() {
 		distribution string
 
 		hostSelectionPolicy string
-		tlsEncryption bool
+		tlsEncryption       bool
 	)
 
 	flag.StringVar(&mode, "mode", "", "operating mode: write, read, counter_update, counter_read, scan")
@@ -269,7 +224,7 @@ func main() {
 
 	flag.Int64Var(&partitionCount, "partition-count", 10000, "number of partitions")
 	flag.Int64Var(&clusteringRowCount, "clustering-row-count", 100, "number of clustering rows in a partition")
-	flag.Var(MakeDistributionValue(&clusteringRowSizeDist, random.Fixed{4}), "clustering-row-size", "size of a single clustering row, can use random values")
+	flag.Var(MakeDistributionValue(&clusteringRowSizeDist, random.Fixed{Value: 4}), "clustering-row-size", "size of a single clustering row, can use random values")
 
 	flag.IntVar(&rowsPerRequest, "rows-per-request", 1, "clustering rows per single request")
 	flag.BoolVar(&provideUpperBound, "provide-upper-bound", false, "whether read requests should provide an upper bound")
@@ -325,10 +280,8 @@ func main() {
 			concurrency = rangeCount
 			log.Printf("adjusting concurrency to the highest useful value of %v", concurrency)
 		}
-	} else {
-		if workload == "" {
-			log.Fatal("workload type needs to be specified")
-		}
+	} else if workload == "" {
+		log.Fatal("workload type needs to be specified")
 	}
 
 	if workload == "uniform" && testDuration == 0 {
@@ -517,14 +470,9 @@ func main() {
 		fmt.Println("Write rate:\t\t", int64(maximumRate)/partitionCount)
 	}
 
-	if measureLatency {
-		fmt.Printf(withLatencyLineFmt, "time", "ops/s", "rows/s", "errors", "max", "99.9th", "99th", "95th", "90th", "median", "mean", "")
-	} else {
-		fmt.Printf(withoutLatencyLineFmt, "time", "ops/s", "rows/s", "errors")
-	}
-
-	result := RunConcurrently(maximumRate, func(i int, resultChannel chan Result, rateLimiter RateLimiter) {
-		GetMode(mode)(session, resultChannel, GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution), rateLimiter)
+	setResultsConfiguration()
+	result := RunConcurrently(maximumRate, func(i int, testResult *results.TestThreadResult, rateLimiter RateLimiter) {
+		GetMode(mode)(session, testResult, GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution), rateLimiter)
 	})
 
 	fmt.Println("\nResults")
@@ -536,9 +484,6 @@ func main() {
 	}
 	fmt.Println("Operations/s:\t", result.OperationsPerSecond)
 	fmt.Println("Rows/s:\t\t", result.ClusteringRowsPerSecond)
-	if errorRecordingLatency {
-		fmt.Println("Latency measurements may be inaccurate")
-	}
 	if measureLatency {
 		fmt.Println("Latency:\n  max:\t\t", time.Duration(result.Latency.Max()),
 			"\n  99.9th:\t", time.Duration(result.Latency.ValueAtQuantile(99.9)),
@@ -561,4 +506,15 @@ func newHostSelectionPolicy(policy string, hosts []string) (gocql.HostSelectionP
 	default:
 		return nil, fmt.Errorf("unknown host selection policy, %s", policy)
 	}
+}
+
+func setResultsConfiguration() {
+	results.SetGlobalHistogramConfiguration(
+		time.Microsecond.Nanoseconds()*50,
+		(timeout + timeout*2).Nanoseconds(),
+		3,
+	)
+	results.SetGlobalMeasureLatency(measureLatency)
+	results.SetGlobalConcurrency(concurrency)
+
 }
