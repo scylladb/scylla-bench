@@ -83,6 +83,10 @@ var (
 	timeout    time.Duration
 	iterations uint
 
+	// Any error response that comes with delay greater than errorToTimeoutCutoffTime
+	// to be considered as timeout error and recorded to histogram as such
+	errorToTimeoutCutoffTime    time.Duration
+
 	startTime time.Time
 
 	stopAll uint32
@@ -316,6 +320,12 @@ func main() {
 	}
 	if workload == "timeseries" && mode == "write" && maximumRate == 0 {
 		log.Fatal("max-rate must be provided for time series write loads")
+	}
+
+	if timeout != 0 {
+		errorToTimeoutCutoffTime = timeout / 5
+	} else {
+		errorToTimeoutCutoffTime = time.Second
 	}
 
 	cluster := gocql.NewCluster(strings.Split(nodes, ",")...)
