@@ -50,12 +50,17 @@ func (r *TestThreadResult) ResetPartialResult() {
 }
 
 func (r *TestThreadResult) RecordLatency(start time.Time, end time.Time) {
-	value := end.Sub(start)
+	latency := end.Sub(start).Nanoseconds()
+
+	if latency >= globalResultConfiguration.latencyHistogramConfiguration.maxValue {
+		latency = globalResultConfiguration.latencyHistogramConfiguration.maxValue
+	}
+
 	if r.FullResult.Latency != nil {
-		_ = r.FullResult.Latency.RecordValue(value.Nanoseconds())
+		_ = r.FullResult.Latency.RecordValue(latency)
 	}
 	if r.PartialResult.Latency != nil {
-		_ = r.PartialResult.Latency.RecordValue(value.Nanoseconds())
+		_ = r.PartialResult.Latency.RecordValue(latency)
 	}
 }
 

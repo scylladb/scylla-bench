@@ -521,7 +521,7 @@ func newHostSelectionPolicy(policy string, hosts []string) (gocql.HostSelectionP
 func setResultsConfiguration() {
 	results.SetGlobalHistogramConfiguration(
 		time.Microsecond.Nanoseconds()*50,
-		(timeout + timeout*2).Nanoseconds(),
+		(timeout*3).Nanoseconds(),
 		3,
 	)
 	results.SetGlobalMeasureLatency(measureLatency)
