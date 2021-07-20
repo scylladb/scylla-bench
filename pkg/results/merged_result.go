@@ -15,13 +15,15 @@ type MergedResult struct {
 	OperationsPerSecond     float64
 	ClusteringRowsPerSecond float64
 	Errors                  int
-	Latency                 *hdrhistogram.Histogram
+	RawLatency              *hdrhistogram.Histogram
+	CoFixedLatency          *hdrhistogram.Histogram
 }
 
 func NewMergedResult() *MergedResult {
 	result := &MergedResult{}
 	if globalResultConfiguration.measureLatency {
-		result.Latency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration)
+		result.RawLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration)
+		result.CoFixedLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration)
 	}
 	return result
 }
@@ -34,7 +36,11 @@ func (mr *MergedResult) AddResult(result Result) {
 	mr.ClusteringRowsPerSecond += float64(result.ClusteringRows) / result.ElapsedTime.Seconds()
 	mr.Errors += result.Errors
 	if globalResultConfiguration.measureLatency {
-		dropped := mr.Latency.Merge(result.Latency)
+		dropped := mr.RawLatency.Merge(result.RawLatency)
+		if dropped > 0 {
+			log.Print("dropped: ", dropped)
+		}
+		dropped = mr.CoFixedLatency.Merge(result.CoFixedLatency)
 		if dropped > 0 {
 			log.Print("dropped: ", dropped)
 		}
@@ -44,10 +50,16 @@ func (mr *MergedResult) AddResult(result Result) {
 func (mr *MergedResult) PrintPartialResult() {
 	latencyError := ""
 	if globalResultConfiguration.measureLatency {
+		var latencyHist *hdrhistogram.Histogram
+		if globalResultConfiguration.latencyTypeToPrint == LatencyTypeCoordinatedOmissionFixed {
+			latencyHist = mr.CoFixedLatency
+		} else {
+			latencyHist = mr.RawLatency
+		}
 		fmt.Printf(withLatencyLineFmt, Round(mr.Time), mr.Operations, mr.ClusteringRows, mr.Errors,
-			Round(time.Duration(mr.Latency.Max())), Round(time.Duration(mr.Latency.ValueAtQuantile(99.9))), Round(time.Duration(mr.Latency.ValueAtQuantile(99))),
-			Round(time.Duration(mr.Latency.ValueAtQuantile(95))), Round(time.Duration(mr.Latency.ValueAtQuantile(90))),
-			Round(time.Duration(mr.Latency.ValueAtQuantile(50))), Round(time.Duration(mr.Latency.Mean())),
+			Round(time.Duration(latencyHist.Max())), Round(time.Duration(latencyHist.ValueAtQuantile(99.9))), Round(time.Duration(latencyHist.ValueAtQuantile(99))),
+			Round(time.Duration(latencyHist.ValueAtQuantile(95))), Round(time.Duration(latencyHist.ValueAtQuantile(90))),
+			Round(time.Duration(latencyHist.ValueAtQuantile(50))), Round(time.Duration(latencyHist.Mean())),
 			latencyError)
 	} else {
 		fmt.Printf(withoutLatencyLineFmt, Round(mr.Time), mr.Operations, mr.ClusteringRows, mr.Errors)
