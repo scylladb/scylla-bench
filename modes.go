@@ -118,19 +118,23 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 	for !iter.IsDone() {
 		rateLimiter.Wait()
 
-		start := rateLimiter.Expected()
-		if start.IsZero() {
-			start = time.Now()
+		expectedStartTime := rateLimiter.Expected()
+		if expectedStartTime.IsZero() {
+			expectedStartTime = time.Now()
 		}
 
-		err, _ := test(threadResult)
+		err, rawLatency := test(threadResult)
+		endTime := time.Now()
 		if err != nil {
-			log.Print(err)
 			threadResult.IncErrors()
-			continue
+			log.Print(err)
+			if rawLatency > errorToTimeoutCutoffTime {
+				// Consider this error to be timeout error and register it in histogram
+				threadResult.RecordLatency(expectedStartTime, endTime)
+			}
+		} else {
+			threadResult.RecordLatency(expectedStartTime, endTime)
 		}
-
-		threadResult.RecordLatency(start, time.Now())
 
 		now := time.Now()
 		if now.Sub(partialStart) > time.Second {
