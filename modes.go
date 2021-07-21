@@ -57,7 +57,7 @@ func NewRateLimiter(maximumRate int, timeOffset time.Duration) RateLimiter {
 	return &MaximumRateLimiter{period, time.Now(), 0}
 }
 
-func RunConcurrently(maximumRate int, workload func(id int, testResult *results.TestThreadResult, rateLimiter RateLimiter)) *results.MergedResult {
+func RunConcurrently(maximumRate int, workload func(id int, testResult *results.TestThreadResult, rateLimiter RateLimiter)) *results.TestResults {
 	var timeOffsetUnit int64
 	if maximumRate != 0 {
 		timeOffsetUnit = int64(time.Second) / int64(maximumRate)
@@ -80,7 +80,7 @@ func RunConcurrently(maximumRate int, workload func(id int, testResult *results.
 		}(i)
 	}
 
-	return totalResults.GetTotalResults()
+	return &totalResults
 }
 
 type TestIterator struct {
@@ -130,10 +130,12 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 			log.Print(err)
 			if rawLatency > errorToTimeoutCutoffTime {
 				// Consider this error to be timeout error and register it in histogram
-				threadResult.RecordLatency(expectedStartTime, endTime)
+				threadResult.RecordRawLatency(rawLatency)
+				threadResult.RecordCoFixedLatency(endTime.Sub(expectedStartTime))
 			}
 		} else {
-			threadResult.RecordLatency(expectedStartTime, endTime)
+			threadResult.RecordRawLatency(rawLatency)
+			threadResult.RecordCoFixedLatency(endTime.Sub(expectedStartTime))
 		}
 
 		now := time.Now()

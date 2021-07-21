@@ -15,8 +15,10 @@ func NewTestThreadResult() *TestThreadResult {
 	r.PartialResult = &Result{}
 	r.FullResult.Final = true
 	if globalResultConfiguration.measureLatency {
-		r.FullResult.Latency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration)
-		r.PartialResult.Latency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration)
+		r.FullResult.RawLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration)
+		r.FullResult.CoFixedLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration)
+		r.PartialResult.RawLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration)
+		r.PartialResult.CoFixedLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration)
 	}
 	r.ResultChannel = make(chan Result, 1)
 	return r
@@ -45,23 +47,36 @@ func (r *TestThreadResult) IncErrors() {
 func (r *TestThreadResult) ResetPartialResult() {
 	r.PartialResult = &Result{}
 	if globalResultConfiguration.measureLatency {
-		r.PartialResult.Latency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration)
+		r.PartialResult.RawLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration)
+		r.PartialResult.CoFixedLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration)
 	}
 }
 
-func (r *TestThreadResult) RecordLatency(start time.Time, end time.Time) {
-	latency := end.Sub(start).Nanoseconds()
+func (r *TestThreadResult) RecordRawLatency(latency time.Duration) {
+	if ! globalResultConfiguration.measureLatency {
+		return
+	}
+	lv := latency.Nanoseconds()
 
-	if latency >= globalResultConfiguration.latencyHistogramConfiguration.maxValue {
-		latency = globalResultConfiguration.latencyHistogramConfiguration.maxValue
+	if lv >= globalResultConfiguration.latencyHistogramConfiguration.maxValue {
+		lv = globalResultConfiguration.latencyHistogramConfiguration.maxValue
 	}
 
-	if r.FullResult.Latency != nil {
-		_ = r.FullResult.Latency.RecordValue(latency)
+	_ = r.FullResult.RawLatency.RecordValue(lv)
+	_ = r.PartialResult.RawLatency.RecordValue(lv)
+}
+
+func (r *TestThreadResult) RecordCoFixedLatency(latency time.Duration) {
+	if ! globalResultConfiguration.measureLatency {
+		return
 	}
-	if r.PartialResult.Latency != nil {
-		_ = r.PartialResult.Latency.RecordValue(latency)
+	lv := latency.Nanoseconds()
+
+	if lv >= globalResultConfiguration.latencyHistogramConfiguration.maxValue {
+		lv = globalResultConfiguration.latencyHistogramConfiguration.maxValue
 	}
+	_ = r.FullResult.CoFixedLatency.RecordValue(lv)
+	_ = r.PartialResult.CoFixedLatency.RecordValue(lv)
 }
 
 func (r *TestThreadResult) SubmitResult() {

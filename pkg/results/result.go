@@ -1,6 +1,8 @@
 package results
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/HdrHistogram/hdrhistogram-go"
@@ -12,9 +14,20 @@ type histogramConfiguration struct {
 	sigFig   int
 }
 
+const (
+	LatencyTypeCoordinatedOmissionFixed = iota
+	LatencyTypeRaw                      = iota
+)
+
+var LatencyTypes = map[string]int{
+	"raw": LatencyTypeRaw,
+	"fixed-coordinated-omission": LatencyTypeCoordinatedOmissionFixed,
+}
+
 type Configuration struct {
 	concurrency                   int
 	measureLatency                bool
+	latencyTypeToPrint            int
 	latencyHistogramConfiguration histogramConfiguration
 }
 
@@ -24,7 +37,8 @@ type Result struct {
 	Operations     int
 	ClusteringRows int
 	Errors         int
-	Latency        *hdrhistogram.Histogram
+	RawLatency     *hdrhistogram.Histogram
+	CoFixedLatency     *hdrhistogram.Histogram
 }
 
 func SetGlobalHistogramConfiguration(minValue int64, maxValue int64, sigFig int) {
@@ -38,6 +52,27 @@ func GetGlobalHistogramConfiguration() (int64, int64, int) {
 		globalResultConfiguration.latencyHistogramConfiguration.maxValue,
 		globalResultConfiguration.latencyHistogramConfiguration.sigFig
 }
+
+func SetGlobalLatencyType(latencyType int) {
+	globalResultConfiguration.latencyTypeToPrint = latencyType
+}
+
+func GetGlobalLatencyType(latencyType int) {
+	globalResultConfiguration.latencyTypeToPrint = latencyType
+}
+
+func SetGlobalLatencyTypeFromString(latencyType string){
+	SetGlobalLatencyType(LatencyTypes[latencyType])
+}
+
+func ValidateGlobalLatencyType(latencyType string) error {
+	_, ok := LatencyTypes[latencyType]
+	if ! ok {
+		return errors.New(fmt.Sprintf("unkown value %s, supported values are: raw, fixed-coordinated-omission", latencyType))
+	}
+	return nil
+}
+
 
 func SetGlobalMeasureLatency(value bool) {
 	globalResultConfiguration.measureLatency = value
@@ -69,5 +104,6 @@ func init() {
 			maxValue: 2 ^ 63 - 1,
 			sigFig:   3,
 		},
+		latencyTypeToPrint: LatencyTypeRaw,
 	}
 }

@@ -64,6 +64,7 @@ var (
 	password         string
 
 	mode        string
+	latencyType string
 	concurrency int
 	maximumRate int
 
@@ -249,6 +250,8 @@ func main() {
 	flag.Int64Var(&startTimestamp, "start-timestamp", 0, "start timestamp of the write load (relevant only for time series reads)")
 	flag.StringVar(&distribution, "distribution", "uniform", "distribution of keys (relevant only for time series reads): uniform, hnormal")
 
+	flag.StringVar(&latencyType, "latency-type", "raw", "type of the latency to print during the run: raw, fixed-coordinated-omission")
+
 	flag.StringVar(&keyspaceName, "keyspace", "scylla_bench", "keyspace to use")
 	flag.StringVar(&tableName, "table", "test", "table to use")
 	flag.StringVar(&username, "username", "", "cql username for authentication")
@@ -326,6 +329,10 @@ func main() {
 		errorToTimeoutCutoffTime = timeout / 5
 	} else {
 		errorToTimeoutCutoffTime = time.Second
+	}
+
+	if err := results.ValidateGlobalLatencyType(latencyType); err != nil {
+		log.Fatal(errors.Wrap(err, "Bad value for latency-type"))
 	}
 
 	cluster := gocql.NewCluster(strings.Split(nodes, ",")...)
@@ -481,28 +488,12 @@ func main() {
 	}
 
 	setResultsConfiguration()
-	result := RunConcurrently(maximumRate, func(i int, testResult *results.TestThreadResult, rateLimiter RateLimiter) {
+	testResult := RunConcurrently(maximumRate, func(i int, testResult *results.TestThreadResult, rateLimiter RateLimiter) {
 		GetMode(mode)(session, testResult, GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution), rateLimiter)
 	})
 
-	fmt.Println("\nResults")
-	fmt.Println("Time (avg):\t", result.Time)
-	fmt.Println("Total ops:\t", result.Operations)
-	fmt.Println("Total rows:\t", result.ClusteringRows)
-	if result.Errors != 0 {
-		fmt.Println("Total errors:\t", result.Errors)
-	}
-	fmt.Println("Operations/s:\t", result.OperationsPerSecond)
-	fmt.Println("Rows/s:\t\t", result.ClusteringRowsPerSecond)
-	if measureLatency {
-		fmt.Println("Latency:\n  max:\t\t", time.Duration(result.Latency.Max()),
-			"\n  99.9th:\t", time.Duration(result.Latency.ValueAtQuantile(99.9)),
-			"\n  99th:\t\t", time.Duration(result.Latency.ValueAtQuantile(99)),
-			"\n  95th:\t\t", time.Duration(result.Latency.ValueAtQuantile(95)),
-			"\n  90th:\t\t", time.Duration(result.Latency.ValueAtQuantile(90)),
-			"\n  median:\t", time.Duration(result.Latency.ValueAtQuantile(50)),
-			"\n  mean:\t\t", time.Duration(result.Latency.Mean()))
-	}
+	testResult.PrintTotalResults(testResult.GetTotalResults())
+
 }
 
 func newHostSelectionPolicy(policy string, hosts []string) (gocql.HostSelectionPolicy, error) {
@@ -526,5 +517,5 @@ func setResultsConfiguration() {
 	)
 	results.SetGlobalMeasureLatency(measureLatency)
 	results.SetGlobalConcurrency(concurrency)
-
+	results.SetGlobalLatencyTypeFromString(latencyType)
 }
