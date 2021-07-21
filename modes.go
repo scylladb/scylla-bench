@@ -375,19 +375,25 @@ func DoCounterReads(session *gocql.Session, threadResult *results.TestThreadResu
 
 func DoReadsFromTable(table string, session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
 	var request string
+	var selectFields string
+	if table == tableName {
+		selectFields = "pk, ck, v"
+	} else {
+		selectFields = "pk, ck, c1, c2, c3, c4, c5"
+	}
 	switch {
 	case inRestriction:
 		arr := make([]string, rowsPerRequest)
 		for i := 0; i < rowsPerRequest; i++ {
 			arr[i] = "?"
 		}
-		request = fmt.Sprintf("SELECT * from %s.%s WHERE pk = ? AND ck IN (%s)", keyspaceName, table, strings.Join(arr, ", "))
+		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck IN (%s)", selectFields, keyspaceName, table, strings.Join(arr, ", "))
 	case provideUpperBound:
-		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ?", keyspaceName, table)
+		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ?", selectFields, keyspaceName, table)
 	case noLowerBound:
-		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? LIMIT %d", keyspaceName, table, rowsPerRequest)
+		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? LIMIT %d", selectFields, keyspaceName, table, rowsPerRequest)
 	default:
-		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? AND ck >= ? LIMIT %d", keyspaceName, table, rowsPerRequest)
+		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? LIMIT %d", selectFields, keyspaceName, table, rowsPerRequest)
 	}
 	query := session.Query(request)
 
