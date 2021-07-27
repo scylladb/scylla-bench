@@ -9,6 +9,8 @@ type TestThreadResult struct {
 	partialStart  time.Time
 }
 
+var GlobalErrorFlag = false
+
 func NewTestThreadResult() *TestThreadResult {
 	r := &TestThreadResult{}
 	r.FullResult = &Result{}
@@ -43,6 +45,16 @@ func (r *TestThreadResult) IncErrors() {
 	r.FullResult.Errors++
 	r.PartialResult.Errors++
 }
+
+func (r *TestThreadResult) SubmitCriticalError(err error) {
+	if r.FullResult.CriticalErrors == nil {
+		r.FullResult.CriticalErrors = []error{err}
+	} else {
+		r.FullResult.CriticalErrors = append(r.FullResult.CriticalErrors, err)
+	}
+	GlobalErrorFlag = true
+}
+
 
 func (r *TestThreadResult) ResetPartialResult() {
 	r.PartialResult = &Result{}

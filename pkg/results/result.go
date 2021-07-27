@@ -37,8 +37,9 @@ type Result struct {
 	Operations     int
 	ClusteringRows int
 	Errors         int
+	CriticalErrors []error
 	RawLatency     *hdrhistogram.Histogram
-	CoFixedLatency     *hdrhistogram.Histogram
+	CoFixedLatency *hdrhistogram.Histogram
 }
 
 func SetGlobalHistogramConfiguration(minValue int64, maxValue int64, sigFig int) {

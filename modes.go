@@ -76,7 +76,6 @@ func RunConcurrently(maximumRate int, workload func(id int, testResult *results.
 		go func(i int) {
 			timeOffset := time.Duration(timeOffsetUnit * int64(i))
 			workload(i, testResult, NewRateLimiter(maximumRate, timeOffset))
-			testResult.StopReporting()
 		}(i)
 	}
 
@@ -115,6 +114,7 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 	start := time.Now()
 	partialStart := start
 	iter := NewTestIterator(workload)
+	errorsAtRow := 0
 	for !iter.IsDone() {
 		rateLimiter.Wait()
 
@@ -126,6 +126,7 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 		err, rawLatency := test(threadResult)
 		endTime := time.Now()
 		if err != nil {
+			errorsAtRow += 1
 			threadResult.IncErrors()
 			log.Print(err)
 			if rawLatency > errorToTimeoutCutoffTime {
@@ -134,11 +135,20 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 				threadResult.RecordCoFixedLatency(endTime.Sub(expectedStartTime))
 			}
 		} else {
+			errorsAtRow = 0
 			threadResult.RecordRawLatency(rawLatency)
 			threadResult.RecordCoFixedLatency(endTime.Sub(expectedStartTime))
 		}
 
 		now := time.Now()
+		if maxErrorsAtRow > 0 && errorsAtRow >= maxErrorsAtRow {
+			threadResult.SubmitCriticalError(errors.New(fmt.Sprintf("Error limit (maxErrorsAtRow) of %d errors is reached", errorsAtRow)))
+		}
+		if results.GlobalErrorFlag {
+			threadResult.ResultChannel <- *threadResult.PartialResult
+			threadResult.ResetPartialResult()
+			break
+		}
 		if now.Sub(partialStart) > time.Second {
 			threadResult.ResultChannel <- *threadResult.PartialResult
 			threadResult.ResetPartialResult()
@@ -149,6 +159,7 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 
 	threadResult.FullResult.ElapsedTime = end.Sub(start)
 	threadResult.ResultChannel <- *threadResult.FullResult
+	threadResult.StopReporting()
 }
 
 const (

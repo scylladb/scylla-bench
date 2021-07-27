@@ -15,6 +15,7 @@ type MergedResult struct {
 	OperationsPerSecond     float64
 	ClusteringRowsPerSecond float64
 	Errors                  int
+	CriticalErrors          []error
 	RawLatency              *hdrhistogram.Histogram
 	CoFixedLatency          *hdrhistogram.Histogram
 }
@@ -35,6 +36,15 @@ func (mr *MergedResult) AddResult(result Result) {
 	mr.OperationsPerSecond += float64(result.Operations) / result.ElapsedTime.Seconds()
 	mr.ClusteringRowsPerSecond += float64(result.ClusteringRows) / result.ElapsedTime.Seconds()
 	mr.Errors += result.Errors
+	if result.CriticalErrors != nil {
+		if mr.CriticalErrors == nil {
+			mr.CriticalErrors = result.CriticalErrors
+		} else {
+			for _, err := range result.CriticalErrors {
+				mr.CriticalErrors = append(mr.CriticalErrors, err)
+			}
+		}
+	}
 	if globalResultConfiguration.measureLatency {
 		dropped := mr.RawLatency.Merge(result.RawLatency)
 		if dropped > 0 {
@@ -63,5 +73,14 @@ func (mr *MergedResult) PrintPartialResult() {
 			latencyError)
 	} else {
 		fmt.Printf(withoutLatencyLineFmt, Round(mr.Time), mr.Operations, mr.ClusteringRows, mr.Errors)
+	}
+}
+
+func (mr *MergedResult) PrintCriticalErrors() {
+	if mr.CriticalErrors != nil {
+		fmt.Printf("\nFollowing critical errors where caught during the run:\n")
+		for _, err := range mr.CriticalErrors {
+			fmt.Printf("    %s\n", err.Error())
+		}
 	}
 }
