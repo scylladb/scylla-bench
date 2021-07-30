@@ -65,6 +65,7 @@ var (
 
 	mode        string
 	latencyType string
+	maxErrorsAtRow int
 	concurrency int
 	maximumRate int
 
@@ -265,6 +266,7 @@ func main() {
 	flag.StringVar(&clientKeyFile, "tls-client-key-file", "", "path to client key file, needed to enable client certificate authentication")
 
 	flag.StringVar(&hostSelectionPolicy, "host-selection-policy", "token-aware", "set the driver host selection policy (round-robin,token-aware,dc-aware),default 'token-aware'")
+	flag.IntVar(&maxErrorsAtRow, "error-at-row-limit", 0, "set limit of errors caught by one thread at row after which workflow will be terminated and error reported. Set it to 0 if you want to haven no limit")
 
 	flag.Parse()
 	counterTableName = "test_counters"
@@ -492,8 +494,9 @@ func main() {
 		GetMode(mode)(session, testResult, GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution), rateLimiter)
 	})
 
-	testResult.PrintTotalResults(testResult.GetTotalResults())
-
+	testResult.GetTotalResults()
+	testResult.PrintTotalResults()
+	os.Exit(testResult.GetFinalStatus())
 }
 
 func newHostSelectionPolicy(policy string, hosts []string) (gocql.HostSelectionPolicy, error) {

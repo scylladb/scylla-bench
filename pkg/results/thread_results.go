@@ -15,6 +15,7 @@ type TestResults struct {
 	threadResults   []*TestThreadResult
 	numberOfThreads int
 	startTime       time.Time
+	totalResult		*MergedResult
 }
 
 func (tr *TestResults) Init(concurrency int) {
@@ -63,14 +64,14 @@ func (tr *TestResults) GetResultsFromThreadsAndMerge() (bool, *MergedResult) {
 	return final, result
 }
 
-func (tr *TestResults) GetTotalResults() *MergedResult {
+func (tr *TestResults) GetTotalResults() {
 	final, result := tr.GetResultsFromThreadsAndMerge()
 	for !final {
 		result.Time = time.Since(tr.startTime)
 		result.PrintPartialResult()
 		final, result = tr.GetResultsFromThreadsAndMerge()
 	}
-	return result
+	tr.totalResult = result
 }
 
 func (tr *TestResults) PrintResultsHeader() {
@@ -81,20 +82,21 @@ func (tr *TestResults) PrintResultsHeader() {
 	}
 }
 
-func (tr *TestResults) PrintTotalResults(result *MergedResult) {
+func (tr *TestResults) PrintTotalResults() {
 	fmt.Println("\nResults")
-	fmt.Println("Time (avg):\t", result.Time)
-	fmt.Println("Total ops:\t", result.Operations)
-	fmt.Println("Total rows:\t", result.ClusteringRows)
-	if result.Errors != 0 {
-		fmt.Println("Total errors:\t", result.Errors)
+	fmt.Println("Time (avg):\t", tr.totalResult.Time)
+	fmt.Println("Total ops:\t", tr.totalResult.Operations)
+	fmt.Println("Total rows:\t", tr.totalResult.ClusteringRows)
+	if tr.totalResult.Errors != 0 {
+		fmt.Println("Total errors:\t", tr.totalResult.Errors)
 	}
-	fmt.Println("Operations/s:\t", result.OperationsPerSecond)
-	fmt.Println("Rows/s:\t\t", result.ClusteringRowsPerSecond)
+	fmt.Println("Operations/s:\t", tr.totalResult.OperationsPerSecond)
+	fmt.Println("Rows/s:\t\t", tr.totalResult.ClusteringRowsPerSecond)
 	if globalResultConfiguration.measureLatency {
-		printLatencyResults("raw latency", result.RawLatency)
-		printLatencyResults("c-o fixed latency", result.CoFixedLatency)
+		printLatencyResults("raw latency", tr.totalResult.RawLatency)
+		printLatencyResults("c-o fixed latency", tr.totalResult.CoFixedLatency)
 	}
+	tr.totalResult.PrintCriticalErrors()
 }
 
 func printLatencyResults(name string, latency *hdrhistogram.Histogram) {
@@ -105,4 +107,11 @@ func printLatencyResults(name string, latency *hdrhistogram.Histogram) {
 		"\n  90th:\t\t", time.Duration(latency.ValueAtQuantile(90)),
 		"\n  median:\t", time.Duration(latency.ValueAtQuantile(50)),
 		"\n  mean:\t\t", time.Duration(latency.Mean()))
+}
+
+func (tr *TestResults) GetFinalStatus() int {
+	if tr.totalResult.CriticalErrors != nil {
+		return 1
+	}
+	return 0
 }
