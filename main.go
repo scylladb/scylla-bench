@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"github.com/scylladb/scylla-bench/pkg"
 	"log"
 	"os"
 	"os/signal"
@@ -17,8 +18,8 @@ import (
 	"github.com/gocql/gocql"
 	"github.com/hailocab/go-hostpool"
 	"github.com/pkg/errors"
-	. "github.com/scylladb/scylla-bench/pkg/workloads"
 	"github.com/scylladb/scylla-bench/pkg/rate_limiters"
+	. "github.com/scylladb/scylla-bench/pkg/workloads"
 	"github.com/scylladb/scylla-bench/random"
 )
 
@@ -57,46 +58,13 @@ func (v *DistributionValue) Set(s string) error {
 	}
 }
 
+var arguments = command_line.CommandLineArguments{}
 var (
-	keyspaceName     string
-	tableName        string
-	counterTableName string
-	username         string
-	password         string
-
-	mode        string
-	latencyType string
-	maxErrorsAtRow int
-	concurrency int
-	maximumRate int
-
-	testDuration time.Duration
-
-	partitionCount        int64
-	clusteringRowCount    int64
-	clusteringRowSizeDist random.Distribution
-
-	rowsPerRequest    int
-	provideUpperBound bool
-	inRestriction     bool
-	noLowerBound      bool
-
-	rangeCount int
-
-	timeout    time.Duration
-	iterations uint
-
-	// Any error response that comes with delay greater than errorToTimeoutCutoffTime
-	// to be considered as timeout error and recorded to histogram as such
-	errorToTimeoutCutoffTime    time.Duration
-
 	startTime time.Time
-
 	stopAll uint32
-
-	measureLatency bool
-	validateData   bool
+	counterTableName = "test_counters"
 )
+
 
 func Query(session *gocql.Session, request string) {
 	err := session.Query(request).Exec()
@@ -106,19 +74,19 @@ func Query(session *gocql.Session, request string) {
 }
 
 func PrepareDatabase(session *gocql.Session, replicationFactor int) {
-	Query(session, fmt.Sprintf("CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : %d }", keyspaceName, replicationFactor))
+	Query(session, fmt.Sprintf("CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : %d }", arguments.KeyspaceName, replicationFactor))
 
-	Query(session, "CREATE TABLE IF NOT EXISTS "+keyspaceName+"."+tableName+" (pk bigint, ck bigint, v blob, PRIMARY KEY(pk, ck)) WITH compression = { }")
+	Query(session, "CREATE TABLE IF NOT EXISTS "+arguments.KeyspaceName+"."+arguments.TableName+" (pk bigint, ck bigint, v blob, PRIMARY KEY(pk, ck)) WITH compression = { }")
 
-	Query(session, "CREATE TABLE IF NOT EXISTS "+keyspaceName+"."+counterTableName+
+	Query(session, "CREATE TABLE IF NOT EXISTS "+arguments.KeyspaceName+"."+counterTableName+
 		" (pk bigint, ck bigint, c1 counter, c2 counter, c3 counter, c4 counter, c5 counter, PRIMARY KEY(pk, ck)) WITH compression = { }")
 
-	if validateData {
-		switch mode {
+	if arguments.ValidateData {
+		switch arguments.Mode {
 		case "write":
-			Query(session, "TRUNCATE TABLE "+keyspaceName+"."+tableName)
+			Query(session, "TRUNCATE TABLE "+arguments.KeyspaceName+"."+arguments.TableName)
 		case "counter_update":
-			Query(session, "TRUNCATE TABLE "+keyspaceName+"."+counterTableName)
+			Query(session, "TRUNCATE TABLE "+arguments.KeyspaceName+"."+counterTableName)
 		}
 	}
 }
@@ -126,36 +94,36 @@ func PrepareDatabase(session *gocql.Session, replicationFactor int) {
 func GetWorkload(name string, threadId int, partitionOffset int64, mode string, writeRate int64, distribution string) WorkloadGenerator {
 	switch name {
 	case "sequential":
-		pksPerThread := partitionCount / int64(concurrency)
+		pksPerThread := arguments.PartitionCount / int64(arguments.Concurrency)
 		thisOffset := pksPerThread * int64(threadId)
 		var thisSize int64
-		if threadId+1 == concurrency {
-			thisSize = partitionCount - thisOffset
+		if threadId+1 == arguments.Concurrency {
+			thisSize = arguments.PartitionCount - thisOffset
 		} else {
 			thisSize = pksPerThread
 		}
-		return NewSequentialVisitAll(thisOffset+partitionOffset, thisSize, clusteringRowCount)
+		return NewSequentialVisitAll(thisOffset+partitionOffset, thisSize, arguments.ClusteringRowCount)
 	case "uniform":
-		return NewRandomUniform(threadId, partitionCount, clusteringRowCount)
+		return NewRandomUniform(threadId, arguments.PartitionCount, arguments.ClusteringRowCount)
 	case "timeseries":
 		switch mode {
 		case "read":
-			return NewTimeSeriesReader(threadId, concurrency, partitionCount, clusteringRowCount, writeRate, distribution, startTime)
+			return NewTimeSeriesReader(threadId, arguments.Concurrency, arguments.PartitionCount, arguments.ClusteringRowCount, writeRate, distribution, startTime)
 		case "write":
-			return NewTimeSeriesWriter(threadId, concurrency, partitionCount, clusteringRowCount, startTime, int64(maximumRate/concurrency))
+			return NewTimeSeriesWriter(threadId, arguments.Concurrency, arguments.PartitionCount, arguments.ClusteringRowCount, startTime, int64(arguments.MaximumRate/arguments.Concurrency))
 		default:
 			log.Fatal("time series workload supports only write and read modes")
 		}
 	case "scan":
-		rangesPerThread := rangeCount / concurrency
+		rangesPerThread := arguments.RangeCount / arguments.Concurrency
 		thisOffset := rangesPerThread * threadId
 		var thisCount int
-		if threadId+1 == concurrency {
-			thisCount = rangeCount - thisOffset
+		if threadId+1 == arguments.Concurrency {
+			thisCount = arguments.RangeCount - thisOffset
 		} else {
 			thisCount = rangesPerThread
 		}
-		return NewRangeScan(rangeCount, thisOffset, thisCount)
+		return NewRangeScan(arguments.RangeCount, thisOffset, thisCount)
 	default:
 		log.Fatal("unknown workload: ", name)
 	}
@@ -165,7 +133,7 @@ func GetWorkload(name string, threadId int, partitionOffset int64, mode string, 
 func GetMode(name string) func(session *gocql.Session, testResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter rate_limiters.RateLimiter) {
 	switch name {
 	case "write":
-		if rowsPerRequest == 1 {
+		if arguments.RowsPerRequest == 1 {
 			return DoWrites
 		}
 		return DoBatchedWrites
@@ -192,122 +160,97 @@ func toInt(value bool) int {
 }
 
 func main() {
-	var (
-		workload          string
-		consistencyLevel  string
-		replicationFactor int
+	flag.StringVar(&arguments.Mode, "mode", "", "operating mode: write, read, counter_update, counter_read, scan")
+	flag.StringVar(&arguments.Workload, "workload", "", "workload: sequential, uniform, timeseries")
+	flag.StringVar(&arguments.ConsistencyLevel, "consistency-level", "quorum", "consistency level")
+	flag.IntVar(&arguments.ReplicationFactor, "replication-factor", 1, "replication factor")
+	flag.DurationVar(&arguments.Timeout, "timeout", 5*time.Second, "request timeout")
 
-		nodes             string
-		caCertFile        string
-		clientCertFile    string
-		clientKeyFile     string
-		serverName        string
-		hostVerification  bool
-		clientCompression bool
-		connectionCount   int
-		pageSize          int
+	flag.StringVar(&arguments.Nodes, "nodes", "127.0.0.1", "nodes")
+	flag.BoolVar(&arguments.ClientCompression, "client-compression", true, "use compression for client-coordinator communication")
+	flag.IntVar(&arguments.Concurrency, "concurrency", 16, "number of used goroutines")
+	flag.IntVar(&arguments.ConnectionCount, "connection-count", 4, "number of connections")
+	flag.IntVar(&arguments.MaximumRate, "max-rate", 0, "the maximum rate of outbound requests in op/s (0 for unlimited)")
+	flag.IntVar(&arguments.PageSize, "page-size", 1000, "page size")
 
-		partitionOffset int64
+	flag.Int64Var(&arguments.PartitionCount, "partition-count", 10000, "number of partitions")
+	flag.Int64Var(&arguments.ClusteringRowCount, "clustering-row-count", 100, "number of clustering rows in a partition")
+	flag.Var(MakeDistributionValue(&arguments.ClusteringRowSizeDist, random.Fixed{Value: 4}), "clustering-row-size", "size of a single clustering row, can use random values")
 
-		writeRate    int64
-		distribution string
+	flag.IntVar(&arguments.RowsPerRequest, "rows-per-request", 1, "clustering rows per single request")
+	flag.BoolVar(&arguments.ProvideUpperBound, "provide-upper-bound", false, "whether read requests should provide an upper bound")
+	flag.BoolVar(&arguments.InRestriction, "in-restriction", false, "use IN restriction in read requests")
+	flag.BoolVar(&arguments.NoLowerBound, "no-lower-bound", false, "do not provide lower bound in read requests")
+	flag.IntVar(&arguments.RangeCount, "range-count", 1, "number of ranges to split the token space into (relevant only for scan mode)")
 
-		hostSelectionPolicy string
-		tlsEncryption       bool
-	)
+	flag.DurationVar(&arguments.TestDuration, "duration", 0, "duration of the test in seconds (0 for unlimited)")
+	flag.UintVar(&arguments.Iterations, "iterations", 1, "number of iterations to run (0 for unlimited, relevant only for workloads that have a defined number of ops to execute)")
 
-	flag.StringVar(&mode, "mode", "", "operating mode: write, read, counter_update, counter_read, scan")
-	flag.StringVar(&workload, "workload", "", "workload: sequential, uniform, timeseries")
-	flag.StringVar(&consistencyLevel, "consistency-level", "quorum", "consistency level")
-	flag.IntVar(&replicationFactor, "replication-factor", 1, "replication factor")
-	flag.DurationVar(&timeout, "timeout", 5*time.Second, "request timeout")
+	flag.Int64Var(&arguments.PartitionOffset, "partition-offset", 0, "start of the partition range (only for sequential workload)")
 
-	flag.StringVar(&nodes, "nodes", "127.0.0.1", "nodes")
-	flag.BoolVar(&clientCompression, "client-compression", true, "use compression for client-coordinator communication")
-	flag.IntVar(&concurrency, "concurrency", 16, "number of used goroutines")
-	flag.IntVar(&connectionCount, "connection-count", 4, "number of connections")
-	flag.IntVar(&maximumRate, "max-rate", 0, "the maximum rate of outbound requests in op/s (0 for unlimited)")
-	flag.IntVar(&pageSize, "page-size", 1000, "page size")
-
-	flag.Int64Var(&partitionCount, "partition-count", 10000, "number of partitions")
-	flag.Int64Var(&clusteringRowCount, "clustering-row-count", 100, "number of clustering rows in a partition")
-	flag.Var(MakeDistributionValue(&clusteringRowSizeDist, random.Fixed{Value: 4}), "clustering-row-size", "size of a single clustering row, can use random values")
-
-	flag.IntVar(&rowsPerRequest, "rows-per-request", 1, "clustering rows per single request")
-	flag.BoolVar(&provideUpperBound, "provide-upper-bound", false, "whether read requests should provide an upper bound")
-	flag.BoolVar(&inRestriction, "in-restriction", false, "use IN restriction in read requests")
-	flag.BoolVar(&noLowerBound, "no-lower-bound", false, "do not provide lower bound in read requests")
-	flag.IntVar(&rangeCount, "range-count", 1, "number of ranges to split the token space into (relevant only for scan mode)")
-
-	flag.DurationVar(&testDuration, "duration", 0, "duration of the test in seconds (0 for unlimited)")
-	flag.UintVar(&iterations, "iterations", 1, "number of iterations to run (0 for unlimited, relevant only for workloads that have a defined number of ops to execute)")
-
-	flag.Int64Var(&partitionOffset, "partition-offset", 0, "start of the partition range (only for sequential workload)")
-
-	flag.BoolVar(&measureLatency, "measure-latency", true, "measure request latency")
-	flag.BoolVar(&validateData, "validate-data", false, "write meaningful data and validate while reading")
+	flag.BoolVar(&arguments.MeasureLatency, "measure-latency", true, "measure request latency")
+	flag.BoolVar(&arguments.ValidateData, "validate-data", false, "write meaningful data and validate while reading")
 
 	var startTimestamp int64
-	flag.Int64Var(&writeRate, "write-rate", 0, "rate of writes (relevant only for time series reads)")
+	flag.Int64Var(&arguments.WriteRate, "write-rate", 0, "rate of writes (relevant only for time series reads)")
 	flag.Int64Var(&startTimestamp, "start-timestamp", 0, "start timestamp of the write load (relevant only for time series reads)")
-	flag.StringVar(&distribution, "distribution", "uniform", "distribution of keys (relevant only for time series reads): uniform, hnormal")
+	flag.StringVar(&arguments.Distribution, "distribution", "uniform", "distribution of keys (relevant only for time series reads): uniform, hnormal")
 
-	flag.StringVar(&latencyType, "latency-type", "raw", "type of the latency to print during the run: raw, fixed-coordinated-omission")
+	flag.StringVar(&arguments.LatencyType, "latency-type", "raw", "type of the latency to print during the run: raw, fixed-coordinated-omission")
 
-	flag.StringVar(&keyspaceName, "keyspace", "scylla_bench", "keyspace to use")
-	flag.StringVar(&tableName, "table", "test", "table to use")
-	flag.StringVar(&username, "username", "", "cql username for authentication")
-	flag.StringVar(&password, "password", "", "cql password for authentication")
+	flag.StringVar(&arguments.KeyspaceName, "keyspace", "scylla_bench", "keyspace to use")
+	flag.StringVar(&arguments.TableName, "table", "test", "table to use")
+	flag.StringVar(&arguments.Username, "username", "", "cql username for authentication")
+	flag.StringVar(&arguments.Password, "password", "", "cql password for authentication")
 
-	flag.BoolVar(&tlsEncryption, "tls", false, "use TLS encryption")
-	flag.StringVar(&serverName, "tls-server-name", "", "TLS server hostname")
-	flag.BoolVar(&hostVerification, "tls-host-verification", false, "verify server certificate")
-	flag.StringVar(&caCertFile, "tls-ca-cert-file", "", "path to CA certificate file, needed to enable encryption")
-	flag.StringVar(&clientCertFile, "tls-client-cert-file", "", "path to client certificate file, needed to enable client certificate authentication")
-	flag.StringVar(&clientKeyFile, "tls-client-key-file", "", "path to client key file, needed to enable client certificate authentication")
+	flag.BoolVar(&arguments.TLSEncryption, "tls", false, "use TLS encryption")
+	flag.StringVar(&arguments.ServerName, "tls-server-name", "", "TLS server hostname")
+	flag.BoolVar(&arguments.HostVerification, "tls-host-verification", false, "verify server certificate")
+	flag.StringVar(&arguments.CaCertFile, "tls-ca-cert-file", "", "path to CA certificate file, needed to enable encryption")
+	flag.StringVar(&arguments.ClientCertFile, "tls-client-cert-file", "", "path to client certificate file, needed to enable client certificate authentication")
+	flag.StringVar(&arguments.ClientKeyFile, "tls-client-key-file", "", "path to client key file, needed to enable client certificate authentication")
 
-	flag.StringVar(&hostSelectionPolicy, "host-selection-policy", "token-aware", "set the driver host selection policy (round-robin,token-aware,dc-aware),default 'token-aware'")
-	flag.IntVar(&maxErrorsAtRow, "error-at-row-limit", 0, "set limit of errors caught by one thread at row after which workflow will be terminated and error reported. Set it to 0 if you want to haven no limit")
+	flag.StringVar(&arguments.HostSelectionPolicy, "host-selection-policy", "token-aware", "set the driver host selection policy (round-robin,token-aware,dc-aware),default 'token-aware'")
+	flag.IntVar(&arguments.MaxErrorsAtRow, "error-at-row-limit", 0, "set limit of errors caught by one thread at row after which workflow will be terminated and error reported. Set it to 0 if you want to haven no limit")
 
 	flag.Parse()
-	counterTableName = "test_counters"
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stdout, "Usage:\n%s [options]\n\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 
-	if mode == "" {
-		log.Fatal("test mode needs to be specified")
+	if arguments.Mode == "" {
+		log.Fatal("test arguments.Mode needs to be specified")
 	}
 
-	if mode == "scan" {
-		if workload != "" {
+	if arguments.Mode == "scan" {
+		if arguments.Workload != "" {
 			log.Fatal("workload type cannot be scpecified for scan mode")
 		}
-		workload = "scan"
-		if concurrency > rangeCount {
-			concurrency = rangeCount
-			log.Printf("adjusting concurrency to the highest useful value of %v", concurrency)
+		arguments.Workload = "scan"
+		if arguments.Concurrency > arguments.RangeCount {
+			arguments.Concurrency = arguments.RangeCount
+			log.Printf("adjusting arguments.Concurrency to the highest useful value of %v", arguments.Concurrency)
 		}
-	} else if workload == "" {
+	} else if arguments.Workload == "" {
 		log.Fatal("workload type needs to be specified")
 	}
 
-	if workload == "uniform" && testDuration == 0 {
+	if arguments.Workload == "uniform" && arguments.TestDuration == 0 {
 		log.Fatal("uniform workload requires limited test duration")
 	}
 
-	if iterations > 1 && workload != "sequential" && workload != "scan" {
+	if arguments.Iterations > 1 && arguments.Workload != "sequential" && arguments.Workload != "scan" {
 		log.Fatal("iterations only supported for the sequential and scan workload")
 	}
 
-	if partitionOffset != 0 && workload != "sequential" {
+	if arguments.PartitionOffset != 0 && arguments.Workload != "sequential" {
 		log.Fatal("partition-offset has a meaning only in sequential workloads")
 	}
 
-	readModeTweaks := toInt(inRestriction) + toInt(provideUpperBound) + toInt(noLowerBound)
-	if mode != "read" && mode != "counter_read" {
+	readModeTweaks := toInt(arguments.InRestriction) + toInt(arguments.ProvideUpperBound) + toInt(arguments.NoLowerBound)
+	if arguments.Mode != "read" && arguments.Mode != "counter_read" {
 		if readModeTweaks != 0 {
 			log.Fatal("in-restriction, no-lower-bound and provide-uppder-bound flags make sense only in read mode")
 		}
@@ -315,40 +258,40 @@ func main() {
 		log.Fatal("in-restriction, no-lower-bound and provide-uppder-bound flags are mutually exclusive")
 	}
 
-	if workload == "timeseries" && mode == "read" && writeRate == 0 {
+	if arguments.Workload == "timeseries" && arguments.Mode == "read" && arguments.WriteRate == 0 {
 		log.Fatal("write rate must be provided for time series reads loads")
 	}
-	if workload == "timeseries" && mode == "read" && startTimestamp == 0 {
+	if arguments.Workload == "timeseries" && arguments.Mode == "read" && startTimestamp == 0 {
 		log.Fatal("start timestamp must be provided for time series reads loads")
 	}
-	if workload == "timeseries" && mode == "write" && int64(concurrency) > partitionCount {
-		log.Fatal("time series writes require concurrency less than or equal partition count")
+	if arguments.Workload == "timeseries" && arguments.Mode == "write" && int64(arguments.Concurrency) > arguments.PartitionCount {
+		log.Fatal("time series writes require arguments.Concurrency less than or equal partition count")
 	}
-	if workload == "timeseries" && mode == "write" && maximumRate == 0 {
+	if arguments.Workload == "timeseries" && arguments.Mode == "write" && arguments.MaximumRate == 0 {
 		log.Fatal("max-rate must be provided for time series write loads")
 	}
 
-	if timeout != 0 {
-		errorToTimeoutCutoffTime = timeout / 5
+	if arguments.Timeout != 0 {
+		arguments.ErrorToTimeoutCutoffTime = arguments.Timeout / 5
 	} else {
-		errorToTimeoutCutoffTime = time.Second
+		arguments.ErrorToTimeoutCutoffTime = time.Second
 	}
 
-	if err := results.ValidateGlobalLatencyType(latencyType); err != nil {
+	if err := results.ValidateGlobalLatencyType(arguments.LatencyType); err != nil {
 		log.Fatal(errors.Wrap(err, "Bad value for latency-type"))
 	}
 
-	cluster := gocql.NewCluster(strings.Split(nodes, ",")...)
-	cluster.NumConns = connectionCount
-	cluster.PageSize = pageSize
-	cluster.Timeout = timeout
-	policy, err := newHostSelectionPolicy(hostSelectionPolicy, strings.Split(nodes, ","))
+	cluster := gocql.NewCluster(strings.Split(arguments.Nodes, ",")...)
+	cluster.NumConns = arguments.ConnectionCount
+	cluster.PageSize = arguments.PageSize
+	cluster.Timeout = arguments.Timeout
+	policy, err := newHostSelectionPolicy(arguments.HostSelectionPolicy, strings.Split(arguments.Nodes, ","))
 	if err != nil {
 		log.Fatal(err)
 	}
 	cluster.PoolConfig.HostSelectionPolicy = policy
 
-	switch consistencyLevel {
+	switch arguments.ConsistencyLevel {
 	case "any":
 		cluster.Consistency = gocql.Any
 	case "one":
@@ -368,57 +311,57 @@ func main() {
 	case "local_one":
 		cluster.Consistency = gocql.LocalOne
 	default:
-		log.Fatal("unknown consistency level: ", consistencyLevel)
+		log.Fatal("unknown consistency level: ", arguments.ConsistencyLevel)
 	}
-	if clientCompression {
+	if arguments.ClientCompression {
 		cluster.Compressor = &gocql.SnappyCompressor{}
 	}
 
-	if username != "" && password != "" {
+	if arguments.Username != "" && arguments.Password != "" {
 		cluster.Authenticator = gocql.PasswordAuthenticator{
-			Username: username,
-			Password: password,
+			Username: arguments.Username,
+			Password: arguments.Password,
 		}
 	}
 
-	if tlsEncryption {
+	if arguments.TLSEncryption {
 		sslOpts := &gocql.SslOptions{
 			Config: &tls.Config{
-				ServerName: serverName,
+				ServerName: arguments.ServerName,
 			},
-			EnableHostVerification: hostVerification,
+			EnableHostVerification: arguments.HostVerification,
 		}
 
-		if caCertFile != "" {
-			if _, err := os.Stat(caCertFile); err != nil {
+		if arguments.CaCertFile != "" {
+			if _, err := os.Stat(arguments.CaCertFile); err != nil {
 				log.Fatal(err)
 			}
-			sslOpts.CaPath = caCertFile
+			sslOpts.CaPath = arguments.CaCertFile
 		}
 
-		if clientKeyFile != "" {
-			if _, err := os.Stat(clientKeyFile); err != nil {
+		if arguments.ClientKeyFile != "" {
+			if _, err := os.Stat(arguments.ClientKeyFile); err != nil {
 				log.Fatal(err)
 			}
-			sslOpts.KeyPath = clientKeyFile
+			sslOpts.KeyPath = arguments.ClientKeyFile
 		}
 
-		if clientCertFile != "" {
-			if _, err := os.Stat(clientCertFile); err != nil {
+		if arguments.ClientCertFile != "" {
+			if _, err := os.Stat(arguments.ClientCertFile); err != nil {
 				log.Fatal(err)
 			}
-			sslOpts.CertPath = clientCertFile
+			sslOpts.CertPath = arguments.ClientCertFile
 		}
 
-		if clientKeyFile != "" && clientCertFile == "" {
+		if arguments.ClientKeyFile != "" && arguments.ClientCertFile == "" {
 			log.Fatal("tls-client-cert-file is required when tls-client-key-file is provided")
 		}
-		if clientCertFile != "" && clientKeyFile == "" {
+		if arguments.ClientCertFile != "" && arguments.ClientKeyFile == "" {
 			log.Fatal("tls-client-key-file is required when tls-client-cert-file is provided")
 		}
 
-		if hostVerification {
-			if serverName == "" {
+		if arguments.HostVerification {
+			if arguments.ServerName == "" {
 				log.Fatal("tls-server-name is required when tls-host-verification is enabled")
 			}
 		}
@@ -432,8 +375,6 @@ func main() {
 	}
 	defer session.Close()
 
-	PrepareDatabase(session, replicationFactor)
-
 	interrupted := make(chan os.Signal, 1)
 	signal.Notify(interrupted, os.Interrupt)
 	go func() {
@@ -446,9 +387,9 @@ func main() {
 		os.Exit(1)
 	}()
 
-	if testDuration > 0 {
+	if arguments.TestDuration > 0 {
 		go func() {
-			time.Sleep(testDuration)
+			time.Sleep(arguments.TestDuration)
 			atomic.StoreUint32(&stopAll, 1)
 		}()
 	}
@@ -460,39 +401,44 @@ func main() {
 	}
 
 	fmt.Println("Configuration")
-	fmt.Println("Mode:\t\t\t", mode)
-	fmt.Println("Workload:\t\t", workload)
-	fmt.Println("Timeout:\t\t", timeout)
-	fmt.Println("Consistency level:\t", consistencyLevel)
-	fmt.Println("Partition count:\t", partitionCount)
-	if workload == "sequential" && partitionOffset != 0 {
-		fmt.Println("Partition offset:\t", partitionOffset)
+	fmt.Println("Keyspace:\t\t", arguments.KeyspaceName)
+	fmt.Println("Tablename:\t\t", arguments.TableName)
+	fmt.Println("Mode:\t\t\t", arguments.Mode)
+	fmt.Println("Workload:\t\t", arguments.Workload)
+	fmt.Println("Timeout:\t\t", arguments.Timeout)
+	fmt.Println("Consistency level:\t", arguments.ConsistencyLevel)
+	fmt.Println("Replication factor:\t", arguments.ReplicationFactor)
+	fmt.Println("Partition count:\t", arguments.PartitionCount)
+	if arguments.Workload == "sequential" && arguments.PartitionOffset != 0 {
+		fmt.Println("Partition offset:\t", arguments.PartitionOffset)
 	}
-	fmt.Println("Clustering rows:\t", clusteringRowCount)
-	fmt.Println("Clustering row size:\t", clusteringRowSizeDist)
-	fmt.Println("Rows per request:\t", rowsPerRequest)
-	if mode == "read" {
-		fmt.Println("Provide upper bound:\t", provideUpperBound)
-		fmt.Println("IN queries:\t\t", inRestriction)
-		fmt.Println("No lower bound:\t\t", noLowerBound)
+	fmt.Println("Clustering rows:\t", arguments.ClusteringRowCount)
+	fmt.Println("Clustering row size:\t", arguments.ClusteringRowSizeDist)
+	fmt.Println("Rows per request:\t", arguments.RowsPerRequest)
+	if arguments.Mode == "read" {
+		fmt.Println("Provide upper bound:\t", arguments.ProvideUpperBound)
+		fmt.Println("IN queries:\t\t", arguments.InRestriction)
+		fmt.Println("No lower bound:\t\t", arguments.NoLowerBound)
 	}
-	fmt.Println("Page size:\t\t", pageSize)
-	fmt.Println("Concurrency:\t\t", concurrency)
-	fmt.Println("Connections:\t\t", connectionCount)
-	if maximumRate > 0 {
-		fmt.Println("Maximum rate:\t\t", maximumRate, "op/s")
+	fmt.Println("Page size:\t\t", arguments.PageSize)
+	fmt.Println("Concurrency:\t\t", arguments.Concurrency)
+	fmt.Println("Connections:\t\t", arguments.ConnectionCount)
+	if arguments.MaximumRate > 0 {
+		fmt.Println("Maximum rate:\t\t", arguments.MaximumRate, "op/s")
 	} else {
 		fmt.Println("Maximum rate:\t\t unlimited")
 	}
-	fmt.Println("Client compression:\t", clientCompression)
-	if workload == "timeseries" {
+	fmt.Println("Client compression:\t", arguments.ClientCompression)
+	if arguments.Workload == "timeseries" {
 		fmt.Println("Start timestamp:\t", startTime.UnixNano())
-		fmt.Println("Write rate:\t\t", int64(maximumRate)/partitionCount)
+		fmt.Println("Write rate:\t\t", int64(arguments.MaximumRate)/arguments.PartitionCount)
 	}
 
+	PrepareDatabase(session, arguments.ReplicationFactor)
+
 	setResultsConfiguration()
-	testResult := RunConcurrently(maximumRate, func(i int, testResult *results.TestThreadResult, rateLimiter rate_limiters.RateLimiter) {
-		GetMode(mode)(session, testResult, GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution), rateLimiter)
+	testResult := RunConcurrently(arguments.MaximumRate, func(i int, testResult *results.TestThreadResult, rateLimiter rate_limiters.RateLimiter) {
+		GetMode(arguments.Mode)(session, testResult, GetWorkload(arguments.Workload, i, arguments.PartitionOffset, arguments.Mode, arguments.WriteRate, arguments.Distribution), rateLimiter)
 	})
 
 	testResult.GetTotalResults()
@@ -516,10 +462,10 @@ func newHostSelectionPolicy(policy string, hosts []string) (gocql.HostSelectionP
 func setResultsConfiguration() {
 	results.SetGlobalHistogramConfiguration(
 		time.Microsecond.Nanoseconds()*50,
-		(timeout*3).Nanoseconds(),
+		(arguments.Timeout*3).Nanoseconds(),
 		3,
 	)
-	results.SetGlobalMeasureLatency(measureLatency)
-	results.SetGlobalConcurrency(concurrency)
-	results.SetGlobalLatencyTypeFromString(latencyType)
+	results.SetGlobalMeasureLatency(arguments.MeasureLatency)
+	results.SetGlobalConcurrency(arguments.Concurrency)
+	results.SetGlobalLatencyTypeFromString(arguments.LatencyType)
 }

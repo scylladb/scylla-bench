@@ -13,26 +13,26 @@ import (
 
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
+	. "github.com/scylladb/scylla-bench/pkg/rate_limiters"
 	"github.com/scylladb/scylla-bench/pkg/results"
 	. "github.com/scylladb/scylla-bench/pkg/workloads"
-	. "github.com/scylladb/scylla-bench/pkg/rate_limiters"
 )
 
 func RunConcurrently(maximumRate int, workload func(id int, testResult *results.TestThreadResult, rateLimiter RateLimiter)) *results.TestResults {
 	var timeOffsetUnit int64
 	if maximumRate != 0 {
 		timeOffsetUnit = int64(time.Second) / int64(maximumRate)
-		maximumRate /= concurrency
+		maximumRate /= arguments.Concurrency
 	} else {
 		timeOffsetUnit = 0
 	}
 
 	totalResults := results.TestResults{}
-	totalResults.Init(concurrency)
+	totalResults.Init(arguments.Concurrency)
 	totalResults.SetStartTime()
 	totalResults.PrintResultsHeader()
 
-	for i := 0; i < concurrency; i++ {
+	for i := 0; i < arguments.Concurrency; i++ {
 		testResult := totalResults.GetTestResult(i)
 		go func(i int) {
 			timeOffset := time.Duration(timeOffsetUnit * int64(i))
@@ -58,7 +58,7 @@ func (ti *TestIterator) IsDone() bool {
 	}
 
 	if ti.workload.IsDone() {
-		if ti.iteration+1 == iterations {
+		if ti.iteration+1 == arguments.Iterations {
 			return true
 		} else {
 			ti.workload.Restart()
@@ -90,7 +90,7 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 			errorsAtRow += 1
 			threadResult.IncErrors()
 			log.Print(err)
-			if rawLatency > errorToTimeoutCutoffTime {
+			if rawLatency > arguments.ErrorToTimeoutCutoffTime {
 				// Consider this error to be timeout error and register it in histogram
 				threadResult.RecordRawLatency(rawLatency)
 				threadResult.RecordCoFixedLatency(endTime.Sub(expectedStartTime))
@@ -102,7 +102,7 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 		}
 
 		now := time.Now()
-		if maxErrorsAtRow > 0 && errorsAtRow >= maxErrorsAtRow {
+		if arguments.MaxErrorsAtRow > 0 && errorsAtRow >= arguments.MaxErrorsAtRow {
 			threadResult.SubmitCriticalError(errors.New(fmt.Sprintf("Error limit (maxErrorsAtRow) of %d errors is reached", errorsAtRow)))
 		}
 		if results.GlobalErrorFlag {
@@ -125,11 +125,11 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 
 const (
 	generatedDataHeaderSize int64 = 24
-	generatedDataMinSize    int64 = generatedDataHeaderSize + 33
+	generatedDataMinSize          = generatedDataHeaderSize + 33
 )
 
 func GenerateData(pk int64, ck int64, size int64) []byte {
-	if !validateData {
+	if !arguments.ValidateData {
 		return make([]byte, size)
 	}
 
@@ -177,7 +177,7 @@ func GenerateData(pk int64, ck int64, size int64) []byte {
 }
 
 func ValidateData(pk int64, ck int64, data []byte) error {
-	if !validateData {
+	if !arguments.ValidateData {
 		return nil
 	}
 
@@ -260,12 +260,12 @@ func ValidateData(pk int64, ck int64, data []byte) error {
 }
 
 func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
-	query := session.Query("INSERT INTO " + keyspaceName + "." + tableName + " (pk, ck, v) VALUES (?, ?, ?)")
+	query := session.Query("INSERT INTO " + arguments.KeyspaceName + "." + arguments.TableName + " (pk, ck, v) VALUES (?, ?, ?)")
 
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
-		value := GenerateData(pk, ck, clusteringRowSizeDist.Generate())
+		value := GenerateData(pk, ck, arguments.ClusteringRowSizeDist.Generate())
 		bound := query.Bind(pk, ck, value)
 
 		requestStart := time.Now()
@@ -284,17 +284,17 @@ func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, wo
 }
 
 func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
-	request := fmt.Sprintf("INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)", keyspaceName, tableName)
+	request := fmt.Sprintf("INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)", arguments.KeyspaceName, arguments.TableName)
 
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
 		batch := session.NewBatch(gocql.UnloggedBatch)
 		batchSize := 0
 
 		currentPk := workload.NextPartitionKey()
-		for !workload.IsPartitionDone() && atomic.LoadUint32(&stopAll) == 0 && batchSize < rowsPerRequest {
+		for !workload.IsPartitionDone() && atomic.LoadUint32(&stopAll) == 0 && batchSize < arguments.RowsPerRequest {
 			ck := workload.NextClusteringKey()
 			batchSize++
-			value := GenerateData(currentPk, ck, clusteringRowSizeDist.Generate())
+			value := GenerateData(currentPk, ck, arguments.ClusteringRowSizeDist.Generate())
 			batch.Query(request, currentPk, ck, value)
 		}
 
@@ -314,7 +314,7 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 }
 
 func DoCounterUpdates(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
-	query := session.Query("UPDATE " + keyspaceName + "." + counterTableName +
+	query := session.Query("UPDATE " + arguments.KeyspaceName + "." + counterTableName +
 		" SET c1 = c1 + ?, c2 = c2 + ?, c3 = c3 + ?, c4 = c4 + ?, c5 = c5 + ? WHERE pk = ? AND ck = ?")
 
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
@@ -338,7 +338,7 @@ func DoCounterUpdates(session *gocql.Session, threadResult *results.TestThreadRe
 }
 
 func DoReads(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
-	DoReadsFromTable(tableName, session, threadResult, workload, rateLimiter)
+	DoReadsFromTable(arguments.TableName, session, threadResult, workload, rateLimiter)
 }
 
 func DoCounterReads(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
@@ -348,24 +348,24 @@ func DoCounterReads(session *gocql.Session, threadResult *results.TestThreadResu
 func DoReadsFromTable(table string, session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
 	var request string
 	var selectFields string
-	if table == tableName {
+	if table == arguments.TableName {
 		selectFields = "pk, ck, v"
 	} else {
 		selectFields = "pk, ck, c1, c2, c3, c4, c5"
 	}
 	switch {
-	case inRestriction:
-		arr := make([]string, rowsPerRequest)
-		for i := 0; i < rowsPerRequest; i++ {
+	case arguments.InRestriction:
+		arr := make([]string, arguments.RowsPerRequest)
+		for i := 0; i < arguments.RowsPerRequest; i++ {
 			arr[i] = "?"
 		}
-		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck IN (%s)", selectFields, keyspaceName, table, strings.Join(arr, ", "))
-	case provideUpperBound:
-		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ?", selectFields, keyspaceName, table)
-	case noLowerBound:
-		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? LIMIT %d", selectFields, keyspaceName, table, rowsPerRequest)
+		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck IN (%s)", selectFields, arguments.KeyspaceName, table, strings.Join(arr, ", "))
+	case arguments.ProvideUpperBound:
+		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ?", selectFields, arguments.KeyspaceName, table)
+	case arguments.NoLowerBound:
+		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? LIMIT %d", selectFields, arguments.KeyspaceName, table, arguments.RowsPerRequest)
 	default:
-		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? LIMIT %d", selectFields, keyspaceName, table, rowsPerRequest)
+		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? LIMIT %d", selectFields, arguments.KeyspaceName, table, arguments.RowsPerRequest)
 	}
 	query := session.Query(request)
 
@@ -374,10 +374,10 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 
 		var bound *gocql.Query
 		switch {
-		case inRestriction:
-			args := make([]interface{}, 1, rowsPerRequest+1)
+		case arguments.InRestriction:
+			args := make([]interface{}, 1, arguments.RowsPerRequest+1)
 			args[0] = pk
-			for i := 0; i < rowsPerRequest; i++ {
+			for i := 0; i < arguments.RowsPerRequest; i++ {
 				if workload.IsPartitionDone() {
 					args = append(args, 0)
 				} else {
@@ -385,12 +385,12 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 				}
 			}
 			bound = query.Bind(args...)
-		case noLowerBound:
+		case arguments.NoLowerBound:
 			bound = query.Bind(pk)
 		default:
 			ck := workload.NextClusteringKey()
-			if provideUpperBound {
-				bound = query.Bind(pk, ck, ck+int64(rowsPerRequest))
+			if arguments.ProvideUpperBound {
+				bound = query.Bind(pk, ck, ck+int64(arguments.RowsPerRequest))
 			} else {
 				bound = query.Bind(pk, ck)
 			}
@@ -400,10 +400,10 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 		var value []byte
 		requestStart := time.Now()
 		iter := bound.Iter()
-		if table == tableName {
+		if table == arguments.TableName {
 			for iter.Scan(&resPk, &resCk, &value) {
 				rb.IncRows()
-				if validateData {
+				if arguments.ValidateData {
 					err := ValidateData(resPk, resCk, value)
 					if err != nil {
 						rb.IncErrors()
@@ -415,7 +415,7 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 			var c1, c2, c3, c4, c5 int64
 			for iter.Scan(&resPk, &resCk, &c1, &c2, &c3, &c4, &c5) {
 				rb.IncRows()
-				if validateData {
+				if arguments.ValidateData {
 					// in case of uniform workload the same row can be updated number of times
 					var updateNum int64
 					if resCk == 0 {
@@ -445,7 +445,7 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 }
 
 func DoScanTable(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
-	request := fmt.Sprintf("SELECT * FROM %s.%s WHERE token(pk) >= ? AND token(pk) <= ?", keyspaceName, tableName)
+	request := fmt.Sprintf("SELECT * FROM %s.%s WHERE token(pk) >= ? AND token(pk) <= ?", arguments.KeyspaceName, arguments.TableName)
 	query := session.Query(request)
 
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
