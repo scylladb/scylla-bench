@@ -18,6 +18,7 @@ import (
 	"github.com/hailocab/go-hostpool"
 	"github.com/pkg/errors"
 	. "github.com/scylladb/scylla-bench/pkg/workloads"
+	"github.com/scylladb/scylla-bench/pkg/rate_limiters"
 	"github.com/scylladb/scylla-bench/random"
 )
 
@@ -161,7 +162,7 @@ func GetWorkload(name string, threadId int, partitionOffset int64, mode string, 
 	panic("unreachable")
 }
 
-func GetMode(name string) func(session *gocql.Session, testResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
+func GetMode(name string) func(session *gocql.Session, testResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter rate_limiters.RateLimiter) {
 	switch name {
 	case "write":
 		if rowsPerRequest == 1 {
@@ -490,7 +491,7 @@ func main() {
 	}
 
 	setResultsConfiguration()
-	testResult := RunConcurrently(maximumRate, func(i int, testResult *results.TestThreadResult, rateLimiter RateLimiter) {
+	testResult := RunConcurrently(maximumRate, func(i int, testResult *results.TestThreadResult, rateLimiter rate_limiters.RateLimiter) {
 		GetMode(mode)(session, testResult, GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution), rateLimiter)
 	})
 
