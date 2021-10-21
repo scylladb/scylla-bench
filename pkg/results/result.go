@@ -27,6 +27,7 @@ var LatencyTypes = map[string]int{
 type Configuration struct {
 	concurrency                   int
 	measureLatency                bool
+	hdrLatencyFile                string
 	latencyTypeToPrint            int
 	latencyHistogramConfiguration histogramConfiguration
 }
@@ -83,6 +84,10 @@ func GetGlobalMeasureLatency() bool {
 	return globalResultConfiguration.measureLatency
 }
 
+func SetGlobalHdrLatencyFile(value string) {
+	globalResultConfiguration.hdrLatencyFile = value
+}
+
 func SetGlobalConcurrency(value int) {
 	globalResultConfiguration.concurrency = value
 }
@@ -91,8 +96,10 @@ func GetGlobalConcurrency() int {
 	return globalResultConfiguration.concurrency
 }
 
-func NewHistogram(config *histogramConfiguration) *hdrhistogram.Histogram {
-	return hdrhistogram.New(config.minValue, config.maxValue, config.sigFig)
+func NewHistogram(config *histogramConfiguration, name string) *hdrhistogram.Histogram {
+	histogram := hdrhistogram.New(config.minValue, config.maxValue, config.sigFig)
+	histogram.SetTag(name)
+	return histogram
 }
 
 var globalResultConfiguration Configuration

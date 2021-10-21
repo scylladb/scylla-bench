@@ -45,7 +45,6 @@ func (tr *TestResults) GetResultsFromThreadsAndMerge() (bool, *MergedResult) {
 		res := <-ch.ResultChannel
 		if !final && res.Final {
 			final = true
-			result = NewMergedResult()
 			for _, ch2 := range tr.threadResults[0:i] {
 				res = <-ch2.ResultChannel
 				for !res.Final {
@@ -65,11 +64,30 @@ func (tr *TestResults) GetResultsFromThreadsAndMerge() (bool, *MergedResult) {
 }
 
 func (tr *TestResults) GetTotalResults() {
-	final, result := tr.GetResultsFromThreadsAndMerge()
-	for !final {
+	var final bool
+	var result *MergedResult
+
+	// We need this rounding since hdr histogram round up baseTime dividing by 1000
+	//  before reducing it from start time, which is divided by 1000000000 before applied to histogram
+	//  giving small chance that rounded baseTime would be greater than histogram start time and negative
+	//  times in the histogram log
+	baseTime := (time.Now().UnixNano() / 1000000000) * 1000000000
+
+	var hdrLogWriter *hdrhistogram.HistogramLogWriter
+	if globalResultConfiguration.hdrLatencyFile != "" {
+		hdrLogWriter = InitHdrLogWriter(globalResultConfiguration.hdrLatencyFile, baseTime)
+	}
+
+	for {
+		final, result = tr.GetResultsFromThreadsAndMerge()
+		if final {
+			break
+		}
 		result.Time = time.Since(tr.startTime)
 		result.PrintPartialResult()
-		final, result = tr.GetResultsFromThreadsAndMerge()
+		if hdrLogWriter != nil {
+			result.SaveLatenciesToHdrHistogramLogFile(hdrLogWriter)
+		}
 	}
 	tr.totalResult = result
 }

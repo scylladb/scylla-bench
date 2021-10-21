@@ -94,6 +94,7 @@ var (
 	stopAll uint32
 
 	measureLatency bool
+	hdrLatencyFile string
 	validateData   bool
 )
 
@@ -244,6 +245,8 @@ func main() {
 	flag.Int64Var(&partitionOffset, "partition-offset", 0, "start of the partition range (only for sequential workload)")
 
 	flag.BoolVar(&measureLatency, "measure-latency", true, "measure request latency")
+	flag.StringVar(&hdrLatencyFile, "hdr-latency-file", "", "log co-fixed and raw latency hdr histograms into a file")
+
 	flag.BoolVar(&validateData, "validate-data", false, "write meaningful data and validate while reading")
 
 	var startTimestamp int64
@@ -519,6 +522,7 @@ func setResultsConfiguration() {
 		3,
 	)
 	results.SetGlobalMeasureLatency(measureLatency)
+	results.SetGlobalHdrLatencyFile(hdrLatencyFile)
 	results.SetGlobalConcurrency(concurrency)
 	results.SetGlobalLatencyTypeFromString(latencyType)
 }
