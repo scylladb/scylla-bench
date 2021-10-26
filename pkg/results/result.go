@@ -28,6 +28,7 @@ type Configuration struct {
 	concurrency                   int
 	measureLatency                bool
 	hdrLatencyFile                string
+	hdrLatencyScale                int64
 	latencyTypeToPrint            int
 	latencyHistogramConfiguration histogramConfiguration
 }
@@ -44,8 +45,8 @@ type Result struct {
 }
 
 func SetGlobalHistogramConfiguration(minValue int64, maxValue int64, sigFig int) {
-	globalResultConfiguration.latencyHistogramConfiguration.minValue = minValue
-	globalResultConfiguration.latencyHistogramConfiguration.maxValue = maxValue
+	globalResultConfiguration.latencyHistogramConfiguration.minValue = minValue / globalResultConfiguration.hdrLatencyScale
+	globalResultConfiguration.latencyHistogramConfiguration.maxValue = maxValue / globalResultConfiguration.hdrLatencyScale
 	globalResultConfiguration.latencyHistogramConfiguration.sigFig = sigFig
 }
 
@@ -86,6 +87,22 @@ func GetGlobalMeasureLatency() bool {
 
 func SetGlobalHdrLatencyFile(value string) {
 	globalResultConfiguration.hdrLatencyFile = value
+}
+
+func SetGlobalHdrLatencyUnits(value string) {
+	switch value {
+	case "ns":
+		globalResultConfiguration.hdrLatencyScale = 1
+		break
+	case "us":
+		globalResultConfiguration.hdrLatencyScale = 1000
+		break
+	case "ms":
+		globalResultConfiguration.hdrLatencyScale = 1000000
+		break
+	default:
+		panic("Wrong value for hdr-latency-scale, only supported values are: ns, us and ms")
+	}
 }
 
 func SetGlobalConcurrency(value int) {

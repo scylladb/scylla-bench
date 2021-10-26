@@ -108,7 +108,7 @@ func (mr *MergedResult) getLatencyHistogram() *hdrhistogram.Histogram {
 	return mr.RawLatency
 }
 
-func (mr *MergedResult) SaveLatenciesToHdrHistogramLogFile(hdrLogWriter *hdrhistogram.HistogramLogWriter) {
+func (mr *MergedResult) SaveLatenciesToHdrHistogram(hdrLogWriter *hdrhistogram.HistogramLogWriter) {
 	startTimeMs := mr.HistogramStartTime / 1000000000
 	endTimeMs := time.Now().UnixNano() / 1000000000
 	mr.CoFixedLatency.SetStartTimeMs(startTimeMs)
@@ -126,11 +126,12 @@ func (mr *MergedResult) SaveLatenciesToHdrHistogramLogFile(hdrLogWriter *hdrhist
 func (mr *MergedResult) PrintPartialResult() {
 	latencyError := ""
 	if globalResultConfiguration.measureLatency {
+		scale := globalResultConfiguration.hdrLatencyScale
 		var latencyHist = mr.getLatencyHistogram()
 		fmt.Printf(withLatencyLineFmt, Round(mr.Time), mr.Operations, mr.ClusteringRows, mr.Errors,
-			Round(time.Duration(latencyHist.Max())), Round(time.Duration(latencyHist.ValueAtQuantile(99.9))), Round(time.Duration(latencyHist.ValueAtQuantile(99))),
-			Round(time.Duration(latencyHist.ValueAtQuantile(95))), Round(time.Duration(latencyHist.ValueAtQuantile(90))),
-			Round(time.Duration(latencyHist.ValueAtQuantile(50))), Round(time.Duration(latencyHist.Mean())),
+			Round(time.Duration(latencyHist.Max() * scale)), Round(time.Duration(latencyHist.ValueAtQuantile(99.9) * scale)), Round(time.Duration(latencyHist.ValueAtQuantile(99) * scale)),
+			Round(time.Duration(latencyHist.ValueAtQuantile(95) * scale)), Round(time.Duration(latencyHist.ValueAtQuantile(90) * scale)),
+			Round(time.Duration(latencyHist.ValueAtQuantile(50) * scale)), Round(time.Duration(latencyHist.Mean() * float64(scale))),
 			latencyError)
 	} else {
 		fmt.Printf(withoutLatencyLineFmt, Round(mr.Time), mr.Operations, mr.ClusteringRows, mr.Errors)

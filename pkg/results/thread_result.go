@@ -1,6 +1,8 @@
 package results
 
-import "time"
+import (
+	"time"
+)
 
 type TestThreadResult struct {
 	FullResult    *Result
@@ -68,12 +70,11 @@ func (r *TestThreadResult) RecordRawLatency(latency time.Duration) {
 	if ! globalResultConfiguration.measureLatency {
 		return
 	}
-	lv := latency.Nanoseconds()
+	lv := latency.Nanoseconds() / globalResultConfiguration.hdrLatencyScale
 
 	if lv >= globalResultConfiguration.latencyHistogramConfiguration.maxValue {
 		lv = globalResultConfiguration.latencyHistogramConfiguration.maxValue
 	}
-
 	_ = r.FullResult.RawLatency.RecordValue(lv)
 	_ = r.PartialResult.RawLatency.RecordValue(lv)
 }
@@ -82,7 +83,7 @@ func (r *TestThreadResult) RecordCoFixedLatency(latency time.Duration) {
 	if ! globalResultConfiguration.measureLatency {
 		return
 	}
-	lv := latency.Nanoseconds()
+	lv := latency.Nanoseconds() / globalResultConfiguration.hdrLatencyScale
 
 	if lv >= globalResultConfiguration.latencyHistogramConfiguration.maxValue {
 		lv = globalResultConfiguration.latencyHistogramConfiguration.maxValue
