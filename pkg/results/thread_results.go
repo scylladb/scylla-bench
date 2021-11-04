@@ -45,7 +45,6 @@ func (tr *TestResults) GetResultsFromThreadsAndMerge() (bool, *MergedResult) {
 		res := <-ch.ResultChannel
 		if !final && res.Final {
 			final = true
-			result = NewMergedResult()
 			for _, ch2 := range tr.threadResults[0:i] {
 				res = <-ch2.ResultChannel
 				for !res.Final {
@@ -65,11 +64,30 @@ func (tr *TestResults) GetResultsFromThreadsAndMerge() (bool, *MergedResult) {
 }
 
 func (tr *TestResults) GetTotalResults() {
-	final, result := tr.GetResultsFromThreadsAndMerge()
-	for !final {
+	var final bool
+	var result *MergedResult
+
+	// We need this rounding since hdr histogram round up baseTime dividing by 1000
+	//  before reducing it from start time, which is divided by 1000000000 before applied to histogram
+	//  giving small chance that rounded baseTime would be greater than histogram start time and negative
+	//  times in the histogram log
+	baseTime := (time.Now().UnixNano() / 1000000000) * 1000000000
+
+	var hdrLogWriter *hdrhistogram.HistogramLogWriter
+	if globalResultConfiguration.hdrLatencyFile != "" {
+		hdrLogWriter = InitHdrLogWriter(globalResultConfiguration.hdrLatencyFile, baseTime)
+	}
+
+	for {
+		final, result = tr.GetResultsFromThreadsAndMerge()
+		if final {
+			break
+		}
 		result.Time = time.Since(tr.startTime)
 		result.PrintPartialResult()
-		final, result = tr.GetResultsFromThreadsAndMerge()
+		if hdrLogWriter != nil {
+			result.SaveLatenciesToHdrHistogram(hdrLogWriter)
+		}
 	}
 	tr.totalResult = result
 }
@@ -100,13 +118,14 @@ func (tr *TestResults) PrintTotalResults() {
 }
 
 func printLatencyResults(name string, latency *hdrhistogram.Histogram) {
+	scale := globalResultConfiguration.hdrLatencyScale
 	fmt.Println(name, ":\n  max:\t\t", time.Duration(latency.Max()),
-		"\n  99.9th:\t", time.Duration(latency.ValueAtQuantile(99.9)),
-		"\n  99th:\t\t", time.Duration(latency.ValueAtQuantile(99)),
-		"\n  95th:\t\t", time.Duration(latency.ValueAtQuantile(95)),
-		"\n  90th:\t\t", time.Duration(latency.ValueAtQuantile(90)),
-		"\n  median:\t", time.Duration(latency.ValueAtQuantile(50)),
-		"\n  mean:\t\t", time.Duration(latency.Mean()))
+		"\n  99.9th:\t", time.Duration(latency.ValueAtQuantile(99.9) * scale),
+		"\n  99th:\t\t", time.Duration(latency.ValueAtQuantile(99) * scale),
+		"\n  95th:\t\t", time.Duration(latency.ValueAtQuantile(95) * scale),
+		"\n  90th:\t\t", time.Duration(latency.ValueAtQuantile(90) * scale),
+		"\n  median:\t", time.Duration(latency.ValueAtQuantile(50) * scale),
+		"\n  mean:\t\t", time.Duration(latency.Mean() * float64(scale)))
 }
 
 func (tr *TestResults) GetFinalStatus() int {

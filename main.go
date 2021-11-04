@@ -87,14 +87,13 @@ var (
 
 	// Any error response that comes with delay greater than errorToTimeoutCutoffTime
 	// to be considered as timeout error and recorded to histogram as such
-	errorToTimeoutCutoffTime    time.Duration
-
-	startTime time.Time
-
-	stopAll uint32
-
-	measureLatency bool
-	validateData   bool
+	errorToTimeoutCutoffTime time.Duration
+	startTime                time.Time
+	stopAll                  uint32
+	measureLatency           bool
+	hdrLatencyFile  string
+	hdrLatencyUnits string
+	validateData    bool
 )
 
 func Query(session *gocql.Session, request string) {
@@ -244,6 +243,9 @@ func main() {
 	flag.Int64Var(&partitionOffset, "partition-offset", 0, "start of the partition range (only for sequential workload)")
 
 	flag.BoolVar(&measureLatency, "measure-latency", true, "measure request latency")
+	flag.StringVar(&hdrLatencyFile, "hdr-latency-file", "", "log co-fixed and raw latency hdr histograms into a file")
+	flag.StringVar(&hdrLatencyUnits, "hdr-latency-units", "ns", "ns (nano seconds), us (microseconds), ms (milliseconds)")
+
 	flag.BoolVar(&validateData, "validate-data", false, "write meaningful data and validate while reading")
 
 	var startTimestamp int64
@@ -513,12 +515,14 @@ func newHostSelectionPolicy(policy string, hosts []string) (gocql.HostSelectionP
 }
 
 func setResultsConfiguration() {
-	results.SetGlobalHistogramConfiguration(
-		time.Microsecond.Nanoseconds()*50,
-		(timeout*3).Nanoseconds(),
-		3,
-	)
 	results.SetGlobalMeasureLatency(measureLatency)
+	results.SetGlobalHdrLatencyFile(hdrLatencyFile)
+	results.SetGlobalHdrLatencyUnits(hdrLatencyUnits)
+	results.SetGlobalHistogramConfiguration(
+		0,
+		(timeout*3).Nanoseconds(),
+		5,
+	)
 	results.SetGlobalConcurrency(concurrency)
 	results.SetGlobalLatencyTypeFromString(latencyType)
 }
