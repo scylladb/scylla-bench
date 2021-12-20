@@ -78,6 +78,7 @@ var (
 	rowsPerRequest    int
 	provideUpperBound bool
 	inRestriction     bool
+	selectOrderByDesc bool
 	noLowerBound      bool
 
 	rangeCount int
@@ -234,6 +235,7 @@ func main() {
 	flag.IntVar(&rowsPerRequest, "rows-per-request", 1, "clustering rows per single request")
 	flag.BoolVar(&provideUpperBound, "provide-upper-bound", false, "whether read requests should provide an upper bound")
 	flag.BoolVar(&inRestriction, "in-restriction", false, "use IN restriction in read requests")
+	flag.BoolVar(&selectOrderByDesc, "select-order-by-desc", false, "if true will add 'order by ck desc' to the select queries")
 	flag.BoolVar(&noLowerBound, "no-lower-bound", false, "do not provide lower bound in read requests")
 	flag.IntVar(&rangeCount, "range-count", 1, "number of ranges to split the token space into (relevant only for scan mode)")
 
@@ -475,6 +477,7 @@ func main() {
 	if mode == "read" {
 		fmt.Println("Provide upper bound:\t", provideUpperBound)
 		fmt.Println("IN queries:\t\t", inRestriction)
+		fmt.Println("Order by desc:\t\t", selectOrderByDesc)
 		fmt.Println("No lower bound:\t\t", noLowerBound)
 	}
 	fmt.Println("Page size:\t\t", pageSize)

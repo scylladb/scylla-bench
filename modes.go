@@ -392,20 +392,27 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 	} else {
 		selectFields = "pk, ck, c1, c2, c3, c4, c5"
 	}
+
+	var orderBy string
+	if selectOrderByDesc {
+		orderBy = "ORDER BY ck DESC"
+	}
+
 	switch {
 	case inRestriction:
 		arr := make([]string, rowsPerRequest)
 		for i := 0; i < rowsPerRequest; i++ {
 			arr[i] = "?"
 		}
-		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck IN (%s)", selectFields, keyspaceName, table, strings.Join(arr, ", "))
+		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck IN (%s) %s", selectFields, keyspaceName, table, strings.Join(arr, ", "), orderBy)
 	case provideUpperBound:
-		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ?", selectFields, keyspaceName, table)
+		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ? %s", selectFields, keyspaceName, table, orderBy)
 	case noLowerBound:
-		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? LIMIT %d", selectFields, keyspaceName, table, rowsPerRequest)
+		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? %s LIMIT %d", selectFields, keyspaceName, table, orderBy, rowsPerRequest)
 	default:
-		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? LIMIT %d", selectFields, keyspaceName, table, rowsPerRequest)
+		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? %s LIMIT %d", selectFields, keyspaceName, table, orderBy, rowsPerRequest)
 	}
+
 	query := session.Query(request)
 
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
