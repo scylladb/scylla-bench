@@ -63,11 +63,11 @@ var (
 	username         string
 	password         string
 
-	mode        string
-	latencyType string
+	mode           string
+	latencyType    string
 	maxErrorsAtRow int
-	concurrency int
-	maximumRate int
+	concurrency    int
+	maximumRate    int
 
 	testDuration time.Duration
 
@@ -91,9 +91,9 @@ var (
 	startTime                time.Time
 	stopAll                  uint32
 	measureLatency           bool
-	hdrLatencyFile  string
-	hdrLatencyUnits string
-	validateData    bool
+	hdrLatencyFile           string
+	hdrLatencyUnits          string
+	validateData             bool
 )
 
 func Query(session *gocql.Session, request string) {
@@ -520,7 +520,7 @@ func setResultsConfiguration() {
 	results.SetGlobalHdrLatencyUnits(hdrLatencyUnits)
 	results.SetGlobalHistogramConfiguration(
 		0,
-		(timeout*3).Nanoseconds(),
+		(timeout * 3).Nanoseconds(),
 		5,
 	)
 	results.SetGlobalConcurrency(concurrency)
