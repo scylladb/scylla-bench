@@ -100,6 +100,9 @@ func (ru *RandomUniform) NextPartitionKey() int64 {
 }
 
 func (ru *RandomUniform) NextClusteringKey() int64 {
+	if ru.ClusteringRowCount == 0 {
+		return 0
+	}
 	return ru.Generator.Int63n(ru.ClusteringRowCount)
 }
 
