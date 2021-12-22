@@ -24,7 +24,7 @@ func NewTestThreadResult() *TestThreadResult {
 		r.PartialResult.RawLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration, "raw-latency")
 		r.PartialResult.CoFixedLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration, "co-fixed-lantecy")
 	}
-	r.ResultChannel = make(chan Result, 1)
+	r.ResultChannel = make(chan Result, 10000)
 	return r
 }
 
@@ -57,7 +57,6 @@ func (r *TestThreadResult) SubmitCriticalError(err error) {
 	GlobalErrorFlag = true
 }
 
-
 func (r *TestThreadResult) ResetPartialResult() {
 	r.PartialResult = &Result{}
 	if globalResultConfiguration.measureLatency {
@@ -67,7 +66,7 @@ func (r *TestThreadResult) ResetPartialResult() {
 }
 
 func (r *TestThreadResult) RecordRawLatency(latency time.Duration) {
-	if ! globalResultConfiguration.measureLatency {
+	if !globalResultConfiguration.measureLatency {
 		return
 	}
 	lv := latency.Nanoseconds() / globalResultConfiguration.hdrLatencyScale
@@ -80,7 +79,7 @@ func (r *TestThreadResult) RecordRawLatency(latency time.Duration) {
 }
 
 func (r *TestThreadResult) RecordCoFixedLatency(latency time.Duration) {
-	if ! globalResultConfiguration.measureLatency {
+	if !globalResultConfiguration.measureLatency {
 		return
 	}
 	lv := latency.Nanoseconds() / globalResultConfiguration.hdrLatencyScale
