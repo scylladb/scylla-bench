@@ -384,18 +384,13 @@ func DoCounterReads(session *gocql.Session, threadResult *results.TestThreadResu
 	DoReadsFromTable(counterTableName, session, threadResult, workload, rateLimiter)
 }
 
-func DoReadsFromTable(table string, session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
+func BuildReadQuery(table string, orderBy string, session *gocql.Session) *gocql.Query {
 	var request string
 	var selectFields string
 	if table == tableName {
 		selectFields = "pk, ck, v"
 	} else {
 		selectFields = "pk, ck, c1, c2, c3, c4, c5"
-	}
-
-	var orderBy string
-	if selectOrderByDesc {
-		orderBy = "ORDER BY ck DESC"
 	}
 
 	switch {
@@ -412,11 +407,28 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 	default:
 		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? %s LIMIT %d", selectFields, keyspaceName, table, orderBy, rowsPerRequest)
 	}
+	return session.Query(request)
+}
 
-	query := session.Query(request)
+func DoReadsFromTable(table string, session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
+	var queries []*gocql.Query
+	queryIdx := 0
+	queryIdxMax := len(selectOrderByParsed) - 1
+
+	for _, orderBy := range selectOrderByParsed {
+		queries = append(queries, BuildReadQuery(table, orderBy, session))
+	}
 
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
 		pk := workload.NextPartitionKey()
+
+		query := queries[queryIdx]
+
+		if queryIdx >= queryIdxMax {
+			queryIdx = 0
+		} else {
+			queryIdx++
+		}
 
 		var bound *gocql.Query
 		switch {

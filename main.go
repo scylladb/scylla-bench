@@ -75,11 +75,12 @@ var (
 	clusteringRowCount    int64
 	clusteringRowSizeDist random.Distribution
 
-	rowsPerRequest    int
-	provideUpperBound bool
-	inRestriction     bool
-	selectOrderByDesc bool
-	noLowerBound      bool
+	rowsPerRequest      int
+	provideUpperBound   bool
+	inRestriction       bool
+	selectOrderBy       string
+	selectOrderByParsed []string
+	noLowerBound        bool
 
 	rangeCount int
 
@@ -235,7 +236,7 @@ func main() {
 	flag.IntVar(&rowsPerRequest, "rows-per-request", 1, "clustering rows per single request")
 	flag.BoolVar(&provideUpperBound, "provide-upper-bound", false, "whether read requests should provide an upper bound")
 	flag.BoolVar(&inRestriction, "in-restriction", false, "use IN restriction in read requests")
-	flag.BoolVar(&selectOrderByDesc, "select-order-by-desc", false, "if true will add 'order by ck desc' to the select queries")
+	flag.StringVar(&selectOrderBy, "select-order-by", "none", "controls order part 'order by ck asc/desc' of the read query, you can set it to: none,asc,desc or to the list of them, i.e. 'none,asc', in such case it will run queries with these orders one by one")
 	flag.BoolVar(&noLowerBound, "no-lower-bound", false, "do not provide lower bound in read requests")
 	flag.IntVar(&rangeCount, "range-count", 1, "number of ranges to split the token space into (relevant only for scan mode)")
 
@@ -307,6 +308,23 @@ func main() {
 
 	if partitionOffset != 0 && workload != "sequential" {
 		log.Fatal("partition-offset has a meaning only in sequential workloads")
+	}
+
+	if selectOrderBy == "" {
+		selectOrderBy = "none"
+	}
+
+	for idx, chunk := range strings.Split(selectOrderBy, ",") {
+		switch strings.ToLower(chunk) {
+		case "none":
+			selectOrderByParsed = append(selectOrderByParsed, "")
+		case "asc":
+			selectOrderByParsed = append(selectOrderByParsed, "ORDER BY ck ASC")
+		case "desc":
+			selectOrderByParsed = append(selectOrderByParsed, "ORDER BY ck DESC")
+		default:
+			log.Fatal(fmt.Sprintf("value in -select-order-by[%d] is neither of none,asc,desc", idx))
+		}
 	}
 
 	readModeTweaks := toInt(inRestriction) + toInt(provideUpperBound) + toInt(noLowerBound)
@@ -477,7 +495,7 @@ func main() {
 	if mode == "read" {
 		fmt.Println("Provide upper bound:\t", provideUpperBound)
 		fmt.Println("IN queries:\t\t", inRestriction)
-		fmt.Println("Order by desc:\t\t", selectOrderByDesc)
+		fmt.Println("Order by:\t\t", selectOrderBy)
 		fmt.Println("No lower bound:\t\t", noLowerBound)
 	}
 	fmt.Println("Page size:\t\t", pageSize)
