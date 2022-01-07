@@ -511,6 +511,9 @@ func DoReadsFromTable(table string, session *gocql.Session, resultChannel chan R
 	} else {
 		request = fmt.Sprintf("SELECT * FROM %s.%s WHERE pk = ? AND ck >= ? LIMIT %d", keyspaceName, table, rowsPerRequest)
 	}
+	if bypassCache {
+		request = fmt.Sprintf("%s BYPASS CACHE", request)
+	}
 	query := session.Query(request)
 
 	RunTest(resultChannel, workload, rateLimiter, func(rb *ResultBuilder) (error, time.Duration) {

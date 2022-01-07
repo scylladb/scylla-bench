@@ -73,6 +73,7 @@ var (
 	provideUpperBound bool
 	inRestriction     bool
 	noLowerBound      bool
+	bypassCache      bool
 
 	rangeCount int
 
@@ -240,6 +241,7 @@ func main() {
 	flag.BoolVar(&provideUpperBound, "provide-upper-bound", false, "whether read requests should provide an upper bound")
 	flag.BoolVar(&inRestriction, "in-restriction", false, "use IN restriction in read requests")
 	flag.BoolVar(&noLowerBound, "no-lower-bound", false, "do not provide lower bound in read requests")
+	flag.BoolVar(&bypassCache, "bypass-cache", false, "Execute quries with the \"BYPASS CACHE\" CQL clause")
 	flag.IntVar(&rangeCount, "range-count", 1, "number of ranges to split the token space into (relevant only for scan mode)")
 
 	flag.DurationVar(&testDuration, "duration", 0, "duration of the test in seconds (0 for unlimited)")
