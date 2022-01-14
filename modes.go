@@ -393,19 +393,24 @@ func BuildReadQuery(table string, orderBy string, session *gocql.Session) *gocql
 		selectFields = "pk, ck, c1, c2, c3, c4, c5"
 	}
 
+	var bypassCacheClause string
+	if bypassCache {
+		bypassCacheClause = "BYPASS CACHE"
+	}
+
 	switch {
 	case inRestriction:
 		arr := make([]string, rowsPerRequest)
 		for i := 0; i < rowsPerRequest; i++ {
 			arr[i] = "?"
 		}
-		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck IN (%s) %s", selectFields, keyspaceName, table, strings.Join(arr, ", "), orderBy)
+		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck IN (%s) %s %s", selectFields, keyspaceName, table, strings.Join(arr, ", "), orderBy, bypassCacheClause)
 	case provideUpperBound:
-		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ? %s", selectFields, keyspaceName, table, orderBy)
+		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ? %s %s", selectFields, keyspaceName, table, orderBy, bypassCacheClause)
 	case noLowerBound:
-		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? %s LIMIT %d", selectFields, keyspaceName, table, orderBy, rowsPerRequest)
+		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? %s LIMIT %d %s", selectFields, keyspaceName, table, orderBy, rowsPerRequest, bypassCacheClause)
 	default:
-		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? %s LIMIT %d", selectFields, keyspaceName, table, orderBy, rowsPerRequest)
+		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? %s LIMIT %d %s", selectFields, keyspaceName, table, orderBy, rowsPerRequest, bypassCacheClause)
 	}
 	return session.Query(request)
 }
