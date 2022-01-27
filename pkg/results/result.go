@@ -120,6 +120,11 @@ func NewHistogram(config *histogramConfiguration, name string) *hdrhistogram.His
 
 var globalResultConfiguration Configuration
 
+func GetHdrMemoryConsumption(concurrency int) int {
+	hdr := NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration, "example_hdr")
+	return hdr.ByteSize() * concurrency * 4
+}
+
 func init() {
 	globalResultConfiguration = Configuration{
 		measureLatency: false,
