@@ -513,8 +513,10 @@ func main() {
 		fmt.Println("Start timestamp:\t", startTime.UnixNano())
 		fmt.Println("Write rate:\t\t", int64(maximumRate)/partitionCount)
 	}
-
 	setResultsConfiguration()
+
+	fmt.Println("Hdr memory consumption:\t", results.GetHdrMemoryConsumption(concurrency), "bytes")
+
 	testResult := RunConcurrently(maximumRate, func(i int, testResult *results.TestThreadResult, rateLimiter RateLimiter) {
 		GetMode(mode)(session, testResult, GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution), rateLimiter)
 	})
@@ -542,7 +544,7 @@ func setResultsConfiguration() {
 	results.SetGlobalHdrLatencyFile(hdrLatencyFile)
 	results.SetGlobalHdrLatencyUnits(hdrLatencyUnits)
 	results.SetGlobalHistogramConfiguration(
-		0,
+		time.Microsecond.Nanoseconds()*50,
 		(timeout * 3).Nanoseconds(),
 		5,
 	)
