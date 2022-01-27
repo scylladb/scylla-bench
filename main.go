@@ -546,7 +546,11 @@ func setResultsConfiguration() {
 	results.SetGlobalHistogramConfiguration(
 		time.Microsecond.Nanoseconds()*50,
 		(timeout * 3).Nanoseconds(),
-		5,
+		// TODO: make sigFig be configurable.
+		//       Do not make it be bigger than 4 by default
+		//       because RAM usage increases insanely with such numbers.
+		//       '3' must be enough in most of the cases.
+		3,
 	)
 	results.SetGlobalConcurrency(concurrency)
 	results.SetGlobalLatencyTypeFromString(latencyType)
