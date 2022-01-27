@@ -20,7 +20,7 @@ const (
 )
 
 var LatencyTypes = map[string]int{
-	"raw": LatencyTypeRaw,
+	"raw":                        LatencyTypeRaw,
 	"fixed-coordinated-omission": LatencyTypeCoordinatedOmissionFixed,
 }
 
@@ -28,7 +28,7 @@ type Configuration struct {
 	concurrency                   int
 	measureLatency                bool
 	hdrLatencyFile                string
-	hdrLatencyScale                int64
+	hdrLatencyScale               int64
 	latencyTypeToPrint            int
 	latencyHistogramConfiguration histogramConfiguration
 }
@@ -64,18 +64,17 @@ func GetGlobalLatencyType(latencyType int) {
 	globalResultConfiguration.latencyTypeToPrint = latencyType
 }
 
-func SetGlobalLatencyTypeFromString(latencyType string){
+func SetGlobalLatencyTypeFromString(latencyType string) {
 	SetGlobalLatencyType(LatencyTypes[latencyType])
 }
 
 func ValidateGlobalLatencyType(latencyType string) error {
 	_, ok := LatencyTypes[latencyType]
-	if ! ok {
+	if !ok {
 		return errors.New(fmt.Sprintf("unkown value %s, supported values are: raw, fixed-coordinated-omission", latencyType))
 	}
 	return nil
 }
-
 
 func SetGlobalMeasureLatency(value bool) {
 	globalResultConfiguration.measureLatency = value
