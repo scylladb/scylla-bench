@@ -96,6 +96,7 @@ var (
 	measureLatency           bool
 	hdrLatencyFile           string
 	hdrLatencyUnits          string
+	hdrLatencySigFig         int
 	validateData             bool
 )
 
@@ -250,6 +251,7 @@ func main() {
 	flag.BoolVar(&measureLatency, "measure-latency", true, "measure request latency")
 	flag.StringVar(&hdrLatencyFile, "hdr-latency-file", "", "log co-fixed and raw latency hdr histograms into a file")
 	flag.StringVar(&hdrLatencyUnits, "hdr-latency-units", "ns", "ns (nano seconds), us (microseconds), ms (milliseconds)")
+	flag.IntVar(&hdrLatencySigFig, "hdr-latency-sig", 3, "significant figures of the hdr histogram, number from 1 to 5 (default: 3)")
 
 	flag.BoolVar(&validateData, "validate-data", false, "write meaningful data and validate while reading")
 
@@ -349,6 +351,10 @@ func main() {
 	}
 	if workload == "timeseries" && mode == "write" && maximumRate == 0 {
 		log.Fatal("max-rate must be provided for time series write loads")
+	}
+
+	if  0 >= hdrLatencySigFig || hdrLatencySigFig > 5 {
+		log.Fatal("hdr-latency-sig should be int from 1 to 5")
 	}
 
 	if timeout != 0 {
@@ -546,7 +552,7 @@ func setResultsConfiguration() {
 	results.SetGlobalHistogramConfiguration(
 		time.Microsecond.Nanoseconds()*50,
 		(timeout * 3).Nanoseconds(),
-		5,
+		hdrLatencySigFig,
 	)
 	results.SetGlobalConcurrency(concurrency)
 	results.SetGlobalLatencyTypeFromString(latencyType)
