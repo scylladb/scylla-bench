@@ -119,7 +119,7 @@ func (tr *TestResults) PrintTotalResults() {
 
 func printLatencyResults(name string, latency *hdrhistogram.Histogram) {
 	scale := globalResultConfiguration.hdrLatencyScale
-	fmt.Println(name, ":\n  max:\t\t", time.Duration(latency.Max()),
+	fmt.Println(name, ":\n  max:\t\t", time.Duration(latency.Max() * scale),
 		"\n  99.9th:\t", time.Duration(latency.ValueAtQuantile(99.9) * scale),
 		"\n  99th:\t\t", time.Duration(latency.ValueAtQuantile(99) * scale),
 		"\n  95th:\t\t", time.Duration(latency.ValueAtQuantile(95) * scale),
