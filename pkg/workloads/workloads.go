@@ -1,6 +1,8 @@
 package workloads
 
 import (
+	"github.com/scylladb/scylla-bench/pkg/rate_limiter"
+	"github.com/scylladb/scylla-bench/pkg/worker"
 	"log"
 	"math"
 	"math/rand"
@@ -19,6 +21,8 @@ const (
 	minToken int64 = -(1 << 63)
 	maxToken int64 = (1 << 63) - 1
 )
+
+type WorkloadFunction func(i int, testResult *worker.Worker, rateLimiter rate_limiter.RateLimiter)
 
 // Bounds are inclusive
 type TokenRange struct {
