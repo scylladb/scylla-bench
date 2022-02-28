@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	withLatencyLineFmt    = "\n%5v %7v %7v %6v %-6v %-6v %-6v %-6v %-6v %-6v %-6v"
-	withoutLatencyLineFmt = "\n%5v %7v %7v %6v"
+	withLatencyLineFmt    = "\n%-10v %7v %7v %6v %-6v %-6v %-6v %-6v %-6v %-6v %-6v"
+	withoutLatencyLineFmt = "\n%-10v %7v %7v %6v"
 )
 
 type PartialResult struct {
