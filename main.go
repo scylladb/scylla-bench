@@ -4,6 +4,10 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"github.com/scylladb/scylla-bench/pkg/config"
+	"github.com/scylladb/scylla-bench/pkg/rate_limiter"
+	"github.com/scylladb/scylla-bench/pkg/test_run"
+	"github.com/scylladb/scylla-bench/pkg/worker"
 	"log"
 	"os"
 	"os/signal"
@@ -164,7 +168,7 @@ func GetWorkload(name string, threadId int, partitionOffset int64, mode string, 
 	panic("unreachable")
 }
 
-func GetMode(name string) func(session *gocql.Session, testResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
+func GetMode(name string) func(session *gocql.Session, testResult *worker.Worker, workload WorkloadGenerator, rateLimiter rate_limiter.RateLimiter) {
 	switch name {
 	case "write":
 		if rowsPerRequest == 1 {
@@ -363,7 +367,7 @@ func main() {
 		errorToTimeoutCutoffTime = time.Second
 	}
 
-	if err := results.ValidateGlobalLatencyType(latencyType); err != nil {
+	if err := config.ValidateGlobalLatencyType(latencyType); err != nil {
 		log.Fatal(errors.Wrap(err, "Bad value for latency-type"))
 	}
 
@@ -521,15 +525,20 @@ func main() {
 	}
 	setResultsConfiguration()
 
-	fmt.Println("Hdr memory consumption:\t", results.GetHdrMemoryConsumption(concurrency), "bytes")
+	if config.GetGlobalMeasureLatency() {
+		fmt.Println("Hdr memory consumption:\t", results.GetHdrMemoryConsumption(), "bytes")
+	}
 
-	testResult := RunConcurrently(maximumRate, func(i int, testResult *results.TestThreadResult, rateLimiter RateLimiter) {
+	totalResults := test_run.NewTestRun(concurrency, maximumRate)
+	totalResults.SetStartTime()
+	totalResults.PrintResultsHeader()
+	totalResults.RunTest(func(i int, testResult *worker.Worker, rateLimiter rate_limiter.RateLimiter) {
 		GetMode(mode)(session, testResult, GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution), rateLimiter)
 	})
-
-	testResult.GetTotalResults()
-	testResult.PrintTotalResults()
-	os.Exit(testResult.GetFinalStatus())
+	totalResults.StartPrintingPartialResult()
+	totalResults.GetTotalResults()
+	totalResults.PrintTotalResults()
+	os.Exit(totalResults.GetFinalStatus())
 }
 
 func newHostSelectionPolicy(policy string, hosts []string) (gocql.HostSelectionPolicy, error) {
@@ -546,14 +555,14 @@ func newHostSelectionPolicy(policy string, hosts []string) (gocql.HostSelectionP
 }
 
 func setResultsConfiguration() {
-	results.SetGlobalMeasureLatency(measureLatency)
-	results.SetGlobalHdrLatencyFile(hdrLatencyFile)
-	results.SetGlobalHdrLatencyUnits(hdrLatencyUnits)
-	results.SetGlobalHistogramConfiguration(
+	config.SetGlobalMeasureLatency(measureLatency)
+	config.SetGlobalHdrLatencyFile(hdrLatencyFile)
+	config.SetGlobalHdrLatencyUnits(hdrLatencyUnits)
+	config.SetGlobalHistogramConfiguration(
 		time.Microsecond.Nanoseconds()*50,
 		(timeout * 3).Nanoseconds(),
 		hdrLatencySigFig,
 	)
-	results.SetGlobalConcurrency(concurrency)
-	results.SetGlobalLatencyTypeFromString(latencyType)
+	config.SetGlobalConcurrency(concurrency)
+	config.SetGlobalLatencyTypeFromString(latencyType)
 }
