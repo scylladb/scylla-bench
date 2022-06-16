@@ -88,6 +88,9 @@ var (
 	timeout    time.Duration
 	iterations uint
 
+	retryNumber   int
+	retryInterval string
+
 	// Any error response that comes with delay greater than errorToTimeoutCutoffTime
 	// to be considered as timeout error and recorded to histogram as such
 	errorToTimeoutCutoffTime time.Duration
@@ -193,6 +196,45 @@ func toInt(value bool) int {
 	}
 }
 
+func getRetryPolicy() *gocql.ExponentialBackoffRetryPolicy {
+	var retryMinIntervalMillisecond, retryMaxIntervalMillisecond int
+	var err error
+
+	retryInterval = strings.Replace(retryInterval, " ", "", -1)
+	values := strings.Split(retryInterval, ",")
+	len_values := len(values)
+	if (len_values == 0) || (len_values > 2) {
+		log.Fatal("Wrong value for retry interval: '", retryInterval,
+			"'. Only 1 or 2 values are expected.")
+	}
+	for i := range values {
+		if _, err := strconv.Atoi(values[i]); err == nil {
+			values[i] = values[i] + "000"
+		}
+		values[i] = strings.Replace(values[i], "ms", "", -1)
+		values[i] = strings.Replace(values[i], "s", "000", -1)
+	}
+	retryMinIntervalMillisecond, err = strconv.Atoi(values[0])
+	if err != nil {
+		log.Fatal("Wrong value for retry minimum interval: '", values[0], "'")
+	}
+	retryMaxIntervalMillisecond, err = strconv.Atoi(values[len_values-1])
+	if err != nil {
+		log.Fatal("Wrong value for retry maximum interval: '", values[len_values-1], "'")
+	}
+	if retryMinIntervalMillisecond > retryMaxIntervalMillisecond {
+		log.Fatal("Wrong retry interval values provided: 'min' (",
+			values[0], "ms) interval is bigger than 'max' ("+
+				values[len_values-1]+"ms)")
+	}
+
+	return &gocql.ExponentialBackoffRetryPolicy{
+		NumRetries: retryNumber,
+		Min:        time.Duration(retryMinIntervalMillisecond) * time.Millisecond,
+		Max:        time.Duration(retryMaxIntervalMillisecond) * time.Millisecond,
+	}
+}
+
 func main() {
 	var (
 		workload          string
@@ -216,6 +258,8 @@ func main() {
 
 		hostSelectionPolicy string
 		tlsEncryption       bool
+
+		retryPolicy *gocql.ExponentialBackoffRetryPolicy
 	)
 
 	flag.StringVar(&mode, "mode", "", "operating mode: write, read, counter_update, counter_read, scan")
@@ -223,6 +267,11 @@ func main() {
 	flag.StringVar(&consistencyLevel, "consistency-level", "quorum", "consistency level")
 	flag.IntVar(&replicationFactor, "replication-factor", 1, "replication factor")
 	flag.DurationVar(&timeout, "timeout", 5*time.Second, "request timeout")
+
+	flag.IntVar(&retryNumber, "retry-number", 0, "number of retries (default 0)")
+	flag.StringVar(
+		&retryInterval, "retry-interval", "1s",
+		"interval beetwen retries. linear - '1s', exponential - '100ms,5s'")
 
 	flag.StringVar(&nodes, "nodes", "127.0.0.1", "nodes")
 	flag.BoolVar(&clientCompression, "client-compression", true, "use compression for client-coordinator communication")
@@ -353,7 +402,7 @@ func main() {
 		log.Fatal("max-rate must be provided for time series write loads")
 	}
 
-	if  0 >= hdrLatencySigFig || hdrLatencySigFig > 5 {
+	if 0 >= hdrLatencySigFig || hdrLatencySigFig > 5 {
 		log.Fatal("hdr-latency-sig should be int from 1 to 5")
 	}
 
@@ -368,6 +417,8 @@ func main() {
 	}
 
 	cluster := gocql.NewCluster(strings.Split(nodes, ",")...)
+	retryPolicy = getRetryPolicy()
+	cluster.RetryPolicy = retryPolicy
 	cluster.NumConns = connectionCount
 	cluster.PageSize = pageSize
 	cluster.Timeout = timeout
@@ -492,6 +543,10 @@ func main() {
 	fmt.Println("Mode:\t\t\t", mode)
 	fmt.Println("Workload:\t\t", workload)
 	fmt.Println("Timeout:\t\t", timeout)
+	fmt.Println("Retries:\t\t")
+	fmt.Println("  number:\t\t", retryPolicy.NumRetries)
+	fmt.Println("  min interval:\t\t", retryPolicy.Min)
+	fmt.Println("  max interval:\t\t", retryPolicy.Max)
 	fmt.Println("Consistency level:\t", consistencyLevel)
 	fmt.Println("Partition count:\t", partitionCount)
 	if workload == "sequential" && partitionOffset != 0 {
