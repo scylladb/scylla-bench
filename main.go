@@ -371,6 +371,8 @@ func main() {
 	cluster.NumConns = connectionCount
 	cluster.PageSize = pageSize
 	cluster.Timeout = timeout
+	cluster.Keyspace = keyspaceName
+
 	policy, err := newHostSelectionPolicy(hostSelectionPolicy, strings.Split(nodes, ","))
 	if err != nil {
 		log.Fatal(err)
