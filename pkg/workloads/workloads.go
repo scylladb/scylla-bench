@@ -144,8 +144,8 @@ func (tsw *TimeSeriesWrite) NextTokenRange() TokenRange {
 
 func (tsw *TimeSeriesWrite) NextPartitionKey() int64 {
 	tsw.PkPosition += tsw.PkStride
-	if tsw.PkPosition >= tsw.PkCount {
-		tsw.PkPosition = tsw.PkOffset
+	if tsw.PkPosition >= tsw.PkCount - tsw.PkStride  {
+		tsw.PkPosition = tsw.PkOffset - tsw.PkStride
 		tsw.CkPosition++
 		if tsw.CkPosition >= tsw.CkCount {
 			tsw.PkGeneration++
@@ -153,7 +153,7 @@ func (tsw *TimeSeriesWrite) NextPartitionKey() int64 {
 		}
 	}
 	tsw.MoveToNextPartition = false
-	return tsw.PkPosition<<32 | tsw.PkGeneration
+	return tsw.PkPosition<<32
 }
 
 func (tsw *TimeSeriesWrite) NextClusteringKey() int64 {
@@ -219,12 +219,12 @@ func (tsw *TimeSeriesRead) NextTokenRange() TokenRange {
 
 func (tsw *TimeSeriesRead) NextPartitionKey() int64 {
 	tsw.PkPosition += tsw.PkStride
-	if tsw.PkPosition >= tsw.PkCount {
-		tsw.PkPosition = tsw.PkOffset
+	if tsw.PkPosition >= tsw.PkCount - tsw.PkStride {
+		tsw.PkPosition = tsw.PkOffset - tsw.PkStride
 	}
 	maxGeneration := (time.Now().UnixNano()-tsw.StartTimestamp)/(tsw.Period*tsw.CkCount) + 1
 	tsw.CurrentGeneration = RandomInt64(tsw.Generator, tsw.HalfNormalDist, maxGeneration)
-	return tsw.PkPosition<<32 | tsw.CurrentGeneration
+	return tsw.PkPosition<<32 
 }
 
 func (tsw *TimeSeriesRead) NextClusteringKey() int64 {
