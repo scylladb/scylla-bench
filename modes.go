@@ -299,9 +299,8 @@ func ValidateData(pk int64, ck int64, data []byte) error {
 }
 
 func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
-	query := session.Query("INSERT INTO " + keyspaceName + "." + tableName + " (pk, ck, v) VALUES (?, ?, ?)")
-
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
+		query := session.Query("INSERT INTO " + keyspaceName + "." + tableName + " (pk, ck, v) VALUES (?, ?, ?)")
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
 		value := GenerateData(pk, ck, clusteringRowSizeDist.Generate())
@@ -353,10 +352,9 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 }
 
 func DoCounterUpdates(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
-	query := session.Query("UPDATE " + keyspaceName + "." + counterTableName +
-		" SET c1 = c1 + ?, c2 = c2 + ?, c3 = c3 + ?, c4 = c4 + ?, c5 = c5 + ? WHERE pk = ? AND ck = ?")
-
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
+		query := session.Query("UPDATE " + keyspaceName + "." + counterTableName +
+			" SET c1 = c1 + ?, c2 = c2 + ?, c3 = c3 + ?, c4 = c4 + ?, c5 = c5 + ? WHERE pk = ? AND ck = ?")
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
 		bound := query.Bind(ck, ck+1, ck+2, ck+3, ck+4, pk, ck)
@@ -416,24 +414,11 @@ func BuildReadQuery(table string, orderBy string, session *gocql.Session) *gocql
 }
 
 func DoReadsFromTable(table string, session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
-	var queries []*gocql.Query
-	queryIdx := 0
-	queryIdxMax := len(selectOrderByParsed) - 1
-
-	for _, orderBy := range selectOrderByParsed {
-		queries = append(queries, BuildReadQuery(table, orderBy, session))
-	}
-
+	counter, num_of_orderings := 0, len(selectOrderByParsed)
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
+		counter++
 		pk := workload.NextPartitionKey()
-
-		query := queries[queryIdx]
-
-		if queryIdx >= queryIdxMax {
-			queryIdx = 0
-		} else {
-			queryIdx++
-		}
+		query := BuildReadQuery(table, selectOrderByParsed[counter%num_of_orderings], session)
 
 		var bound *gocql.Query
 		switch {
@@ -509,9 +494,8 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 
 func DoScanTable(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
 	request := fmt.Sprintf("SELECT * FROM %s.%s WHERE token(pk) >= ? AND token(pk) <= ?", keyspaceName, tableName)
-	query := session.Query(request)
-
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
+		query := session.Query(request)
 		requestStart := time.Now()
 		currentRange := workload.NextTokenRange()
 		bound := query.Bind(currentRange.Start, currentRange.End)
