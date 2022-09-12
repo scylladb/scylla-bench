@@ -268,10 +268,10 @@ func main() {
 	flag.IntVar(&replicationFactor, "replication-factor", 1, "replication factor")
 	flag.DurationVar(&timeout, "timeout", 5*time.Second, "request timeout")
 
-	flag.IntVar(&retryNumber, "retry-number", 0, "number of retries (default 0)")
+	flag.IntVar(&retryNumber, "retry-number", 10, "number of retries (default 10)")
 	flag.StringVar(
-		&retryInterval, "retry-interval", "1s",
-		"interval beetwen retries. linear - '1s', exponential - '100ms,5s'")
+		&retryInterval, "retry-interval", "80ms,1s",
+		"interval between retries. linear - '1s', exponential - '100ms,5s'")
 
 	flag.StringVar(&nodes, "nodes", "127.0.0.1", "nodes")
 	flag.BoolVar(&clientCompression, "client-compression", true, "use compression for client-coordinator communication")
