@@ -465,9 +465,10 @@ func main() {
 	if tlsEncryption {
 		sslOpts := &gocql.SslOptions{
 			Config: &tls.Config{
-				ServerName: serverName,
+				ServerName:         serverName,
+				InsecureSkipVerify: !hostVerification,
 			},
-			EnableHostVerification: hostVerification,
+			EnableHostVerification: false,
 		}
 
 		if caCertFile != "" {
