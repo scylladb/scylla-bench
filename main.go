@@ -15,6 +15,7 @@ import (
 	"github.com/scylladb/scylla-bench/pkg/results"
 
 	"github.com/gocql/gocql"
+	"github.com/gocql/gocql/scyllacloud"
 	"github.com/hailocab/go-hostpool"
 	"github.com/pkg/errors"
 	. "github.com/scylladb/scylla-bench/pkg/workloads"
@@ -260,6 +261,9 @@ func main() {
 		tlsEncryption       bool
 
 		retryPolicy *gocql.ExponentialBackoffRetryPolicy
+
+
+		cloudConfigPath string
 	)
 
 	flag.StringVar(&mode, "mode", "", "operating mode: write, read, counter_update, counter_read, scan")
@@ -325,6 +329,8 @@ func main() {
 
 	flag.StringVar(&hostSelectionPolicy, "host-selection-policy", "token-aware", "set the driver host selection policy (round-robin,token-aware,dc-aware),default 'token-aware'")
 	flag.IntVar(&maxErrorsAtRow, "error-at-row-limit", 0, "set limit of errors caught by one thread at row after which workflow will be terminated and error reported. Set it to 0 if you want to haven no limit")
+
+	flag.StringVar(&cloudConfigPath, "cloud-config-path", "", "set the cloud config bundle")
 
 	flag.Parse()
 	counterTableName = "test_counters"
@@ -415,8 +421,20 @@ func main() {
 	if err := results.ValidateGlobalLatencyType(latencyType); err != nil {
 		log.Fatal(errors.Wrap(err, "Bad value for latency-type"))
 	}
+	var cluster *gocql.ClusterConfig
+	var err error
 
-	cluster := gocql.NewCluster(strings.Split(nodes, ",")...)
+	if cloudConfigPath == "" {
+		cluster = gocql.NewCluster(strings.Split(nodes, ",")...)
+	} else if !tlsEncryption && username == "" && password == "" {
+		cluster, err = scyllacloud.NewCloudCluster(cloudConfigPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		log.Fatal("can't use -tls/-username/-password and -cloud-config-path at the same time")
+	}
+
 	retryPolicy = getRetryPolicy()
 	cluster.RetryPolicy = retryPolicy
 	cluster.NumConns = connectionCount
