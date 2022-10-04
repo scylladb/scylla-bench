@@ -18,9 +18,9 @@ type MergedResult struct {
 	ClusteringRowsPerSecond float64
 	Errors                  int
 	CriticalErrors          []error
-	HistogramStartTime		int64
+	HistogramStartTime      int64
 	RawLatency              *hdrhistogram.Histogram
-	CoFixedLatency 			*hdrhistogram.Histogram
+	CoFixedLatency          *hdrhistogram.Histogram
 }
 
 func NewMergedResult() *MergedResult {
@@ -50,13 +50,17 @@ func (mr *MergedResult) AddResult(result Result) {
 		}
 	}
 	if globalResultConfiguration.measureLatency {
-		dropped := mr.RawLatency.Merge(result.RawLatency)
-		if dropped > 0 {
-			log.Print("dropped: ", dropped)
+		if result.RawLatency != nil {
+			dropped_raw := mr.RawLatency.Merge(result.RawLatency)
+			if dropped_raw > 0 {
+				log.Print("dropped: ", dropped_raw)
+			}
 		}
-		dropped = mr.CoFixedLatency.Merge(result.CoFixedLatency)
-		if dropped > 0 {
-			log.Print("dropped: ", dropped)
+		if result.CoFixedLatency != nil {
+			dropped_cofixed := mr.CoFixedLatency.Merge(result.CoFixedLatency)
+			if dropped_cofixed > 0 {
+				log.Print("dropped: ", dropped_cofixed)
+			}
 		}
 	}
 }
@@ -69,7 +73,7 @@ func InitHdrLogWriter(fileName string, baseTime int64) *hdrhistogram.HistogramLo
 	dirName := filepath.Dir(fileNameAbs)
 	err = os.MkdirAll(dirName, os.ModePerm)
 	if err != nil {
-		if ! os.IsExist(err) {
+		if !os.IsExist(err) {
 			panic(err)
 		}
 	}
@@ -129,9 +133,9 @@ func (mr *MergedResult) PrintPartialResult() {
 		scale := globalResultConfiguration.hdrLatencyScale
 		var latencyHist = mr.getLatencyHistogram()
 		fmt.Printf(withLatencyLineFmt, Round(mr.Time), mr.Operations, mr.ClusteringRows, mr.Errors,
-			Round(time.Duration(latencyHist.Max() * scale)), Round(time.Duration(latencyHist.ValueAtQuantile(99.9) * scale)), Round(time.Duration(latencyHist.ValueAtQuantile(99) * scale)),
-			Round(time.Duration(latencyHist.ValueAtQuantile(95) * scale)), Round(time.Duration(latencyHist.ValueAtQuantile(90) * scale)),
-			Round(time.Duration(latencyHist.ValueAtQuantile(50) * scale)), Round(time.Duration(latencyHist.Mean() * float64(scale))),
+			Round(time.Duration(latencyHist.Max()*scale)), Round(time.Duration(latencyHist.ValueAtQuantile(99.9)*scale)), Round(time.Duration(latencyHist.ValueAtQuantile(99)*scale)),
+			Round(time.Duration(latencyHist.ValueAtQuantile(95)*scale)), Round(time.Duration(latencyHist.ValueAtQuantile(90)*scale)),
+			Round(time.Duration(latencyHist.ValueAtQuantile(50)*scale)), Round(time.Duration(latencyHist.Mean()*float64(scale))),
 			latencyError)
 	} else {
 		fmt.Printf(withoutLatencyLineFmt, Round(mr.Time), mr.Operations, mr.ClusteringRows, mr.Errors)
