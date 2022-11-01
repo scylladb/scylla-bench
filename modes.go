@@ -8,6 +8,7 @@ import (
 	"log"
 	"math/rand"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -109,6 +110,9 @@ func (ti *TestIterator) IsDone() bool {
 	}
 }
 
+var totalErrors int32 = 0
+var totalErrorsPrintOnce sync.Once
+
 func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, test func(rb *results.TestThreadResult) (error, time.Duration)) {
 
 	start := time.Now()
@@ -127,6 +131,7 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 		endTime := time.Now()
 		if err != nil {
 			errorsAtRow += 1
+			atomic.AddInt32(&totalErrors, 1)
 			threadResult.IncErrors()
 			log.Print(err)
 			if rawLatency > errorToTimeoutCutoffTime {
@@ -142,7 +147,14 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 
 		now := time.Now()
 		if maxErrorsAtRow > 0 && errorsAtRow >= maxErrorsAtRow {
-			threadResult.SubmitCriticalError(errors.New(fmt.Sprintf("Error limit (maxErrorsAtRow) of %d errors is reached", errorsAtRow)))
+			threadResult.SubmitCriticalError(errors.New(fmt.Sprintf(
+				"Error limit (maxErrorsAtRow) of %d errors is reached", errorsAtRow)))
+		}
+		if maxErrors > 0 && int(atomic.LoadInt32(&totalErrors)) >= maxErrors {
+			totalErrorsPrintOnce.Do(func() {
+				threadResult.SubmitCriticalError(errors.New(fmt.Sprintf(
+					"Error limit (maxErrors) of %d errors is reached", maxErrors)))
+			})
 		}
 		if results.GlobalErrorFlag {
 			threadResult.ResultChannel <- *threadResult.PartialResult

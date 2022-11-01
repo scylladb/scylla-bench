@@ -140,7 +140,7 @@ func (mr *MergedResult) PrintPartialResult() {
 
 func (mr *MergedResult) PrintCriticalErrors() {
 	if mr.CriticalErrors != nil {
-		fmt.Printf("\nFollowing critical errors where caught during the run:\n")
+		fmt.Printf("\nFollowing critical errors were caught during the run:\n")
 		for _, err := range mr.CriticalErrors {
 			fmt.Printf("    %s\n", err.Error())
 		}
