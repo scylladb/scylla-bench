@@ -131,7 +131,7 @@ The second very important part of scylla-bench configuration is the workload. Wh
 
 #### Sequential workload (`-workload sequential`)
 
-This workload sequentially visits all partitions and rows in them. If the concurrency is larger than one then the hole population is split evenly between goroutines. Sequential workload allows specifying the offset of the first partition in the population (flag `-partition-offset`) to enable sequential population of the database by multiple clients. For example, if we have three simultaneously running scylla-bench processes:
+This workload sequentially visits all partitions and rows in them. If the concurrency is larger than one then the whole population is split evenly between goroutines. Sequential workload allows specifying the offset of the first partition in the population (flag `-partition-offset`) to enable sequential population of the database by multiple clients. For example, if we have three simultaneously running scylla-bench processes:
 
 1. `scylla-bench -workload sequential -mode write -partition-count 5`
 1. `scylla-bench -workload sequential -mode write -partition-count 5 -partition-offset 5`
