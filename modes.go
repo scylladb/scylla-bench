@@ -166,7 +166,7 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 		if now.Sub(partialStart) > reportInterval {
 			threadResult.ResultChannel <- *threadResult.PartialResult
 			threadResult.ResetPartialResult()
-			partialStart = now
+			partialStart = partialStart.Add(reportInterval)
 		}
 	}
 	end := time.Now()
