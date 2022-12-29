@@ -18,6 +18,8 @@ import (
 	. "github.com/scylladb/scylla-bench/pkg/workloads"
 )
 
+const reportInterval time.Duration = 1 * time.Second
+
 type RateLimiter interface {
 	Wait()
 	Expected() time.Time
@@ -161,7 +163,7 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 			threadResult.ResetPartialResult()
 			break
 		}
-		if now.Sub(partialStart) > time.Second {
+		if now.Sub(partialStart) > reportInterval {
 			threadResult.ResultChannel <- *threadResult.PartialResult
 			threadResult.ResetPartialResult()
 			partialStart = now
