@@ -42,7 +42,7 @@ scylla-bench allows configuring the number of partitions, number of rows in a pa
 
 ### Modes
 
-scylla-bench can operate in severeal modes (flag `-mode`) which basically determine what kind of requests are sent to the server. Some of the modes allow additional, further configuration.
+scylla-bench can operate in several modes (flag `-mode`) which basically determine what kind of requests are sent to the server. Some of the modes allow additional, further configuration.
 
 #### Write mode (`-mode write`)
 
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS scylla_bench.test_counters (
 ) WITH compression = { }
 ```
 
-Each requests updates all five counters in a row and only one row per request is supported:
+Each request updates all five counters in a row and only one row per request is supported:
 
 ```
 UPDATE scylla_bench.test_counters SET c1 = c1 + 1, c2 = c2 + 1, c3 = c3 + 1, c4 = c4 + 1, c5 = c5 + 1 WHERE pk = ? AND ck = ?
