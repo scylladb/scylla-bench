@@ -92,6 +92,8 @@ var (
 
 	retryNumber   int
 	retryInterval string
+	retryHandler  string
+	retryPolicy   *gocql.ExponentialBackoffRetryPolicy
 
 	// Any error response that comes with delay greater than errorToTimeoutCutoffTime
 	// to be considered as timeout error and recorded to histogram as such
@@ -261,9 +263,6 @@ func main() {
 		hostSelectionPolicy string
 		tlsEncryption       bool
 
-		retryPolicy *gocql.ExponentialBackoffRetryPolicy
-
-
 		cloudConfigPath string
 	)
 
@@ -277,6 +276,10 @@ func main() {
 	flag.StringVar(
 		&retryInterval, "retry-interval", "80ms,1s",
 		"interval between retries. linear - '1s', exponential - '100ms,5s'")
+	flag.StringVar(
+		&retryHandler, "retry-handler", "sb",
+		"Name of the query retries handler. Allowed values are 'sb' and 'gocql'. "+
+			"Where 'sb' means 'scylla-bench' level of retries and 'gocql' means driver itself.")
 
 	flag.StringVar(&nodes, "nodes", "127.0.0.1", "nodes")
 	flag.BoolVar(&clientCompression, "client-compression", true, "use compression for client-coordinator communication")
@@ -442,7 +445,12 @@ func main() {
 	}
 
 	retryPolicy = getRetryPolicy()
-	cluster.RetryPolicy = retryPolicy
+	if retryHandler == "gocql" {
+		cluster.RetryPolicy = retryPolicy
+	} else if retryHandler != "sb" {
+		log.Fatal("'-retry-handler' option accepts only 'sb' and 'gocql' values.")
+	}
+	cluster.DefaultIdempotence = true
 	cluster.NumConns = connectionCount
 	cluster.PageSize = pageSize
 	cluster.Timeout = timeout
@@ -593,6 +601,7 @@ func main() {
 	fmt.Println("  number:\t\t", retryPolicy.NumRetries)
 	fmt.Println("  min interval:\t\t", retryPolicy.Min)
 	fmt.Println("  max interval:\t\t", retryPolicy.Max)
+	fmt.Println("  handler:\t\t", retryHandler)
 	fmt.Println("Consistency level:\t", consistencyLevel)
 	fmt.Println("Partition count:\t", partitionCount)
 	if workload == "sequential" && partitionOffset != 0 {
