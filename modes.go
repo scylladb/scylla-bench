@@ -392,21 +392,25 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 		batchSize := 0
 
 		currentPk := workload.NextPartitionKey()
-		cks := []int64{}
-		valuesSizes := []int{}
+		var startingCk int64
+		valuesSizesSummary := 0
 		for !workload.IsPartitionDone() && atomic.LoadUint32(&stopAll) == 0 && batchSize < rowsPerRequest {
 			ck := workload.NextClusteringKey()
-			cks = append(cks, ck)
+			if batchSize == 0 {
+				startingCk = ck
+			}
 			batchSize++
 
 			value := GenerateData(currentPk, ck, clusteringRowSizeDist.Generate())
-			valuesSizes = append(valuesSizes, len(value))
+			valuesSizesSummary = valuesSizesSummary + len(value)
 			batch.Query(request, currentPk, ck, value)
 		}
+		endingCk := int(startingCk) + batchSize - 1
+		avgValueSize := valuesSizesSummary / batchSize
 
 		queryStr := fmt.Sprintf(
-			"BATCH >>> [query statement=%q pk=%v cks=%+v vSizes=%+v consistency=%s]",
-			request, currentPk, cks, valuesSizes, batch.GetConsistency())
+			"BATCH >>> [query statement=%q pk=%v cks=%v..%v avgValueSize=%v consistency=%s]",
+			request, currentPk, startingCk, endingCk, avgValueSize, batch.GetConsistency())
 		currentAttempts := 0
 		for {
 			requestStart := time.Now()
