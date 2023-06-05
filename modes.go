@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	stdErrors "errors"
+
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
 	"github.com/scylladb/scylla-bench/pkg/results"
@@ -135,6 +137,7 @@ func getExponentialTime(min time.Duration, max time.Duration, attempts int) time
 
 var totalErrors int32 = 0
 var totalErrorsPrintOnce sync.Once
+var errDoNotRegister = errors.New("do not register this test results")
 
 func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, test func(rb *results.TestThreadResult) (error, time.Duration)) {
 
@@ -152,7 +155,14 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 
 		err, rawLatency := test(threadResult)
 		endTime := time.Now()
-		if err != nil {
+		switch {
+		case err == nil:
+			errorsAtRow = 0
+			threadResult.RecordRawLatency(rawLatency)
+			threadResult.RecordCoFixedLatency(endTime.Sub(expectedStartTime))
+		case stdErrors.Is(err, errDoNotRegister):
+			// Do not register test run results
+		default:
 			errorsAtRow += 1
 			atomic.AddInt32(&totalErrors, 1)
 			threadResult.IncErrors()
@@ -162,10 +172,6 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 				threadResult.RecordRawLatency(rawLatency)
 				threadResult.RecordCoFixedLatency(endTime.Sub(expectedStartTime))
 			}
-		} else {
-			errorsAtRow = 0
-			threadResult.RecordRawLatency(rawLatency)
-			threadResult.RecordCoFixedLatency(endTime.Sub(expectedStartTime))
 		}
 
 		now := time.Now()
@@ -394,7 +400,10 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 		currentPk := workload.NextPartitionKey()
 		var startingCk int64
 		valuesSizesSummary := 0
-		for !workload.IsPartitionDone() && atomic.LoadUint32(&stopAll) == 0 && batchSize < rowsPerRequest {
+		for !workload.IsPartitionDone() && batchSize < rowsPerRequest {
+			if atomic.LoadUint32(&stopAll) != 0 {
+				return errDoNotRegister, 0
+			}
 			ck := workload.NextClusteringKey()
 			if batchSize == 0 {
 				startingCk = ck
@@ -404,6 +413,9 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 			value := GenerateData(currentPk, ck, clusteringRowSizeDist.Generate())
 			valuesSizesSummary = valuesSizesSummary + len(value)
 			batch.Query(request, currentPk, ck, value)
+		}
+		if batchSize == 0 {
+			return errDoNotRegister, 0
 		}
 		endingCk := int(startingCk) + batchSize - 1
 		avgValueSize := valuesSizesSummary / batchSize
