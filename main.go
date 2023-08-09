@@ -547,9 +547,6 @@ func main() {
 	defer session.Close()
 
 	PrepareDatabase(session, replicationFactor)
-	// NOTE: set the keyspace explicitly to workaround the following bug:
-	//       https://github.com/gocql/gocql/issues/1621
-	cluster.Keyspace = keyspaceName
 
 	interrupted := make(chan os.Signal, 1)
 	signal.Notify(interrupted, os.Interrupt)
