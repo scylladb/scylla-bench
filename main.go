@@ -540,23 +540,16 @@ func main() {
 		cluster.SslOpts = sslOpts
 	}
 
-	// Use separate session to create the keyspace which we will use in the main session
-	prepare_session, err := cluster.CreateSession()
-	if err != nil {
-		log.Fatal(err)
-	}
-	PrepareDatabase(prepare_session, replicationFactor)
-	prepare_session.Close()
-
-	// NOTE: set the keyspace explicitly to workaround the following bug:
-	//       https://github.com/gocql/gocql/issues/1621
-	cluster.Keyspace = keyspaceName
-
 	session, err := cluster.CreateSession()
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer session.Close()
+
+	PrepareDatabase(session, replicationFactor)
+	// NOTE: set the keyspace explicitly to workaround the following bug:
+	//       https://github.com/gocql/gocql/issues/1621
+	cluster.Keyspace = keyspaceName
 
 	interrupted := make(chan os.Signal, 1)
 	signal.Notify(interrupted, os.Interrupt)
