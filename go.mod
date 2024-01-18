@@ -17,4 +17,4 @@ require (
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
-replace github.com/gocql/gocql => github.com/scylladb/gocql v1.11.1
+replace github.com/gocql/gocql => github.com/scylladb/gocql v1.12.1-0.20240116102025-f614a51d47c7
