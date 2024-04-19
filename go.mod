@@ -11,7 +11,7 @@ require (
 
 require (
 	github.com/golang/snappy v0.0.3 // indirect
-	golang.org/x/net v0.17.0 // indirect
+	golang.org/x/net v0.23.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
