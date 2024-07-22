@@ -117,11 +117,16 @@ func Query(session *gocql.Session, request string) {
 func PrepareDatabase(session *gocql.Session, replicationFactor int) {
 	Query(session, fmt.Sprintf("CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : %d }", keyspaceName, replicationFactor))
 
-	Query(session, "CREATE TABLE IF NOT EXISTS "+keyspaceName+"."+tableName+" (pk bigint, ck bigint, v blob, PRIMARY KEY(pk, ck)) WITH compression = { }")
+	switch mode {
+		case "counter_update":
+			fallthrough
+		case "counter_read":
+			Query(session, "CREATE TABLE IF NOT EXISTS "+keyspaceName+"."+counterTableName+
+				" (pk bigint, ck bigint, c1 counter, c2 counter, c3 counter, c4 counter, c5 counter, PRIMARY KEY(pk, ck)) WITH compression = { }")
+		default:
+			Query(session, "CREATE TABLE IF NOT EXISTS "+keyspaceName+"."+tableName+" (pk bigint, ck bigint, v blob, PRIMARY KEY(pk, ck)) WITH compression = { }")
 
-	Query(session, "CREATE TABLE IF NOT EXISTS "+keyspaceName+"."+counterTableName+
-		" (pk bigint, ck bigint, c1 counter, c2 counter, c3 counter, c4 counter, c5 counter, PRIMARY KEY(pk, ck)) WITH compression = { }")
-
+	}
 	if validateData {
 		switch mode {
 		case "write":
