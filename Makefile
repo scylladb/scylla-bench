@@ -5,9 +5,9 @@ _prepare_build_dir:
 	@mkdir build >/dev/null 2>&1 || true
 
 _use-custom-gocql-version:
-	{\
+	@{\
   	if [ -z "${GOCQL_VERSION}" ]; then \
-  	  echo "GOCQL_COMMIT_ID is not set";\
+  	  echo "GOCQL_VERSION is not set";\
   	  exit 1;\
   	fi;\
   	echo "Using custom gocql commit \"${GOCQL_VERSION}\"";\
@@ -16,10 +16,12 @@ _use-custom-gocql-version:
 	}
 
 build: _prepare_build_dir
-	CGO_ENABLED=0 go build -ldflags="-s -w" -o ./build/scylla-bench .
+	@echo "Building static scylla-bench"
+	@CGO_ENABLED=0 go build -ldflags="-s -w" -o ./build/scylla-bench .
 
 build-debug: _prepare_build_dir
-	CGO_ENABLED=0 go build -gcflags "all=-N -l" -o ./build/scylla-bench .
+	@echo "Building debug version of static scylla-bench"
+	@CGO_ENABLED=0 go build -gcflags "all=-N -l" -o ./build/scylla-bench .
 
 build-with-custom-gocql-version: _use-custom-gocql-version build
 
