@@ -21,9 +21,9 @@ build: _prepare_build_dir
 build-debug: _prepare_build_dir
 	CGO_ENABLED=0 go build -gcflags "all=-N -l" -o ./build/scylla-bench .
 
-build-with-custom-gocql-version: _use-custom-gocql-tag build
+build-with-custom-gocql-version: _use-custom-gocql-version build
 
-build-debug-with-custom-gocql-version: _use-custom-gocql-tag build-debug
+build-debug-with-custom-gocql-version: _use-custom-gocql-version build-debug
 
 build-docker-image:
 	@echo "Building docker image \"${DOCKER_IMAGE_TAG}\""
