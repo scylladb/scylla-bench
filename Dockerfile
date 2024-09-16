@@ -1,3 +1,3 @@
-FROM busybox AS production
+FROM scratch AS production
 COPY ./scylla-bench .
 ENTRYPOINT ["/scylla-bench"]
