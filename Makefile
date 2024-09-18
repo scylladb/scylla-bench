@@ -28,5 +28,10 @@ build-with-custom-gocql-version: _use-custom-gocql-version build
 build-debug-with-custom-gocql-version: _use-custom-gocql-version build-debug
 
 build-docker-image:
-	@echo "Building docker image \"${DOCKER_IMAGE_TAG}\""
+ifdef DOCKER_IMAGE_LABELS
+	@echo 'Building docker image "${DOCKER_IMAGE_TAG}" with custom labels "${DOCKER_IMAGE_LABELS}"'
+	@docker build -t ${DOCKER_IMAGE_TAG} --label "${DOCKER_IMAGE_LABELS}" -f ./Dockerfile build/
+else
+	@echo 'Building docker image "${DOCKER_IMAGE_TAG}"'
 	@docker build -t ${DOCKER_IMAGE_TAG} -f ./Dockerfile build/
+endif
