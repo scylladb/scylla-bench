@@ -35,3 +35,12 @@ else
 	@echo 'Building docker image "${DOCKER_IMAGE_TAG}"'
 	@docker build -t ${DOCKER_IMAGE_TAG} -f ./Dockerfile build/
 endif
+
+build-sct-docker-image:
+ifdef DOCKER_IMAGE_LABELS
+	@echo 'Building sct docker image "${DOCKER_IMAGE_TAG}" with custom labels "${DOCKER_IMAGE_LABELS}"'
+	@docker build -t ${DOCKER_IMAGE_TAG} --label "${DOCKER_IMAGE_LABELS}" -f ./Dockerfile.sct build/
+else
+	@echo 'Building sct docker image "${DOCKER_IMAGE_TAG}"'
+	@docker build -t ${DOCKER_IMAGE_TAG} -f ./Dockerfile.sct build/
+endif
