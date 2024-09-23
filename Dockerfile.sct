@@ -1,3 +1,4 @@
 FROM busybox:1.36.1 AS production
 COPY ./scylla-bench .
+ENV PATH="/:${PATH}"
 LABEL com.scylladb.loader-type=scylla-bench
