@@ -83,12 +83,13 @@ func (sva *SequentialVisitAll) IsPartitionDone() bool {
 type RandomUniform struct {
 	Generator          *rand.Rand
 	PartitionCount     int64
+	PartitionOffset    int64
 	ClusteringRowCount int64
 }
 
-func NewRandomUniform(i int, partitionCount int64, clusteringRowCount int64) *RandomUniform {
+func NewRandomUniform(i int, partitionCount int64, PartitionOffset int64, clusteringRowCount int64) *RandomUniform {
 	generator := rand.New(rand.NewSource(int64(time.Now().Nanosecond() * (i + 1))))
-	return &RandomUniform{generator, int64(partitionCount), int64(clusteringRowCount)}
+	return &RandomUniform{generator, int64(partitionCount), int64(PartitionOffset), int64(clusteringRowCount)}
 }
 
 func (ru *RandomUniform) NextTokenRange() TokenRange {
@@ -96,7 +97,7 @@ func (ru *RandomUniform) NextTokenRange() TokenRange {
 }
 
 func (ru *RandomUniform) NextPartitionKey() int64 {
-	return ru.Generator.Int63n(ru.PartitionCount)
+	return ru.Generator.Int63n(ru.PartitionCount) + ru.PartitionOffset
 }
 
 func (ru *RandomUniform) NextClusteringKey() int64 {
@@ -130,10 +131,10 @@ type TimeSeriesWrite struct {
 	MoveToNextPartition bool
 }
 
-func NewTimeSeriesWriter(threadId int, threadCount int, pkCount int64, ckCount int64, startTime time.Time, rate int64) *TimeSeriesWrite {
+func NewTimeSeriesWriter(threadId int, threadCount int, pkCount int64, basicPkOffset int64, ckCount int64, startTime time.Time, rate int64) *TimeSeriesWrite {
 	period := time.Duration(int64(time.Second.Nanoseconds()) * (pkCount / int64(threadCount)) / rate)
 	pkStride := int64(threadCount)
-	pkOffset := int64(threadId)
+	pkOffset := int64(threadId) + basicPkOffset
 	return &TimeSeriesWrite{pkStride, pkOffset, pkCount, pkOffset - pkStride, 0,
 		ckCount, 0, startTime, period, false}
 }
@@ -144,7 +145,7 @@ func (tsw *TimeSeriesWrite) NextTokenRange() TokenRange {
 
 func (tsw *TimeSeriesWrite) NextPartitionKey() int64 {
 	tsw.PkPosition += tsw.PkStride
-	if tsw.PkPosition >= tsw.PkCount {
+	if tsw.PkPosition >= tsw.PkCount+tsw.PkOffset {
 		tsw.PkPosition = tsw.PkOffset
 		tsw.CkPosition++
 		if tsw.CkPosition >= tsw.CkCount {
@@ -186,7 +187,7 @@ type TimeSeriesRead struct {
 	Period            int64
 }
 
-func NewTimeSeriesReader(threadId int, threadCount int, pkCount int64, ckCount int64, writeRate int64, distribution string, startTime time.Time) *TimeSeriesRead {
+func NewTimeSeriesReader(threadId int, threadCount int, pkCount int64, basicPkOffset int64, ckCount int64, writeRate int64, distribution string, startTime time.Time) *TimeSeriesRead {
 	var halfNormalDist bool
 	switch distribution {
 	case "uniform":
@@ -198,7 +199,7 @@ func NewTimeSeriesReader(threadId int, threadCount int, pkCount int64, ckCount i
 	}
 	generator := rand.New(rand.NewSource(int64(time.Now().Nanosecond() * (threadId + 1))))
 	pkStride := int64(threadCount)
-	pkOffset := int64(threadId) % pkCount
+	pkOffset := (int64(threadId) % pkCount) + basicPkOffset
 	period := time.Second.Nanoseconds() / writeRate
 	return &TimeSeriesRead{generator, halfNormalDist, pkStride, pkOffset, pkCount, pkOffset - pkStride,
 		startTime.UnixNano(), ckCount, 0, period}
@@ -219,7 +220,7 @@ func (tsw *TimeSeriesRead) NextTokenRange() TokenRange {
 
 func (tsw *TimeSeriesRead) NextPartitionKey() int64 {
 	tsw.PkPosition += tsw.PkStride
-	if tsw.PkPosition >= tsw.PkCount {
+	if tsw.PkPosition >= tsw.PkCount+tsw.PkOffset {
 		tsw.PkPosition = tsw.PkOffset
 	}
 	maxGeneration := (time.Now().UnixNano()-tsw.StartTimestamp)/(tsw.Period*tsw.CkCount) + 1

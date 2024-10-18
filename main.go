@@ -150,13 +150,13 @@ func GetWorkload(name string, threadId int, partitionOffset int64, mode string, 
 		}
 		return NewSequentialVisitAll(thisOffset+partitionOffset, thisSize, clusteringRowCount)
 	case "uniform":
-		return NewRandomUniform(threadId, partitionCount, clusteringRowCount)
+		return NewRandomUniform(threadId, partitionCount, partitionOffset, clusteringRowCount)
 	case "timeseries":
 		switch mode {
 		case "read":
-			return NewTimeSeriesReader(threadId, concurrency, partitionCount, clusteringRowCount, writeRate, distribution, startTime)
+			return NewTimeSeriesReader(threadId, concurrency, partitionCount, partitionOffset, clusteringRowCount, writeRate, distribution, startTime)
 		case "write":
-			return NewTimeSeriesWriter(threadId, concurrency, partitionCount, clusteringRowCount, startTime, int64(maximumRate/concurrency))
+			return NewTimeSeriesWriter(threadId, concurrency, partitionCount, partitionOffset, clusteringRowCount, startTime, int64(maximumRate/concurrency))
 		default:
 			log.Fatal("time series workload supports only write and read modes")
 		}
@@ -308,7 +308,7 @@ func main() {
 	flag.DurationVar(&testDuration, "duration", 0, "duration of the test in seconds (0 for unlimited)")
 	flag.UintVar(&iterations, "iterations", 1, "number of iterations to run (0 for unlimited, relevant only for workloads that have a defined number of ops to execute)")
 
-	flag.Int64Var(&partitionOffset, "partition-offset", 0, "start of the partition range (only for sequential workload)")
+	flag.Int64Var(&partitionOffset, "partition-offset", 0, "start of the partition range (not applicable to the 'scan' workload)")
 
 	flag.BoolVar(&measureLatency, "measure-latency", true, "measure request latency")
 	flag.StringVar(&hdrLatencyFile, "hdr-latency-file", "", "log co-fixed and raw latency hdr histograms into a file")
@@ -379,8 +379,8 @@ func main() {
 		log.Fatal("iterations only supported for the sequential and scan workload")
 	}
 
-	if partitionOffset != 0 && workload != "sequential" {
-		log.Fatal("partition-offset has a meaning only in sequential workloads")
+	if partitionOffset != 0 && workload == "scan" {
+		log.Fatal("partition-offset is not supported by the 'scan' workload")
 	}
 
 	if selectOrderBy == "" {

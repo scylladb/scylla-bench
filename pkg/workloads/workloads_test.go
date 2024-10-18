@@ -78,28 +78,33 @@ func TestUniformWorkload(t *testing.T) {
 	generator := rand.New(rand.NewSource(int64(time.Now().Nanosecond())))
 	testCases := []struct {
 		partitionCount     int64
+		partitionOffset    int64
 		clusteringRowCount int64
 	}{
-		{20, 30},
-		{1, 1},
-		{generator.Int63n(100) + 100, generator.Int63n(99) + 1},
-		{generator.Int63n(100), generator.Int63n(100)},
-		{generator.Int63n(100) + 100, 1},
-		{generator.Int63n(100) + 100, generator.Int63n(99) + 1},
-		{generator.Int63n(100) + 100, generator.Int63n(99) + 1},
+		{20, 0, 30},
+		{20, 20, 30},
+		{20, 40, 30},
+		{1, 0, 1},
+		{generator.Int63n(100) + 100, 0, generator.Int63n(99) + 1},
+		{generator.Int63n(100), 0, generator.Int63n(100)},
+		{generator.Int63n(100) + 100, 0, 1},
+		{generator.Int63n(100) + 100, 0, generator.Int63n(99) + 1},
+		{generator.Int63n(100) + 100, 0, generator.Int63n(99) + 1},
 	}
 
 	for i, tc := range testCases {
 		t.Run(fmt.Sprintf("rand%d", i), func(t *testing.T) {
-			wrkld := NewRandomUniform(i, tc.partitionCount, tc.clusteringRowCount)
+			wrkld := NewRandomUniform(i, tc.partitionCount, tc.partitionOffset, tc.clusteringRowCount)
 
+			pkMin := tc.partitionOffset
+			pkMax := tc.partitionCount + tc.partitionOffset
 			for i := 0; i < 1000; i++ {
 				if wrkld.IsDone() {
 					t.Error("got end of stream")
 				}
 
 				pk := wrkld.NextPartitionKey()
-				if pk < 0 || pk >= tc.partitionCount {
+				if pk < pkMin || pk >= pkMax {
 					t.Errorf("PK %d out of range: [0-%d)", pk, tc.partitionCount)
 				}
 
