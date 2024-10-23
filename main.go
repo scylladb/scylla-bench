@@ -105,6 +105,7 @@ var (
 	hdrLatencyUnits          string
 	hdrLatencySigFig         int
 	validateData             bool
+	truncateTable            bool
 )
 
 func Query(session *gocql.Session, request string) {
@@ -127,11 +128,13 @@ func PrepareDatabase(session *gocql.Session, replicationFactor int) {
 			Query(session, "CREATE TABLE IF NOT EXISTS "+keyspaceName+"."+tableName+" (pk bigint, ck bigint, v blob, PRIMARY KEY(pk, ck)) WITH compression = { }")
 
 	}
-	if validateData {
+	if truncateTable {
 		switch mode {
 		case "write":
+			log.Printf("Truncating the '" + tableName + "' table")
 			Query(session, "TRUNCATE TABLE "+keyspaceName+"."+tableName)
 		case "counter_update":
+			log.Printf("Truncating the '" + counterTableName + "' table")
 			Query(session, "TRUNCATE TABLE "+keyspaceName+"."+counterTableName)
 		}
 	}
@@ -315,6 +318,9 @@ func main() {
 	flag.StringVar(&hdrLatencyUnits, "hdr-latency-units", "ns", "ns (nano seconds), us (microseconds), ms (milliseconds)")
 	flag.IntVar(&hdrLatencySigFig, "hdr-latency-sig", 3, "significant figures of the hdr histogram, number from 1 to 5 (default: 3)")
 
+	flag.BoolVar(
+		&truncateTable, "truncate-table", false,
+		"Truncate a table before running a stress command with 'write' or 'counter_update' modes")
 	flag.BoolVar(&validateData, "validate-data", false, "write meaningful data and validate while reading")
 
 	var startTimestamp int64
