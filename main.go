@@ -116,7 +116,7 @@ func Query(session *gocql.Session, request string) {
 }
 
 func PrepareDatabase(session *gocql.Session, replicationFactor int) {
-	Query(session, fmt.Sprintf("CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : %d }", keyspaceName, replicationFactor))
+	Query(session, fmt.Sprintf("CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : %d }", keyspaceName, replicationFactor))
 
 	switch mode {
 		case "counter_update":
