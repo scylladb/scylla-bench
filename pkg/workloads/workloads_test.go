@@ -10,10 +10,18 @@ import (
 func TestSequentialWorkload(t *testing.T) {
 	generator := rand.New(rand.NewSource(int64(time.Now().Nanosecond())))
 	testCases := []struct {
-		partitionOffset    int64
-		partitionCount     int64
+		rowOffset          int64
+		rowCount           int64
 		clusteringRowCount int64
 	}{
+		{0, 51, 81},
+		{51, 51, 81},
+		{102, 51, 81},
+		{153, 51, 81},
+		{204, 51, 81},
+		{255, 50, 81},
+		{305, 50, 81},
+		{355, 50, 81},
 		{10, 20, 30},
 		{0, 1, 1},
 		{generator.Int63n(100), generator.Int63n(100) + 100, generator.Int63n(99) + 1},
@@ -25,49 +33,53 @@ func TestSequentialWorkload(t *testing.T) {
 
 	for i, tc := range testCases {
 		t.Run(fmt.Sprintf("rand%d", i), func(t *testing.T) {
-			wrkld := NewSequentialVisitAll(tc.partitionOffset, tc.partitionCount, tc.clusteringRowCount)
-
-			expectedPk := tc.partitionOffset
-			expectedCk := int64(0)
-
+			wrkld := NewSequentialVisitAll(tc.rowOffset, tc.rowCount, tc.clusteringRowCount)
+			currentPk := tc.rowOffset / tc.clusteringRowCount
+			currentCk := tc.rowOffset % tc.clusteringRowCount
+			lastPk := (tc.rowOffset + tc.rowCount) / tc.clusteringRowCount
+			lastCk := (tc.rowOffset + tc.rowCount) % tc.clusteringRowCount
+			rowCounter := int64(0)
 			for {
-				if wrkld.IsDone() && expectedPk < tc.partitionOffset+tc.partitionCount {
-					t.Errorf("got end of stream; expected %d", expectedPk)
-				}
-				if !wrkld.IsDone() && expectedPk == tc.partitionOffset+tc.partitionCount {
-					t.Errorf("expected end of stream at %d", expectedPk)
-				}
-
 				if wrkld.IsDone() {
 					t.Log("got end of stream")
+					if currentPk != lastPk {
+						t.Errorf("wrong last PK; got %d; expected %d", currentPk, lastPk)
+					}
+					if currentCk != lastCk {
+						t.Errorf("wrong last CK; got %d; expected %d", currentCk, lastCk)
+					}
+					if rowCounter != tc.rowCount {
+						t.Errorf("Expected '%d' rows to be processed, but got '%d'", tc.rowCount, rowCounter)
+					}
 					break
 				}
 
 				pk := wrkld.NextPartitionKey()
-				if pk != expectedPk {
-					t.Errorf("wrong PK; got %d; expected %d", pk, expectedPk)
+				if pk != currentPk {
+					t.Errorf("wrong PK; got %d; expected %d", pk, currentPk)
 				} else {
 					t.Logf("got PK %d", pk)
 				}
 
 				ck := wrkld.NextClusteringKey()
-				if ck != expectedCk {
-					t.Errorf("wrong CK; got %d; expected %d", pk, expectedCk)
+				if ck != currentCk {
+					t.Errorf("wrong CK; got %d; expected %d", pk, currentCk)
 				} else {
 					t.Logf("got CK %d", ck)
 				}
 
-				expectedCk++
-				if expectedCk == tc.clusteringRowCount {
+				currentCk++
+				rowCounter++
+				if currentCk == tc.clusteringRowCount {
 					if !wrkld.IsPartitionDone() {
-						t.Errorf("expected end of partition at %d", expectedCk)
+						t.Errorf("expected end of partition at %d", currentCk)
 					} else {
 						t.Log("got end of partition")
 					}
-					expectedCk = 0
-					expectedPk++
+					currentCk = 0
+					currentPk++
 				} else if wrkld.IsPartitionDone() {
-					t.Errorf("got end of partition; expected %d", expectedCk)
+					t.Errorf("got end of partition; expected %d", currentCk)
 				}
 			}
 		})
