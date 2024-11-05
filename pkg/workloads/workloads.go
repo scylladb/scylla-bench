@@ -36,15 +36,27 @@ type WorkloadGenerator interface {
 }
 
 type SequentialVisitAll struct {
-	PartitionOffset    int64
-	PartitionCount     int64
+	RowCount           int64
 	ClusteringRowCount int64
+	StartPartition     int64
 	NextPartition      int64
+	StartClusteringRow int64
 	NextClusteringRow  int64
+	ProcessedRowCount  int64
 }
 
-func NewSequentialVisitAll(partitionOffset int64, partitionCount int64, clusteringRowCount int64) *SequentialVisitAll {
-	return &SequentialVisitAll{partitionOffset, partitionOffset + partitionCount, clusteringRowCount, partitionOffset, 0}
+func NewSequentialVisitAll(rowOffset int64, rowCount int64, clusteringRowCount int64) *SequentialVisitAll {
+	currentPartition := rowOffset / clusteringRowCount
+	currentClusteringRow := rowOffset % clusteringRowCount
+	return &SequentialVisitAll{
+		rowCount,
+		clusteringRowCount,
+		currentPartition,
+		currentPartition,
+		currentClusteringRow,
+		currentClusteringRow,
+		0,
+	}
 }
 
 func (sva *SequentialVisitAll) NextTokenRange() TokenRange {
@@ -64,16 +76,18 @@ func (sva *SequentialVisitAll) NextPartitionKey() int64 {
 func (sva *SequentialVisitAll) NextClusteringKey() int64 {
 	ck := sva.NextClusteringRow
 	sva.NextClusteringRow++
+	sva.ProcessedRowCount++
 	return ck
 }
 
 func (sva *SequentialVisitAll) IsDone() bool {
-	return sva.NextPartition >= sva.PartitionCount || (sva.NextPartition+1 == sva.PartitionCount && sva.NextClusteringRow >= sva.ClusteringRowCount)
+	return sva.ProcessedRowCount >= sva.RowCount
 }
 
 func (sva *SequentialVisitAll) Restart() {
-	sva.NextClusteringRow = 0
-	sva.NextPartition = sva.PartitionOffset
+	sva.NextPartition = sva.StartPartition
+	sva.NextClusteringRow = sva.StartClusteringRow
+	sva.ProcessedRowCount = 0
 }
 
 func (sva *SequentialVisitAll) IsPartitionDone() bool {

@@ -143,15 +143,16 @@ func PrepareDatabase(session *gocql.Session, replicationFactor int) {
 func GetWorkload(name string, threadId int, partitionOffset int64, mode string, writeRate int64, distribution string) WorkloadGenerator {
 	switch name {
 	case "sequential":
-		pksPerThread := partitionCount / int64(concurrency)
-		thisOffset := pksPerThread * int64(threadId)
-		var thisSize int64
-		if threadId+1 == concurrency {
-			thisSize = partitionCount - thisOffset
-		} else {
-			thisSize = pksPerThread
+		totalRowCount := partitionCount * clusteringRowCount
+		currentThreadId := int64(threadId)
+		rowCount, rowRemainder := totalRowCount/int64(concurrency), totalRowCount%int64(concurrency)
+		additionalRows, currentRemainderPartialOffset := int64(0), rowRemainder
+		if currentThreadId < rowRemainder {
+			additionalRows = 1
+			currentRemainderPartialOffset = currentThreadId
 		}
-		return NewSequentialVisitAll(thisOffset+partitionOffset, thisSize, clusteringRowCount)
+		rowOffset := partitionOffset*clusteringRowCount + currentThreadId*rowCount + currentRemainderPartialOffset
+		return NewSequentialVisitAll(rowOffset, rowCount+additionalRows, clusteringRowCount)
 	case "uniform":
 		return NewRandomUniform(threadId, partitionCount, partitionOffset, clusteringRowCount)
 	case "timeseries":
