@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"flag"
 	"fmt"
 	"log"
@@ -258,7 +257,6 @@ func main() {
 		caCertFile        string
 		clientCertFile    string
 		clientKeyFile     string
-		serverName        string
 		hostVerification  bool
 		clientCompression bool
 		connectionCount   int
@@ -337,7 +335,6 @@ func main() {
 	flag.StringVar(&password, "password", "", "cql password for authentication")
 
 	flag.BoolVar(&tlsEncryption, "tls", false, "use TLS encryption")
-	flag.StringVar(&serverName, "tls-server-name", "", "TLS server hostname")
 	flag.BoolVar(&hostVerification, "tls-host-verification", false, "verify server certificate")
 	flag.StringVar(&caCertFile, "tls-ca-cert-file", "", "path to CA certificate file, needed to enable encryption")
 	flag.StringVar(&clientCertFile, "tls-client-cert-file", "", "path to client certificate file, needed to enable client certificate authentication")
@@ -508,11 +505,7 @@ func main() {
 
 	if tlsEncryption {
 		sslOpts := &gocql.SslOptions{
-			Config: &tls.Config{
-				ServerName:         serverName,
-				InsecureSkipVerify: !hostVerification,
-			},
-			EnableHostVerification: false,
+			EnableHostVerification: hostVerification,
 		}
 
 		if caCertFile != "" {
@@ -541,12 +534,6 @@ func main() {
 		}
 		if clientCertFile != "" && clientKeyFile == "" {
 			log.Fatal("tls-client-key-file is required when tls-client-cert-file is provided")
-		}
-
-		if hostVerification {
-			if serverName == "" {
-				log.Fatal("tls-server-name is required when tls-host-verification is enabled")
-			}
 		}
 
 		cluster.SslOpts = sslOpts
