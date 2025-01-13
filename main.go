@@ -271,6 +271,9 @@ func main() {
 		tlsEncryption       bool
 
 		cloudConfigPath string
+
+		datacenter string
+		rack       string
 	)
 
 	flag.StringVar(&mode, "mode", "", "operating mode: write, read, counter_update, counter_read, scan")
@@ -340,7 +343,9 @@ func main() {
 	flag.StringVar(&clientCertFile, "tls-client-cert-file", "", "path to client certificate file, needed to enable client certificate authentication")
 	flag.StringVar(&clientKeyFile, "tls-client-key-file", "", "path to client key file, needed to enable client certificate authentication")
 
-	flag.StringVar(&hostSelectionPolicy, "host-selection-policy", "token-aware", "set the driver host selection policy (round-robin,token-aware,dc-aware),default 'token-aware'")
+	flag.StringVar(&hostSelectionPolicy, "host-selection-policy", "token-aware", "set the driver host selection policy (round-robin,host-pool,token-aware),default 'token-aware'")
+	flag.StringVar(&datacenter, "datacenter", "", "datacenter for the rack-aware policy")
+	flag.StringVar(&rack, "rack", "", "rack for the rack-aware policy")
 	flag.IntVar(&maxErrorsAtRow, "error-at-row-limit", 0, "set limit of errors caught by one thread at row after which workflow will be terminated and error reported. Set it to 0 if you want to haven no limit")
 	flag.IntVar(
 		&maxErrors,
@@ -464,7 +469,7 @@ func main() {
 	cluster.PageSize = pageSize
 	cluster.Timeout = timeout
 
-	policy, err := newHostSelectionPolicy(hostSelectionPolicy, strings.Split(nodes, ","))
+	policy, err := newHostSelectionPolicy(hostSelectionPolicy, strings.Split(nodes, ","), datacenter, rack)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -631,13 +636,19 @@ func main() {
 	os.Exit(testResult.GetFinalStatus())
 }
 
-func newHostSelectionPolicy(policy string, hosts []string) (gocql.HostSelectionPolicy, error) {
+func newHostSelectionPolicy(policy string, hosts []string, datacenter string, rack string) (gocql.HostSelectionPolicy, error) {
 	switch policy {
 	case "round-robin":
 		return gocql.RoundRobinHostPolicy(), nil
 	case "host-pool":
 		return gocql.HostPoolHostPolicy(hostpool.New(hosts)), nil
 	case "token-aware":
+		if datacenter != "" {
+			if rack != "" {
+				return gocql.TokenAwareHostPolicy(gocql.RackAwareRoundRobinPolicy(datacenter, rack)), nil
+			}
+			return gocql.TokenAwareHostPolicy(gocql.DCAwareRoundRobinPolicy(datacenter)), nil
+		}
 		return gocql.TokenAwareHostPolicy(gocql.RoundRobinHostPolicy()), nil
 	default:
 		return nil, fmt.Errorf("unknown host selection policy, %s", policy)
