@@ -14,6 +14,11 @@ define dl_tgz
 	fi
 endef
 
+VERSION ?= $(shell git describe --tags 2>/dev/null || echo "dev")
+COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
+BUILD_DATE ?= $(shell git log -1 --format=%cd --date=format:%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%SZ")
+LDFLAGS_VERSION := -X github.com/scylladb/scylla-bench/internal/version.version=$(VERSION) -X github.com/scylladb/scylla-bench/internal/version.commit=$(COMMIT) -X github.com/scylladb/scylla-bench/internal/version.date=$(BUILD_DATE)
+
 _prepare_build_dir:
 	@mkdir build >/dev/null 2>&1 || true
 
@@ -25,16 +30,16 @@ _use-custom-gocql-version:
   	fi;\
   	echo "Using custom gocql commit \"${GOCQL_VERSION}\"";\
 	go mod edit -replace "github.com/gocql/gocql=${GOCQL_REPO}@${GOCQL_VERSION}";\
-	go mod tidy;\
+	go mod tidy -compat=1.17;\
 	}
 
 build: _prepare_build_dir
 	@echo "Building static scylla-bench"
-	@CGO_ENABLED=0 go build -ldflags="-s -w" -o ./build/scylla-bench .
+	@CGO_ENABLED=0 go build -ldflags="-s -w $(LDFLAGS_VERSION)" -o ./build/scylla-bench .
 
 build-debug: _prepare_build_dir
 	@echo "Building debug version of static scylla-bench"
-	@CGO_ENABLED=0 go build -gcflags "all=-N -l" -o ./build/scylla-bench .
+	@CGO_ENABLED=0 go build -gcflags "all=-N -l" -ldflags="$(LDFLAGS_VERSION)" -o ./build/scylla-bench .
 
 .PHONY: build-with-custom-gocql-version
 build-with-custom-gocql-version: _use-custom-gocql-version build
