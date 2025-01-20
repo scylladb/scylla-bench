@@ -23,10 +23,13 @@ build-debug: _prepare_build_dir
 	@echo "Building debug version of static scylla-bench"
 	@CGO_ENABLED=0 go build -gcflags "all=-N -l" -o ./build/scylla-bench .
 
+.PHONY: build-with-custom-gocql-version
 build-with-custom-gocql-version: _use-custom-gocql-version build
 
+.PHONY: build-debug-with-custom-gocql-version
 build-debug-with-custom-gocql-version: _use-custom-gocql-version build-debug
 
+.PHONY: build-docker-image
 build-docker-image:
 ifdef DOCKER_IMAGE_LABELS
 	@echo 'Building docker image "${DOCKER_IMAGE_TAG}" with custom labels "${DOCKER_IMAGE_LABELS}"'
@@ -36,6 +39,7 @@ else
 	@docker build -t ${DOCKER_IMAGE_TAG} -f ./Dockerfile build/
 endif
 
+.PHONY: build-sct-docker-image
 build-sct-docker-image:
 ifdef DOCKER_IMAGE_LABELS
 	@echo 'Building sct docker image "${DOCKER_IMAGE_TAG}" with custom labels "${DOCKER_IMAGE_LABELS}"'
@@ -44,3 +48,11 @@ else
 	@echo 'Building sct docker image "${DOCKER_IMAGE_TAG}"'
 	@docker build -t ${DOCKER_IMAGE_TAG} -f ./Dockerfile.sct build/
 endif
+
+.PHONY: fmt
+fmt:
+	@gofumpt -w -extra .
+
+.PHONY: test
+test:
+	@go test -covermode=atomic -race -coverprofile=coverage.txt -timeout 5m -json -v ./... 2>&1 | gotestfmt -showteststatus
