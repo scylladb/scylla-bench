@@ -1,0 +1,69 @@
+run:
+  concurrency: 8
+  timeout: 10m
+  issues-exit-code: 1
+  tests: true
+  modules-download-mode: mod
+  allow-parallel-runners: true
+  go: '1.23'
+
+output:
+  print-issued-lines: true
+  print-linter-name: true
+  sort-results: true
+
+issues:
+  max-same-issues: 1
+  max-issues-per-linter: 10
+  exclude:
+    - Error return value of `.*.Unlock` is not checked
+    - Error return value of `.*.Completed` is not checked
+linters:
+  disable-all: true
+  enable:
+    - asasalint
+    - bidichk
+    - errcheck
+    - govet
+    - bodyclose
+    - ineffassign
+    - unused
+    - durationcheck
+    - goheader
+    - goimports
+    - misspell
+    - gofumpt
+    - gosimple
+    - staticcheck
+    - decorder
+    - lll
+    - errorlint
+    - gocritic
+    - predeclared
+    - revive
+    - thelper
+    - tparallel
+    - typecheck
+    - unused
+    - gomodguard
+    - gocyclo
+    - nilerr
+    - makezero
+    - wastedassign
+    - prealloc
+
+
+linters-settings:
+  govet:
+    settings:
+      shadow:
+        strict: true
+    enable-all: true
+  gocyclo:
+    min-complexity: 50
+  lll:
+    line-length: 180
+  gofumpt:
+    extra-rules: true
+  goimports:
+    local-prefixes: github.com/scylladb/scylla-bench
