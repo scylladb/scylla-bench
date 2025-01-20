@@ -39,6 +39,9 @@ ENTRYPOINT [ \
 
 FROM busybox AS production
 
+LABEL org.opencontainers.image.source="https://github.com/scylladb/scylla-bench"
+LABEL org.opencontainers.image.title="scylla-bench"
+
 WORKDIR /
 
 ENV GODEBUG="default=go1.23,cgocheck=0,disablethp=0,panicnil=0,http2client=1,http2server=1,asynctimerchan=0,madvdontneed=0"
@@ -53,6 +56,9 @@ EXPOSE 2121
 ENTRYPOINT ["scylla-bench"]
 
 FROM busybox AS  production-goreleaser
+
+LABEL org.opencontainers.image.source="https://github.com/scylladb/scylla-bench"
+LABEL org.opencontainers.image.title="scylla-bench"
 
 ENV GODEBUG="default=go1.23,cgocheck=0,disablethp=0,panicnil=0,http2client=1,http2server=1,asynctimerchan=0,madvdontneed=0"
 
