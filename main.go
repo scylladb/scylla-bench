@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/scylladb/scylla-bench/internal/version"
 	"github.com/scylladb/scylla-bench/pkg/results"
 
 	"github.com/gocql/gocql"
@@ -118,13 +119,13 @@ func PrepareDatabase(session *gocql.Session, replicationFactor int) {
 	Query(session, fmt.Sprintf("CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : %d }", keyspaceName, replicationFactor))
 
 	switch mode {
-		case "counter_update":
-			fallthrough
-		case "counter_read":
-			Query(session, "CREATE TABLE IF NOT EXISTS "+keyspaceName+"."+counterTableName+
-				" (pk bigint, ck bigint, c1 counter, c2 counter, c3 counter, c4 counter, c5 counter, PRIMARY KEY(pk, ck)) WITH compression = { }")
-		default:
-			Query(session, "CREATE TABLE IF NOT EXISTS "+keyspaceName+"."+tableName+" (pk bigint, ck bigint, v blob, PRIMARY KEY(pk, ck)) WITH compression = { }")
+	case "counter_update":
+		fallthrough
+	case "counter_read":
+		Query(session, "CREATE TABLE IF NOT EXISTS "+keyspaceName+"."+counterTableName+
+			" (pk bigint, ck bigint, c1 counter, c2 counter, c3 counter, c4 counter, c5 counter, PRIMARY KEY(pk, ck)) WITH compression = { }")
+	default:
+		Query(session, "CREATE TABLE IF NOT EXISTS "+keyspaceName+"."+tableName+" (pk bigint, ck bigint, v blob, PRIMARY KEY(pk, ck)) WITH compression = { }")
 
 	}
 	if truncateTable {
@@ -274,6 +275,9 @@ func main() {
 
 		datacenter string
 		rack       string
+
+		showVersion     bool
+		showJSONVersion bool
 	)
 
 	flag.StringVar(&mode, "mode", "", "operating mode: write, read, counter_update, counter_read, scan")
@@ -354,6 +358,8 @@ func main() {
 			"If it is set to '0' then no limit for number of errors is applied.")
 
 	flag.StringVar(&cloudConfigPath, "cloud-config-path", "", "set the cloud config bundle")
+	flag.BoolVar(&showVersion, "version", false, "show versions information of the tool and driver (human-readable)")
+	flag.BoolVar(&showJSONVersion, "version-json", false, "show versions information of the tool and driver in JSON format")
 
 	flag.Parse()
 	counterTableName = "test_counters"
@@ -361,6 +367,21 @@ func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stdout, "Usage:\n%s [options]\n\n", os.Args[0])
 		flag.PrintDefaults()
+	}
+
+	if showVersion || showJSONVersion {
+		info := version.GetVersionInfo()
+		if showJSONVersion {
+			jsonOutput, err := info.FormatJSON()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error formatting version info: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println(jsonOutput)
+		} else {
+			fmt.Println(info.FormatHuman())
+		}
+		os.Exit(0)
 	}
 
 	if mode == "" {
