@@ -10,6 +10,7 @@ The recommended way to install scylla-bench is to download the repository and th
 git clone https://github.com/scylladb/scylla-bench
 cd scylla-bench/
 go install .
+go build .
 ```
 
 __It is not recommended to download and install the tool directly using `go get` or `go install`__.
