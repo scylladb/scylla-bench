@@ -9,79 +9,79 @@ import (
 
 func TestParseDistribution(t *testing.T) {
 	cases := map[string]struct {
-		inputs []string
 		want   random.Distribution
+		inputs []string
 		ok     bool
 	}{
 		"fixed": {
-			[]string{`fixed(1)`, `fixed:1`},
-			&random.Fixed{Value: 1},
-			true,
+			inputs: []string{`fixed(1)`, `fixed:1`},
+			want:   &random.Fixed{Value: 1},
+			ok:     true,
 		},
 		"uniform": {
-			[]string{`uniform(1..10)`, `uniform:1..10`},
-			&random.Uniform{Min: 1, Max: 10},
-			true,
+			inputs: []string{`uniform(1..10)`, `uniform:1..10`},
+			want:   &random.Uniform{Min: 1, Max: 10},
+			ok:     true,
 		},
 		"invalid fixed #1": {
-			[]string{`fixed(asdfs)`, `fixed:asdfs`},
-			nil,
-			false,
+			inputs: []string{`fixed(asdfs)`, `fixed:asdfs`},
+			want:   nil,
+			ok:     false,
 		},
 		"invalid fixed #2": {
-			[]string{`fixed)1(`},
-			nil,
-			false,
+			inputs: []string{`fixed)1(`},
+			want:   nil,
+			ok:     false,
 		},
 		"invalid fixed #3": {
-			[]string{`fixed()`, `fixed:`},
-			nil,
-			false,
+			inputs: []string{`fixed()`, `fixed:`},
+			want:   nil,
+			ok:     false,
 		},
 		"invalid fixed #4": {
-			[]string{`fixed:1)`},
-			nil,
-			false,
+			inputs: []string{`fixed:1)`},
+			want:   nil,
+			ok:     false,
 		},
 		"invalid uniform #1": {
-			[]string{`uniform(1..)`, `uniform:1..`},
-			nil,
-			false,
+			inputs: []string{`uniform(1..)`, `uniform:1..`},
+			want:   nil,
+			ok:     false,
 		},
 		"invalid uniform #2": {
-			[]string{`uniform(..)`, `uniform:..`},
-			nil,
-			false,
+			inputs: []string{`uniform(..)`, `uniform:..`},
+			want:   nil,
+			ok:     false,
 		},
 		"invalid uniform #3": {
-			[]string{`uniform(10..abc)`, `uniform:10..abc`},
-			nil,
-			false,
+			inputs: []string{`uniform(10..abc)`, `uniform:10..abc`},
+			want:   nil,
+			ok:     false,
 		},
 		"invalid uniform #4": {
-			[]string{`uniform(abc..def)`, `uniform:abc..def`},
-			nil,
-			false,
+			inputs: []string{`uniform(abc..def)`, `uniform:abc..def`},
+			want:   nil,
+			ok:     false,
 		},
 		"invalid uniform #5": {
-			[]string{`uniform(300..100)`, `uniform:300..100`},
-			nil,
-			false,
+			inputs: []string{`uniform(300..100)`, `uniform:300..100`},
+			want:   nil,
+			ok:     false,
 		},
 		"invalid uniform #6": {
-			[]string{`uniform:10..100)`},
-			nil,
-			false,
+			inputs: []string{`uniform:10..100)`},
+			want:   nil,
+			ok:     false,
 		},
 		"unsupported #1": {
-			[]string{`unsupported(1..100, 10)`, `unsupported:1..100,10`},
-			nil,
-			false,
+			inputs: []string{`unsupported(1..100, 10)`, `unsupported:1..100,10`},
+			want:   nil,
+			ok:     false,
 		},
 		"unsupported #2": {
-			[]string{`~fixed(1..100, 10)`, `~fixed:1..100,10`},
-			nil,
-			false,
+			inputs: []string{`~fixed(1..100, 10)`, `~fixed:1..100,10`},
+			want:   nil,
+			ok:     false,
 		},
 	}
 

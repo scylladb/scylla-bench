@@ -11,13 +11,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/scylladb/scylla-bench/internal/version"
-	"github.com/scylladb/scylla-bench/pkg/results"
-
 	"github.com/gocql/gocql"
 	"github.com/gocql/gocql/scyllacloud"
 	"github.com/hailocab/go-hostpool"
 	"github.com/pkg/errors"
+
+	"github.com/scylladb/scylla-bench/internal/version"
+	"github.com/scylladb/scylla-bench/pkg/results"
+
+	//nolint:revive
 	. "github.com/scylladb/scylla-bench/pkg/workloads"
 	"github.com/scylladb/scylla-bench/random"
 )
@@ -48,13 +50,13 @@ func (v *DistributionValue) Set(s string) error {
 		return nil
 	}
 
-	dist, err := random.ParseDistribution(s)
-	if err == nil {
+	//nolint:govet
+	if dist, err := random.ParseDistribution(s); err == nil {
 		*v.Dist = dist
 		return nil
-	} else {
-		return err
 	}
+
+	return err
 }
 
 var (
@@ -116,6 +118,7 @@ func Query(session *gocql.Session, request string) {
 }
 
 func PrepareDatabase(session *gocql.Session, replicationFactor int) {
+	//nolint:lll
 	Query(session, fmt.Sprintf("CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : %d }", keyspaceName, replicationFactor))
 
 	switch mode {
@@ -131,44 +134,44 @@ func PrepareDatabase(session *gocql.Session, replicationFactor int) {
 	if truncateTable {
 		switch mode {
 		case "write":
-			log.Printf("Truncating the '" + tableName + "' table")
+			log.Printf("Truncating the '%s' table", tableName)
 			Query(session, "TRUNCATE TABLE "+keyspaceName+"."+tableName)
 		case "counter_update":
-			log.Printf("Truncating the '" + counterTableName + "' table")
+			log.Printf("Truncating the '%s' table", counterTableName)
 			Query(session, "TRUNCATE TABLE "+keyspaceName+"."+counterTableName)
 		}
 	}
 }
 
-func GetWorkload(name string, threadId int, partitionOffset int64, mode string, writeRate int64, distribution string) WorkloadGenerator {
+func GetWorkload(name string, threadID int, partitionOffset int64, mode string, writeRate int64, distribution string) WorkloadGenerator {
 	switch name {
 	case "sequential":
 		totalRowCount := partitionCount * clusteringRowCount
-		currentThreadId := int64(threadId)
+		currentThreadID := int64(threadID)
 		rowCount, rowRemainder := totalRowCount/int64(concurrency), totalRowCount%int64(concurrency)
 		additionalRows, currentRemainderPartialOffset := int64(0), rowRemainder
-		if currentThreadId < rowRemainder {
+		if currentThreadID < rowRemainder {
 			additionalRows = 1
-			currentRemainderPartialOffset = currentThreadId
+			currentRemainderPartialOffset = currentThreadID
 		}
-		rowOffset := partitionOffset*clusteringRowCount + currentThreadId*rowCount + currentRemainderPartialOffset
+		rowOffset := partitionOffset*clusteringRowCount + currentThreadID*rowCount + currentRemainderPartialOffset
 		return NewSequentialVisitAll(rowOffset, rowCount+additionalRows, clusteringRowCount)
 	case "uniform":
-		return NewRandomUniform(threadId, partitionCount, partitionOffset, clusteringRowCount)
+		return NewRandomUniform(threadID, partitionCount, partitionOffset, clusteringRowCount)
 	case "timeseries":
 		switch mode {
 		case "read":
-			return NewTimeSeriesReader(threadId, concurrency, partitionCount, partitionOffset, clusteringRowCount, writeRate, distribution, startTime)
+			return NewTimeSeriesReader(threadID, concurrency, partitionCount, partitionOffset, clusteringRowCount, writeRate, distribution, startTime)
 		case "write":
-			return NewTimeSeriesWriter(threadId, concurrency, partitionCount, partitionOffset, clusteringRowCount, startTime, int64(maximumRate/concurrency))
+			return NewTimeSeriesWriter(threadID, concurrency, partitionCount, partitionOffset, clusteringRowCount, startTime, int64(maximumRate/concurrency))
 		default:
 			log.Fatal("time series workload supports only write and read modes")
 		}
 	case "scan":
 		rangesPerThread := rangeCount / concurrency
-		thisOffset := rangesPerThread * threadId
+		thisOffset := rangesPerThread * threadID
 		var thisCount int
-		if threadId+1 == concurrency {
+		if threadID+1 == concurrency {
 			thisCount = rangeCount - thisOffset
 		} else {
 			thisCount = rangesPerThread
@@ -204,41 +207,41 @@ func GetMode(name string) func(session *gocql.Session, testResult *results.TestT
 func toInt(value bool) int {
 	if value {
 		return 1
-	} else {
-		return 0
 	}
+
+	return 0
 }
 
 func getRetryPolicy() *gocql.ExponentialBackoffRetryPolicy {
 	var retryMinIntervalMillisecond, retryMaxIntervalMillisecond int
 	var err error
 
-	retryInterval = strings.Replace(retryInterval, " ", "", -1)
+	retryInterval = strings.ReplaceAll(retryInterval, " ", "")
 	values := strings.Split(retryInterval, ",")
-	len_values := len(values)
-	if (len_values == 0) || (len_values > 2) {
+	lenValues := len(values)
+	if (lenValues == 0) || (lenValues > 2) {
 		log.Fatal("Wrong value for retry interval: '", retryInterval,
 			"'. Only 1 or 2 values are expected.")
 	}
 	for i := range values {
-		if _, err := strconv.Atoi(values[i]); err == nil {
-			values[i] = values[i] + "000"
+		if _, err = strconv.Atoi(values[i]); err == nil {
+			values[i] += "000"
 		}
-		values[i] = strings.Replace(values[i], "ms", "", -1)
-		values[i] = strings.Replace(values[i], "s", "000", -1)
+		values[i] = strings.ReplaceAll(values[i], "ms", "")
+		values[i] = strings.ReplaceAll(values[i], "s", "000")
 	}
 	retryMinIntervalMillisecond, err = strconv.Atoi(values[0])
 	if err != nil {
 		log.Fatal("Wrong value for retry minimum interval: '", values[0], "'")
 	}
-	retryMaxIntervalMillisecond, err = strconv.Atoi(values[len_values-1])
+	retryMaxIntervalMillisecond, err = strconv.Atoi(values[lenValues-1])
 	if err != nil {
-		log.Fatal("Wrong value for retry maximum interval: '", values[len_values-1], "'")
+		log.Fatal("Wrong value for retry maximum interval: '", values[lenValues-1], "'")
 	}
 	if retryMinIntervalMillisecond > retryMaxIntervalMillisecond {
 		log.Fatal("Wrong retry interval values provided: 'min' (",
 			values[0], "ms) interval is bigger than 'max' ("+
-				values[len_values-1]+"ms)")
+				values[lenValues-1]+"ms)")
 	}
 
 	return &gocql.ExponentialBackoffRetryPolicy{
@@ -248,6 +251,7 @@ func getRetryPolicy() *gocql.ExponentialBackoffRetryPolicy {
 	}
 }
 
+// nolint
 func main() {
 	var (
 		workload          string
@@ -309,6 +313,7 @@ func main() {
 	flag.IntVar(&rowsPerRequest, "rows-per-request", 1, "clustering rows per single request")
 	flag.BoolVar(&provideUpperBound, "provide-upper-bound", false, "whether read requests should provide an upper bound")
 	flag.BoolVar(&inRestriction, "in-restriction", false, "use IN restriction in read requests")
+	//nolint:lll
 	flag.StringVar(&selectOrderBy, "select-order-by", "none", "controls order part 'order by ck asc/desc' of the read query, you can set it to: none,asc,desc or to the list of them, i.e. 'none,asc', in such case it will run queries with these orders one by one")
 	flag.BoolVar(&noLowerBound, "no-lower-bound", false, "do not provide lower bound in read requests")
 	flag.BoolVar(&bypassCache, "bypass-cache", false, "Execute queries with the \"BYPASS CACHE\" CQL clause")
@@ -349,6 +354,7 @@ func main() {
 
 	flag.StringVar(&hostSelectionPolicy, "host-selection-policy", "token-aware", "set the driver host selection policy (round-robin,host-pool,token-aware),default 'token-aware'")
 	flag.StringVar(&datacenter, "datacenter", "", "datacenter for the rack-aware policy")
+	//nolint:lll
 	flag.StringVar(&rack, "rack", "", "rack for the rack-aware policy")
 	flag.IntVar(&maxErrorsAtRow, "error-at-row-limit", 0, "set limit of errors caught by one thread at row after which workflow will be terminated and error reported. Set it to 0 if you want to haven no limit")
 	flag.IntVar(
@@ -654,10 +660,10 @@ func main() {
 
 	testResult.GetTotalResults()
 	testResult.PrintTotalResults()
-	os.Exit(testResult.GetFinalStatus())
+	testResult.GetFinalStatus()
 }
 
-func newHostSelectionPolicy(policy string, hosts []string, datacenter string, rack string) (gocql.HostSelectionPolicy, error) {
+func newHostSelectionPolicy(policy string, hosts []string, datacenter, rack string) (gocql.HostSelectionPolicy, error) {
 	switch policy {
 	case "round-robin":
 		return gocql.RoundRobinHostPolicy(), nil

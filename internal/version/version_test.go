@@ -71,7 +71,7 @@ func TestVersionInfoFormatJSON(t *testing.T) {
 	}
 
 	var parsed VersionInfo
-	if err := json.Unmarshal([]byte(jsonOutput), &parsed); err != nil {
+	if err = json.Unmarshal([]byte(jsonOutput), &parsed); err != nil {
 		t.Fatalf("Failed to parse JSON output: %v", err)
 	}
 
@@ -111,14 +111,14 @@ func TestGithubClient(t *testing.T) {
 		// Mock responses based on the path
 		switch r.URL.Path {
 		case "/repos/testowner/testrepo/releases":
-			w.Write([]byte(`[
+			_, _ = w.Write([]byte(`[
 				{
 					"tag_name": "v1.0.0",
 					"created_at": "2023-01-01T00:00:00Z"
 				}
 			]`))
 		case "/repos/testowner/testrepo/git/refs/tags/v1.0.0":
-			w.Write([]byte(`{
+			_, _ = w.Write([]byte(`{
 				"object": {
 					"sha": "abcdef123456"
 				}
@@ -135,7 +135,11 @@ func TestGithubClient(t *testing.T) {
 		userAgent: userAgent,
 	}
 
-	date, sha, err := client.getReleaseInfo("testowner", "testrepo", "1.0.0")
+	var (
+		sha string
+		err error
+	)
+	date, sha, err = client.getReleaseInfo("testowner", "testrepo", "1.0.0")
 	if err != nil {
 		t.Fatalf("getReleaseInfo() returned error: %v", err)
 	}

@@ -11,16 +11,16 @@ import (
 )
 
 type MergedResult struct {
+	RawLatency              *hdrhistogram.Histogram
+	CoFixedLatency          *hdrhistogram.Histogram
+	CriticalErrors          []error
 	Time                    time.Duration
 	Operations              int
 	ClusteringRows          int
+	Errors                  int
 	OperationsPerSecond     float64
 	ClusteringRowsPerSecond float64
-	Errors                  int
-	CriticalErrors          []error
 	HistogramStartTime      int64
-	RawLatency              *hdrhistogram.Histogram
-	CoFixedLatency          *hdrhistogram.Histogram
 }
 
 func NewMergedResult() *MergedResult {
@@ -44,22 +44,20 @@ func (mr *MergedResult) AddResult(result Result) {
 		if mr.CriticalErrors == nil {
 			mr.CriticalErrors = result.CriticalErrors
 		} else {
-			for _, err := range result.CriticalErrors {
-				mr.CriticalErrors = append(mr.CriticalErrors, err)
-			}
+			mr.CriticalErrors = append(mr.CriticalErrors, result.CriticalErrors...)
 		}
 	}
 	if globalResultConfiguration.measureLatency {
 		if result.RawLatency != nil {
-			dropped_raw := mr.RawLatency.Merge(result.RawLatency)
-			if dropped_raw > 0 {
-				log.Print("dropped: ", dropped_raw)
+			droppedRaw := mr.RawLatency.Merge(result.RawLatency)
+			if droppedRaw > 0 {
+				log.Print("dropped: ", droppedRaw)
 			}
 		}
 		if result.CoFixedLatency != nil {
-			dropped_cofixed := mr.CoFixedLatency.Merge(result.CoFixedLatency)
-			if dropped_cofixed > 0 {
-				log.Print("dropped: ", dropped_cofixed)
+			droppedCofixed := mr.CoFixedLatency.Merge(result.CoFixedLatency)
+			if droppedCofixed > 0 {
+				log.Print("dropped: ", droppedCofixed)
 			}
 		}
 	}
@@ -131,7 +129,7 @@ func (mr *MergedResult) PrintPartialResult() {
 	latencyError := ""
 	if globalResultConfiguration.measureLatency {
 		scale := globalResultConfiguration.hdrLatencyScale
-		var latencyHist = mr.getLatencyHistogram()
+		latencyHist := mr.getLatencyHistogram()
 		fmt.Printf(withLatencyLineFmt, Round(mr.Time), mr.Operations, mr.ClusteringRows, mr.Errors,
 			Round(time.Duration(latencyHist.Max()*scale)), Round(time.Duration(latencyHist.ValueAtQuantile(99.9)*scale)), Round(time.Duration(latencyHist.ValueAtQuantile(99)*scale)),
 			Round(time.Duration(latencyHist.ValueAtQuantile(95)*scale)), Round(time.Duration(latencyHist.ValueAtQuantile(90)*scale)),

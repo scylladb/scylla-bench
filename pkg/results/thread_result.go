@@ -98,7 +98,6 @@ func (r *TestThreadResult) SubmitResult() {
 		r.ResetPartialResult()
 		r.partialStart = now
 	}
-
 }
 
 func (r *TestThreadResult) StopReporting() {

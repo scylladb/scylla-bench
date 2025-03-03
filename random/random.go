@@ -54,8 +54,8 @@ func Product(d ...Distribution) int64 {
 // Generator keep tracks of the seeds to ensure proper population of
 // generated values.
 type Generator struct {
-	mu    sync.Mutex // protects seeds
 	seeds map[seed]struct{}
+	mu    sync.Mutex // protects seeds
 }
 
 type seed struct {
@@ -127,7 +127,7 @@ func (g *Generator) generateSeed(column string, d Distribution) (int64, bool) {
 // ParseDistribution parses a distribution string. See "Supported types" section
 // of a document located under the following url for more details:
 //
-//   https://cassandra.apache.org/doc/latest/tools/cassandra_stress.html#profile
+//	https://cassandra.apache.org/doc/latest/tools/cassandra_stress.html#profile
 //
 // In addition to the c-s style syntax, a shorter, more bash friendly syntax is
 // also supported. This replaces the '(' and ')' surrounding the parameter list
@@ -142,13 +142,16 @@ func ParseDistribution(s string) (Distribution, error) {
 	i := strings.IndexRune(s, '(')
 	if i == -1 || i == 0 {
 		i = strings.IndexRune(s, ':') // alternative bash-friendly syntax
+
 		if i == -1 || i == 0 {
 			return nil, errors.New("missing parameter list start delimiter '(' or ':'")
-		} else if j = strings.IndexRune(s, ')'); j != -1 {
-			return nil, errors.New("unexpected parameter list end delimiter ')' when using alternative ':' syntax")
-		} else {
-			j = len(s)
 		}
+
+		if j = strings.IndexRune(s, ')'); j != -1 {
+			return nil, errors.New("unexpected parameter list end delimiter ')' when using alternative ':' syntax")
+		}
+
+		j = len(s)
 	} else {
 		j = strings.IndexRune(s, ')')
 		if j == -1 || i > j {
@@ -174,20 +177,20 @@ func ParseDistribution(s string) (Distribution, error) {
 		if len(p) != 2 {
 			return nil, errors.New("interval for uniform distribution has invalid format, expected: min..max")
 		}
-		min, err := strconv.ParseUint(p[0], 10, 32)
+		minimum, err := strconv.ParseUint(p[0], 10, 32)
 		if err != nil {
 			return nil, errors.Wrap(err, "min parameter uniform distribution is invalid")
 		}
-		max, err := strconv.ParseUint(p[1], 10, 32)
+		maximum, err := strconv.ParseUint(p[1], 10, 32)
 		if err != nil {
 			return nil, errors.Wrap(err, "max parameter for uniform distribution is invalid")
 		}
-		if max < min {
+		if maximum < minimum {
 			return nil, errors.New("interval for uniform distribution is invalid: min >= max")
 		}
 		return &Uniform{
-			Min: int64(min),
-			Max: int64(max),
+			Min: int64(minimum),
+			Max: int64(maximum),
 		}, nil
 	default:
 		return nil, errors.New("unsupported distribution: " + typ)
@@ -212,11 +215,10 @@ type Ratio struct {
 // For example the "uniform(1..10)/10" ratio is parsed to the
 // following value:
 //
-//   &Ratio{
-//     Distribution: &Uniform{Min: 1, Max: 10},
-//     Value: 10,
-//   }
-//
+//	&Ratio{
+//	  Distribution: &Uniform{Min: 1, Max: 10},
+//	  Value: 10,
+//	}
 func ParseRatio(s string) (*Ratio, error) {
 	i := strings.IndexRune(s, '/')
 	if i == -1 {
@@ -279,29 +281,22 @@ func (u Uniform) Generate() int64 {
 	return u.Min + globalRand.Int63n(u.Max-u.Min)
 }
 
-func max(i, j int64) int64 {
-	if i > j {
-		return i
-	}
-	return j
-}
-
 type lockedSource struct {
-	mu  sync.Mutex
 	src rand.Source64
+	mu  sync.RWMutex
 }
 
 func (r *lockedSource) Int63() (n int64) {
-	r.mu.Lock()
+	r.mu.RLock()
 	n = r.src.Int63()
-	r.mu.Unlock()
+	r.mu.RUnlock()
 	return
 }
 
 func (r *lockedSource) Uint64() (n uint64) {
-	r.mu.Lock()
+	r.mu.RLock()
 	n = r.src.Uint64()
-	r.mu.Unlock()
+	r.mu.RUnlock()
 	return
 }
 

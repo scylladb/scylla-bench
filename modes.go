@@ -7,18 +7,20 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	stdErrors "errors"
-
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
+
+	stdErrors "errors"
+
 	"github.com/scylladb/scylla-bench/pkg/results"
+	//nolint
 	. "github.com/scylladb/scylla-bench/pkg/workloads"
 )
 
@@ -38,8 +40,8 @@ func (*UnlimitedRateLimiter) Expected() time.Time {
 }
 
 type MaximumRateLimiter struct {
-	Period              time.Duration
 	StartTime           time.Time
+	Period              time.Duration
 	CompletedOperations int64
 }
 
@@ -56,12 +58,16 @@ func (mxrl *MaximumRateLimiter) Expected() time.Time {
 	return mxrl.StartTime.Add(mxrl.Period * time.Duration(mxrl.CompletedOperations))
 }
 
-func NewRateLimiter(maximumRate int, timeOffset time.Duration) RateLimiter {
+func NewRateLimiter(maximumRate int, _ time.Duration) RateLimiter {
 	if maximumRate == 0 {
 		return &UnlimitedRateLimiter{}
 	}
 	period := time.Duration(int64(time.Second) / int64(maximumRate))
-	return &MaximumRateLimiter{period, time.Now(), 0}
+	return &MaximumRateLimiter{
+		Period:              period,
+		StartTime:           time.Now(),
+		CompletedOperations: 0,
+	}
 }
 
 func RunConcurrently(maximumRate int, workload func(id int, testResult *results.TestThreadResult, rateLimiter RateLimiter)) *results.TestResults {
@@ -90,12 +96,12 @@ func RunConcurrently(maximumRate int, workload func(id int, testResult *results.
 }
 
 type TestIterator struct {
-	iteration uint
 	workload  WorkloadGenerator
+	iteration uint
 }
 
 func NewTestIterator(workload WorkloadGenerator) *TestIterator {
-	return &TestIterator{0, workload}
+	return &TestIterator{workload: workload, iteration: 0}
 }
 
 func (ti *TestIterator) IsDone() bool {
@@ -106,41 +112,43 @@ func (ti *TestIterator) IsDone() bool {
 	if ti.workload.IsDone() {
 		if ti.iteration+1 == iterations {
 			return true
-		} else {
-			ti.workload.Restart()
-			ti.iteration++
-			return false
 		}
-	} else {
+		ti.workload.Restart()
+		ti.iteration++
 		return false
 	}
+
+	return false
 }
 
 // used to calculate exponentially growing time
 // copy-pasted from the private function in the 'gocql@v1.7.3/policies.go' library
-func getExponentialTime(min time.Duration, max time.Duration, attempts int) time.Duration {
-	if min <= 0 {
-		min = 100 * time.Millisecond
+func getExponentialTime(minimum, maximum time.Duration, attempts int) time.Duration {
+	if minimum <= 0 {
+		minimum = 100 * time.Millisecond
 	}
-	if max <= 0 {
-		max = 10 * time.Second
+
+	if maximum <= 0 {
+		maximum = 10 * time.Second
 	}
-	minFloat := float64(min)
+
+	minFloat := float64(minimum)
 	napDuration := minFloat * math.Pow(2, float64(attempts-1))
 	// add some jitter
 	napDuration += rand.Float64()*minFloat - (minFloat / 2)
-	if napDuration > float64(max) {
-		return time.Duration(max)
+	if napDuration > float64(maximum) {
+		return maximum
 	}
 	return time.Duration(napDuration)
 }
 
-var totalErrors int32 = 0
-var totalErrorsPrintOnce sync.Once
-var errDoNotRegister = errors.New("do not register this test results")
+var (
+	totalErrors          int32
+	totalErrorsPrintOnce sync.Once
+	errDoNotRegister     = errors.New("do not register this test results")
+)
 
 func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, test func(rb *results.TestThreadResult) (error, time.Duration)) {
-
 	start := time.Now()
 	partialStart := start
 	iter := NewTestIterator(workload)
@@ -163,7 +171,7 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 		case stdErrors.Is(err, errDoNotRegister):
 			// Do not register test run results
 		default:
-			errorsAtRow += 1
+			errorsAtRow++
 			atomic.AddInt32(&totalErrors, 1)
 			threadResult.IncErrors()
 			log.Print(err)
@@ -176,13 +184,13 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 
 		now := time.Now()
 		if maxErrorsAtRow > 0 && errorsAtRow >= maxErrorsAtRow {
-			threadResult.SubmitCriticalError(errors.New(fmt.Sprintf(
-				"Error limit (maxErrorsAtRow) of %d errors is reached", errorsAtRow)))
+			threadResult.SubmitCriticalError(fmt.Errorf(
+				"error limit (maxErrorsAtRow) of %d errors is reached", errorsAtRow))
 		}
 		if maxErrors > 0 && int(atomic.LoadInt32(&totalErrors)) >= maxErrors {
 			totalErrorsPrintOnce.Do(func() {
-				threadResult.SubmitCriticalError(errors.New(fmt.Sprintf(
-					"Error limit (maxErrors) of %d errors is reached", maxErrors)))
+				threadResult.SubmitCriticalError(fmt.Errorf(
+					"error limit (maxErrors) of %d errors is reached", maxErrors))
 			})
 		}
 		if results.GlobalErrorFlag {
@@ -205,10 +213,10 @@ func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator,
 
 const (
 	generatedDataHeaderSize int64 = 24
-	generatedDataMinSize    int64 = generatedDataHeaderSize + 33
+	generatedDataMinSize          = generatedDataHeaderSize + 33
 )
 
-func GenerateData(pk int64, ck int64, size int64) []byte {
+func GenerateData(pk, ck, size int64) []byte {
 	if !validateData {
 		return make([]byte, size)
 	}
@@ -239,8 +247,9 @@ func GenerateData(pk int64, ck int64, size int64) []byte {
 				}
 			}
 		} else {
+			reader := rand.ChaCha8{}
 			payload := make([]byte, size-generatedDataHeaderSize-sha256.Size)
-			rand.Read(payload)
+			_, _ = reader.Read(payload)
 			csum := sha256.Sum256(payload)
 			if err := binary.Write(buf, binary.LittleEndian, payload); err != nil {
 				panic(err)
@@ -256,7 +265,7 @@ func GenerateData(pk int64, ck int64, size int64) []byte {
 	return value
 }
 
-func ValidateData(pk int64, ck int64, data []byte) error {
+func ValidateData(pk, ck int64, data []byte) error {
 	if !validateData {
 		return nil
 	}
@@ -330,11 +339,11 @@ func ValidateData(pk int64, ck int64, data []byte) error {
 	}
 
 	if !bytes.Equal(calculatedChecksum, storedChecksum) {
-		return errors.New(fmt.Sprintf(
+		return fmt.Errorf(
 			"corrupt checksum or data: calculated checksum (%x) doesn't match stored checksum (%x) over data\n%x",
 			calculatedChecksum,
 			storedChecksum,
-			payload))
+			payload)
 	}
 	return nil
 }
@@ -342,14 +351,14 @@ func ValidateData(pk int64, ck int64, data []byte) error {
 func handleSbRetryError(queryStr string, err error, currentAttempts int) error {
 	if retryNumber <= currentAttempts {
 		if err != nil {
-			err = errors.New(fmt.Sprintf(queryStr+" || ERROR: "+strconv.Itoa(currentAttempts)+" attempts applied: ") + err.Error())
+			return fmt.Errorf("%s || ERROR: %w attempts applied: %d", queryStr, err, currentAttempts)
 		}
 		return err
-	} else {
-		sleepTime := getExponentialTime(retryPolicy.Min, retryPolicy.Max, currentAttempts)
-		log.Print(queryStr + " || retry: attempt №" + strconv.Itoa(currentAttempts) + ", sleep for " + sleepTime.String())
-		time.Sleep(sleepTime)
 	}
+
+	sleepTime := getExponentialTime(retryPolicy.Min, retryPolicy.Max, currentAttempts)
+	log.Printf("%s || retry: attempt №%d, sleep for %s", queryStr, currentAttempts, sleepTime)
+	time.Sleep(sleepTime)
 	return nil
 }
 
@@ -394,7 +403,7 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 	request := fmt.Sprintf("INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)", keyspaceName, tableName)
 
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
-		batch := session.NewBatch(gocql.UnloggedBatch)
+		batch := session.Batch(gocql.UnloggedBatch)
 		batchSize := 0
 
 		currentPk := workload.NextPartitionKey()
@@ -411,7 +420,7 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 			batchSize++
 
 			value := GenerateData(currentPk, ck, clusteringRowSizeDist.Generate())
-			valuesSizesSummary = valuesSizesSummary + len(value)
+			valuesSizesSummary += len(value)
 			batch.Query(request, currentPk, ck, value)
 		}
 		if batchSize == 0 {
@@ -484,7 +493,7 @@ func DoCounterReads(session *gocql.Session, threadResult *results.TestThreadResu
 	DoReadsFromTable(counterTableName, session, threadResult, workload, rateLimiter)
 }
 
-func BuildReadQuery(table string, orderBy string, session *gocql.Session) *gocql.Query {
+func BuildReadQuery(table, orderBy string, session *gocql.Session) *gocql.Query {
 	var request string
 	var selectFields string
 	if table == tableName {
@@ -516,11 +525,11 @@ func BuildReadQuery(table string, orderBy string, session *gocql.Session) *gocql
 }
 
 func DoReadsFromTable(table string, session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
-	counter, num_of_orderings := 0, len(selectOrderByParsed)
+	counter, numOfOrderings := 0, len(selectOrderByParsed)
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
 		counter++
 		pk := workload.NextPartitionKey()
-		query := BuildReadQuery(table, selectOrderByParsed[counter%num_of_orderings], session)
+		query := BuildReadQuery(table, selectOrderByParsed[counter%numOfOrderings], session)
 
 		var bound *gocql.Query
 		switch {
