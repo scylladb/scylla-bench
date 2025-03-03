@@ -110,7 +110,7 @@ func TestUniformWorkload(t *testing.T) {
 
 			pkMin := tc.partitionOffset
 			pkMax := tc.partitionCount + tc.partitionOffset
-			for i := 0; i < 1000; i++ {
+			for j := 0; j < 1000; j++ {
 				if wrkld.IsDone() {
 					t.Error("got end of stream")
 				}

@@ -2,8 +2,9 @@ package results
 
 import (
 	"fmt"
-	"github.com/HdrHistogram/hdrhistogram-go"
 	"time"
+
+	"github.com/HdrHistogram/hdrhistogram-go"
 )
 
 const (
@@ -12,10 +13,10 @@ const (
 )
 
 type TestResults struct {
+	startTime       time.Time
+	totalResult     *MergedResult
 	threadResults   []*TestThreadResult
 	numberOfThreads int
-	startTime       time.Time
-	totalResult		*MergedResult
 }
 
 func (tr *TestResults) Init(concurrency int) {
@@ -119,13 +120,13 @@ func (tr *TestResults) PrintTotalResults() {
 
 func printLatencyResults(name string, latency *hdrhistogram.Histogram) {
 	scale := globalResultConfiguration.hdrLatencyScale
-	fmt.Println(name, ":\n  max:\t\t", time.Duration(latency.Max() * scale),
-		"\n  99.9th:\t", time.Duration(latency.ValueAtQuantile(99.9) * scale),
-		"\n  99th:\t\t", time.Duration(latency.ValueAtQuantile(99) * scale),
-		"\n  95th:\t\t", time.Duration(latency.ValueAtQuantile(95) * scale),
-		"\n  90th:\t\t", time.Duration(latency.ValueAtQuantile(90) * scale),
-		"\n  median:\t", time.Duration(latency.ValueAtQuantile(50) * scale),
-		"\n  mean:\t\t", time.Duration(latency.Mean() * float64(scale)))
+	fmt.Println(name, ":\n  max:\t\t", time.Duration(latency.Max()*scale),
+		"\n  99.9th:\t", time.Duration(latency.ValueAtQuantile(99.9)*scale),
+		"\n  99th:\t\t", time.Duration(latency.ValueAtQuantile(99)*scale),
+		"\n  95th:\t\t", time.Duration(latency.ValueAtQuantile(95)*scale),
+		"\n  90th:\t\t", time.Duration(latency.ValueAtQuantile(90)*scale),
+		"\n  median:\t", time.Duration(latency.ValueAtQuantile(50)*scale),
+		"\n  mean:\t\t", time.Duration(latency.Mean()*float64(scale)))
 }
 
 func (tr *TestResults) GetFinalStatus() int {

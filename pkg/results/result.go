@@ -1,7 +1,6 @@
 package results
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -25,26 +24,26 @@ var LatencyTypes = map[string]int{
 }
 
 type Configuration struct {
-	concurrency                   int
-	measureLatency                bool
 	hdrLatencyFile                string
+	latencyHistogramConfiguration histogramConfiguration
+	concurrency                   int
 	hdrLatencyScale               int64
 	latencyTypeToPrint            int
-	latencyHistogramConfiguration histogramConfiguration
+	measureLatency                bool
 }
 
 type Result struct {
-	Final          bool
+	RawLatency     *hdrhistogram.Histogram
+	CoFixedLatency *hdrhistogram.Histogram
+	CriticalErrors []error
 	ElapsedTime    time.Duration
 	Operations     int
 	ClusteringRows int
 	Errors         int
-	CriticalErrors []error
-	RawLatency     *hdrhistogram.Histogram
-	CoFixedLatency *hdrhistogram.Histogram
+	Final          bool
 }
 
-func SetGlobalHistogramConfiguration(minValue int64, maxValue int64, sigFig int) {
+func SetGlobalHistogramConfiguration(minValue, maxValue int64, sigFig int) {
 	globalResultConfiguration.latencyHistogramConfiguration.minValue = minValue / globalResultConfiguration.hdrLatencyScale
 	globalResultConfiguration.latencyHistogramConfiguration.maxValue = maxValue / globalResultConfiguration.hdrLatencyScale
 	globalResultConfiguration.latencyHistogramConfiguration.sigFig = sigFig
@@ -71,7 +70,8 @@ func SetGlobalLatencyTypeFromString(latencyType string) {
 func ValidateGlobalLatencyType(latencyType string) error {
 	_, ok := LatencyTypes[latencyType]
 	if !ok {
-		return errors.New(fmt.Sprintf("unkown value %s, supported values are: raw, fixed-coordinated-omission", latencyType))
+		//nolint:revive,lll,simple
+		return fmt.Errorf("unknown value %s, supported values are: raw, fixed-coordinated-omission", latencyType)
 	}
 	return nil
 }
@@ -92,13 +92,10 @@ func SetGlobalHdrLatencyUnits(value string) {
 	switch value {
 	case "ns":
 		globalResultConfiguration.hdrLatencyScale = 1
-		break
 	case "us":
 		globalResultConfiguration.hdrLatencyScale = 1000
-		break
 	case "ms":
 		globalResultConfiguration.hdrLatencyScale = 1000000
-		break
 	default:
 		panic("Wrong value for hdr-latency-scale, only supported values are: ns, us and ms")
 	}

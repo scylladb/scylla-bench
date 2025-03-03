@@ -32,14 +32,15 @@ type ComponentInfo struct {
 	CommitSHA  string `json:"commit_sha"`
 }
 
+// nolint
 type VersionInfo struct {
 	ScyllaBench ComponentInfo `json:"scylla-bench"`
 	Driver      ComponentInfo `json:"scylla-driver"`
 }
 
 type githubRelease struct {
-	TagName   string    `json:"tag_name"`
 	CreatedAt time.Time `json:"created_at"`
+	TagName   string    `json:"tag_name"`
 }
 
 type githubTag struct {
@@ -81,7 +82,7 @@ func (g *githubClient) getJSON(path string, target interface{}) error {
 		return fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(target); err != nil {
+	if err = json.NewDecoder(resp.Body).Decode(target); err != nil {
 		return fmt.Errorf("failed to decode JSON: %w", err)
 	}
 	return nil
@@ -92,7 +93,7 @@ func (g *githubClient) getReleaseInfo(owner, repo, version string) (date, sha st
 	// Fetch releases
 	path := fmt.Sprintf("/repos/%s/%s/releases", owner, repo)
 	var releases []githubRelease
-	if err := g.getJSON(path, &releases); err != nil {
+	if err = g.getJSON(path, &releases); err != nil {
 		return "", "", fmt.Errorf("failed to fetch releases: %w", err)
 	}
 
@@ -112,7 +113,7 @@ func (g *githubClient) getReleaseInfo(owner, repo, version string) (date, sha st
 	// Fetch tag info to get the commit SHA
 	tagPath := fmt.Sprintf("/repos/%s/%s/git/refs/tags/%s", owner, repo, tagName)
 	var tag githubTag
-	if err := g.getJSON(tagPath, &tag); err != nil {
+	if err = g.getJSON(tagPath, &tag); err != nil {
 		return releaseDate, "", fmt.Errorf("failed to fetch tag info: %w", err)
 	}
 
@@ -130,7 +131,7 @@ func (g *githubClient) getCommitInfo(owner, repo, sha string) (date string, err 
 		} `json:"commit"`
 	}
 
-	if err := g.getJSON(path, &commit); err != nil {
+	if err = g.getJSON(path, &commit); err != nil {
 		return "", fmt.Errorf("failed to fetch commit info: %w", err)
 	}
 
@@ -148,7 +149,7 @@ func tryGitCommand(args ...string) (string, bool) {
 // Reads version info from local Git repository
 func getGitVersionInfo() (ver, sha, buildDate string, ok bool) {
 	// Check if git is available and we're in a git repo
-	if _, ok := tryGitCommand("rev-parse", "--is-inside-work-tree"); !ok {
+	if _, ok = tryGitCommand("rev-parse", "--is-inside-work-tree"); !ok {
 		return "", "", "", false
 	}
 
@@ -161,6 +162,7 @@ func getGitVersionInfo() (ver, sha, buildDate string, ok bool) {
 	if !ok {
 		return "", "", "", false
 	}
+	//nolint
 	if tags, ok := tryGitCommand("tag", "--points-at", "HEAD"); ok && tags != "" {
 		for _, tag := range strings.Split(tags, "\n") {
 			if strings.HasPrefix(tag, "v") {
@@ -170,6 +172,7 @@ func getGitVersionInfo() (ver, sha, buildDate string, ok bool) {
 	}
 
 	// If not a released version, use the most recent tag to build a dev version string
+	//nolint
 	if closestTag, ok := tryGitCommand("describe", "--tags", "--abbrev=0"); ok && strings.HasPrefix(closestTag, "v") {
 		return fmt.Sprintf("%s-dev-%s", closestTag, sha[:8]), sha, buildDate, true
 	}
@@ -199,7 +202,7 @@ func extractCommitSHA(version string) string {
 	return ""
 }
 
-func extractRepoOwner(repoPath string, defaultOwner string) string {
+func extractRepoOwner(repoPath, defaultOwner string) string {
 	parts := strings.Split(repoPath, "/")
 	if len(parts) >= 2 {
 		return parts[1]
@@ -209,6 +212,11 @@ func extractRepoOwner(repoPath string, defaultOwner string) string {
 
 // Extracts driver version info
 func getDriverVersionInfo() ComponentInfo {
+	var (
+		err error
+		sha string
+	)
+
 	info := ComponentInfo{
 		Version:    "unknown",
 		CommitSHA:  "unknown",
@@ -239,7 +247,7 @@ func getDriverVersionInfo() ComponentInfo {
 			info.CommitSHA = envSHA
 
 			repoOwner := extractRepoOwner(os.Getenv("GOCQL_REPO"), "scylladb")
-			if date, err := github.getCommitInfo(repoOwner, "gocql", envSHA); err == nil {
+			if date, err = github.getCommitInfo(repoOwner, "gocql", envSHA); err == nil {
 				info.CommitDate = date
 			}
 			return info
@@ -248,7 +256,7 @@ func getDriverVersionInfo() ComponentInfo {
 		// Otherwise try to extract released version (e.g. v1.2.3)
 		if strings.HasPrefix(replacement.Version, "v") && !strings.Contains(replacement.Version, "-") {
 			info.Version = replacement.Version
-			if date, sha, err := github.getReleaseInfo("scylladb", "gocql", replacement.Version); err == nil {
+			if date, sha, err = github.getReleaseInfo("scylladb", "gocql", replacement.Version); err == nil {
 				info.CommitDate = date
 				info.CommitSHA = sha
 			}
@@ -256,13 +264,13 @@ func getDriverVersionInfo() ComponentInfo {
 		}
 
 		// Otherwise handle pseudo-versions or direct SHA
-		version := replacement.Version
-		if sha := extractCommitSHA(version); sha != "" {
+		version = replacement.Version
+		if sha = extractCommitSHA(version); sha != "" {
 			info.Version = sha
 			info.CommitSHA = sha
 
 			repoOwner := extractRepoOwner(replacement.Path, "scylladb")
-			if date, err := github.getCommitInfo(repoOwner, "gocql", sha); err == nil {
+			if date, err = github.getCommitInfo(repoOwner, "gocql", sha); err == nil {
 				info.CommitDate = date
 			}
 			return info
@@ -281,7 +289,7 @@ func getDriverVersionInfo() ComponentInfo {
 
 // Extracts build settings from debug.BuildInfo to be compatible with different Go versions, as
 // in older Go versions (pre 1.18), BuildInfo doesn't have Settings field
-func getBuildInfoSettings(info *debug.BuildInfo) (map[string]string, bool) {
+func getBuildInfoSettings(_ *debug.BuildInfo) (map[string]string, bool) {
 	settings := make(map[string]string)
 	// For Go 1.17 return an empty map
 	return settings, false
@@ -309,10 +317,12 @@ func getMainBuildInfo() (ver, sha, buildDate string) {
 		}
 
 		// Try to get VCS information from build info settings
+		//nolint:govet
 		if settings, ok := getBuildInfoSettings(info); ok {
 			if vcsRev, ok := settings["vcs.revision"]; ok && sha == "unknown" {
 				sha = vcsRev
 			}
+			//nolint:govet
 			if vcsTime, ok := settings["vcs.time"]; ok && buildDate == "unknown" {
 				buildDate = vcsTime
 			}
