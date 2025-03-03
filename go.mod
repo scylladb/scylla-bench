@@ -11,9 +11,10 @@ require (
 
 require (
 	github.com/golang/snappy v0.0.4 // indirect
+	github.com/klauspost/compress v1.17.9 // indirect
 	golang.org/x/net v0.34.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-replace github.com/gocql/gocql => github.com/scylladb/gocql v1.14.4
+replace github.com/gocql/gocql => github.com/scylladb/gocql v1.14.5
