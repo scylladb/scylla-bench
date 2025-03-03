@@ -1,5 +1,18 @@
-GOCQL_REPO?=github.com/scylladb/gocql
-DOCKER_IMAGE_TAG?=scylla-bench
+GOCQL_REPO ?= github.com/scylladb/gocql
+DOCKER_IMAGE_TAG ?= scylla-bench
+GOLANGCI_VERSION ?= 1.62.0
+GOOS ?= $(shell uname | tr '[:upper:]' '[:lower:]')
+GOARCH ?= $(shell go env GOARCH)
+
+define dl_tgz
+	@mkdir -p $(GOBIN) 2>/dev/null
+
+	@if [ ! -f "$(GOBIN)/$(1)" ]; then \
+		echo "Downloading $(GOBIN)/$(1)"; \
+		curl --progress-bar -L $(2) | tar zxf - --wildcards --strip 1 -C $(GOBIN) '*/$(1)'; \
+		chmod +x "$(GOBIN)/$(1)"; \
+	fi
+endef
 
 _prepare_build_dir:
 	@mkdir build >/dev/null 2>&1 || true
@@ -56,3 +69,27 @@ fmt:
 .PHONY: test
 test:
 	@go test -covermode=atomic -race -coverprofile=coverage.txt -timeout 5m -json -v ./... 2>&1 | gotestfmt -showteststatus
+
+build/golangci-lint:
+	mkdir -p build
+	@curl --progress-bar --output golangci-lint.tar.gz  -L "https://github.com/golangci/golangci-lint/releases/download/v$(GOLANGCI_VERSION)/golangci-lint-$(GOLANGCI_VERSION)-$(GOOS)-amd64.tar.gz"
+	@tar xzvf golangci-lint.tar.gz
+	@mv golangci-lint-$(GOLANGCI_VERSION)-$(GOOS)-amd64/golangci-lint build/golangci-lint
+	@rm -rf golangci-lint-$(GOLANGCI_VERSION)-$(GOOS)-amd64
+	@rm -rf golangci-lint.tar.gz
+
+.PHONY: check
+check: build/golangci-lint
+	@build/golangci-lint run
+
+.PHONY: clean-bin
+clean-bin:
+	@rm -rf build
+
+.PHONY: clean-results
+clean-results:
+	@rm -rf coverage.txt
+	@rm -rf dist
+
+.PHONY: clean
+clean: clean-bin clean-results
