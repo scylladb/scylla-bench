@@ -1,4 +1,4 @@
-FROM golang:1.17 AS build
+FROM golang:1.24 AS build
 
 ENV GO111MODULE=on
 ENV GOAMD64=v3
