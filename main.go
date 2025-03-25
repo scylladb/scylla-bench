@@ -660,7 +660,7 @@ func main() {
 
 	testResult.GetTotalResults()
 	testResult.PrintTotalResults()
-	testResult.GetFinalStatus()
+	os.Exit(testResult.GetFinalStatus())
 }
 
 func newHostSelectionPolicy(policy string, hosts []string, datacenter, rack string) (gocql.HostSelectionPolicy, error) {

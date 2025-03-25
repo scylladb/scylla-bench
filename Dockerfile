@@ -1,4 +1,4 @@
-FROM golang:1.17 AS build
+FROM golang:1.24 AS build
 
 ENV GO111MODULE=on
 ENV GOAMD64=v3
@@ -15,11 +15,11 @@ COPY . .
 RUN apt-get update \
     && apt-get upgrade -y  \
     && apt-get install -y build-essential ca-certificates libc-dev \
-    && make build
+    && make build-debug
 
 FROM build AS debug
 
-ENV GODEBUG="default=go1.23,cgocheck=1,disablethp=0,panicnil=0,http2client=1,http2server=1,asynctimerchan=0,madvdontneed=0"
+ENV GODEBUG="default=go1.24,cgocheck=1,disablethp=0,panicnil=0,http2client=1,http2server=1,asynctimerchan=0,madvdontneed=0"
 ENV PATH="/scylla-bench/bin:${PATH}"
 
 RUN apt-get install -y gdb gcc iputils-ping mlocate vim \
@@ -45,7 +45,7 @@ LABEL com.scylladb.loader-type="scylla-bench"
 
 WORKDIR /
 
-ENV GODEBUG="default=go1.23,cgocheck=0,disablethp=0,panicnil=0,http2client=1,http2server=1,asynctimerchan=0,madvdontneed=0"
+ENV GODEBUG="default=go1.24,cgocheck=0,disablethp=0,panicnil=0,http2client=1,http2server=1,asynctimerchan=0,madvdontneed=0"
 
 ENV PATH="/usr/local/bin:${PATH}"
 
