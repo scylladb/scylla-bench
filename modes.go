@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	mathrandv1 "math/rand"
 	"math/rand/v2"
 	"strconv"
 	"strings"
@@ -247,9 +248,9 @@ func GenerateData(pk, ck, size int64) []byte {
 				}
 			}
 		} else {
-			reader := rand.ChaCha8{}
 			payload := make([]byte, size-generatedDataHeaderSize-sha256.Size)
-			_, _ = reader.Read(payload)
+			//nolint
+			_, _ = mathrandv1.Read(payload)
 			csum := sha256.Sum256(payload)
 			if err := binary.Write(buf, binary.LittleEndian, payload); err != nil {
 				panic(err)
