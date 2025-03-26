@@ -19,7 +19,7 @@ _use-custom-gocql-version:
   	fi;\
   	echo "Using custom gocql commit \"${GOCQL_VERSION}\"";\
 	go mod edit -replace "github.com/gocql/gocql=${GOCQL_REPO}@${GOCQL_VERSION}";\
-	go mod tidy -compat=1.17;\
+	go mod tidy \
 	}
 
 build: _prepare_build_dir

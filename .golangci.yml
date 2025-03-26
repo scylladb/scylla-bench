@@ -5,7 +5,7 @@ run:
   tests: true
   modules-download-mode: mod
   allow-parallel-runners: true
-  go: '1.23'
+  go: '1.24'
 
 output:
   print-issued-lines: true
