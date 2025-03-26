@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	mathrandv1 "math/rand"
 	"math/rand/v2"
 	"strconv"
 	"strings"
@@ -217,53 +216,61 @@ const (
 	generatedDataMinSize          = generatedDataHeaderSize + 33
 )
 
-func GenerateData(pk, ck, size int64) []byte {
+func GenerateData(pk, ck, size int64) ([]byte, error) {
 	if !validateData {
-		return make([]byte, size)
+		return make([]byte, size), nil
 	}
 
-	buf := new(bytes.Buffer)
+	var buf bytes.Buffer
+	buf.Grow(int(size))
 
 	if size < generatedDataHeaderSize {
-		if err := binary.Write(buf, binary.LittleEndian, int8(size)); err != nil {
-			panic(err)
+		if err := binary.Write(&buf, binary.LittleEndian, int8(size)); err != nil {
+			return nil, err
 		}
-		if err := binary.Write(buf, binary.LittleEndian, pk^ck); err != nil {
-			panic(err)
+		if err := binary.Write(&buf, binary.LittleEndian, pk^ck); err != nil {
+			return nil, err
 		}
-	} else {
-		if err := binary.Write(buf, binary.LittleEndian, size); err != nil {
-			panic(err)
-		}
-		if err := binary.Write(buf, binary.LittleEndian, pk); err != nil {
-			panic(err)
-		}
-		if err := binary.Write(buf, binary.LittleEndian, ck); err != nil {
-			panic(err)
-		}
-		if size < generatedDataMinSize {
-			for i := generatedDataHeaderSize; i < size; i++ {
-				if err := binary.Write(buf, binary.LittleEndian, int8(0)); err != nil {
-					panic(err)
-				}
-			}
-		} else {
-			payload := make([]byte, size-generatedDataHeaderSize-sha256.Size)
-			//nolint
-			_, _ = mathrandv1.Read(payload)
-			csum := sha256.Sum256(payload)
-			if err := binary.Write(buf, binary.LittleEndian, payload); err != nil {
-				panic(err)
-			}
-			if err := binary.Write(buf, binary.LittleEndian, csum); err != nil {
-				panic(err)
-			}
-		}
+
+		return buf.Bytes(), nil
 	}
 
-	value := make([]byte, size)
-	copy(value, buf.Bytes())
-	return value
+	if err := binary.Write(&buf, binary.LittleEndian, size); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(&buf, binary.LittleEndian, pk); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(&buf, binary.LittleEndian, ck); err != nil {
+		return nil, err
+	}
+
+	if size < generatedDataMinSize {
+		for i := generatedDataHeaderSize; i < size; i++ {
+			if err := binary.Write(&buf, binary.LittleEndian, int8(0)); err != nil {
+				return nil, err
+			}
+		}
+
+		return buf.Bytes(), nil
+	}
+
+	seed := sha256.Sum256([]byte(strconv.FormatUint(rand.Uint64(), 10)))
+	reader := rand.NewChaCha8(seed)
+
+	payload := buf.AvailableBuffer()
+	_, _ = reader.Read(payload[:size-sha256.Size])
+	if err := binary.Write(&buf, binary.LittleEndian, payload); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(&buf, binary.LittleEndian, sha256.Sum256(payload)); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }
 
 func ValidateData(pk, ck int64, data []byte) error {
@@ -295,7 +302,11 @@ func ValidateData(pk, ck int64, data []byte) error {
 
 	// There is no random payload for sizes < minFullSize
 	if size < generatedDataMinSize {
-		expectedBuf := GenerateData(pk, ck, size)
+		expectedBuf, err := GenerateData(pk, ck, size)
+		if err != nil {
+			return errors.Wrap(err, "failed to generate expected data for validation")
+		}
+
 		if !bytes.Equal(buf.Bytes(), expectedBuf) {
 			return errors.Errorf("actual value doesn't match expected value:\nexpected: %x\nactual: %x", expectedBuf, buf.Bytes())
 		}
@@ -369,7 +380,10 @@ func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, wo
 		query := session.Query(request)
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
-		value := GenerateData(pk, ck, clusteringRowSizeDist.Generate())
+		value, err := GenerateData(pk, ck, clusteringRowSizeDist.Generate())
+		if err != nil {
+			panic(err)
+		}
 		bound := query.Bind(pk, ck, value)
 
 		currentAttempts := 0
@@ -420,7 +434,10 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 			}
 			batchSize++
 
-			value := GenerateData(currentPk, ck, clusteringRowSizeDist.Generate())
+			value, err := GenerateData(currentPk, ck, clusteringRowSizeDist.Generate())
+			if err != nil {
+				panic(err)
+			}
 			valuesSizesSummary += len(value)
 			batch.Query(request, currentPk, ck, value)
 		}
