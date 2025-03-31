@@ -22,6 +22,7 @@ import (
 	"github.com/scylladb/scylla-bench/pkg/results"
 	//nolint
 	. "github.com/scylladb/scylla-bench/pkg/workloads"
+	"github.com/scylladb/scylla-bench/random"
 )
 
 const reportInterval time.Duration = 1 * time.Second
@@ -257,11 +258,9 @@ func GenerateData(pk, ck, size int64) ([]byte, error) {
 		return buf.Bytes(), nil
 	}
 
-	seed := sha256.Sum256([]byte(strconv.FormatUint(rand.Uint64(), 10)))
-	reader := rand.NewChaCha8(seed)
-
 	payload := buf.AvailableBuffer()
-	_, _ = reader.Read(payload[:size-sha256.Size])
+	_, _ = random.String(payload[:size-sha256.Size])
+
 	if err := binary.Write(&buf, binary.LittleEndian, payload); err != nil {
 		return nil, err
 	}
@@ -314,11 +313,10 @@ func ValidateData(pk, ck int64, data []byte) error {
 	}
 
 	var storedPk, storedCk int64
-	var err error
 
 	// Validate pk
-	err = binary.Read(buf, binary.LittleEndian, &storedPk)
-	if err != nil {
+
+	if err := binary.Read(buf, binary.LittleEndian, &storedPk); err != nil {
 		return errors.Wrap(err, "failed to validate data, cannot read pk from value")
 	}
 	if storedPk != pk {
@@ -326,8 +324,7 @@ func ValidateData(pk, ck int64, data []byte) error {
 	}
 
 	// Validate ck
-	err = binary.Read(buf, binary.LittleEndian, &storedCk)
-	if err != nil {
+	if err := binary.Read(buf, binary.LittleEndian, &storedCk); err != nil {
 		return errors.Wrap(err, "failed to validate data, cannot read pk from value")
 	}
 	if storedCk != ck {
@@ -336,21 +333,21 @@ func ValidateData(pk, ck int64, data []byte) error {
 
 	// Validate checksum over the payload
 	payload := make([]byte, size-generatedDataHeaderSize-sha256.Size)
-	err = binary.Read(buf, binary.LittleEndian, payload)
-	if err != nil {
+
+	if err := binary.Read(buf, binary.LittleEndian, payload); err != nil {
 		return errors.Wrap(err, "failed to verify checksum, cannot read payload from value")
 	}
 
 	calculatedChecksumArray := sha256.Sum256(payload)
 	calculatedChecksum := calculatedChecksumArray[0:]
 
-	storedChecksum := make([]byte, 32)
-	err = binary.Read(buf, binary.LittleEndian, storedChecksum)
-	if err != nil {
+	var storedChecksum [sha256.Size]byte
+
+	if err := binary.Read(buf, binary.LittleEndian, storedChecksum); err != nil {
 		return errors.Wrap(err, "failed to verify checksum, cannot read checksum from value")
 	}
 
-	if !bytes.Equal(calculatedChecksum, storedChecksum) {
+	if !bytes.Equal(calculatedChecksum, storedChecksum[:]) {
 		return fmt.Errorf(
 			"corrupt checksum or data: calculated checksum (%x) doesn't match stored checksum (%x) over data\n%x",
 			calculatedChecksum,
@@ -378,23 +375,23 @@ func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, wo
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
 		request := "INSERT INTO " + keyspaceName + "." + tableName + " (pk, ck, v) VALUES (?, ?, ?)"
 		query := session.Query(request)
+		defer query.Release()
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
 		value, err := GenerateData(pk, ck, clusteringRowSizeDist.Generate())
 		if err != nil {
 			panic(err)
 		}
-		bound := query.Bind(pk, ck, value)
 
 		currentAttempts := 0
 		// NOTE: use custom query string instead of 'query.String()' to avoid huge values printings
 		queryStr := fmt.Sprintf(
 			"[query statement=%q values=%+v consistency=%s]",
-			request, []interface{}{pk, ck, "<" + strconv.Itoa(len(value)) + "-bytes-value>"},
+			request, []any{pk, ck, "<" + strconv.Itoa(len(value)) + "-bytes-value>"},
 			query.GetConsistency())
 		for {
 			requestStart := time.Now()
-			err := bound.Exec()
+			err = query.Exec()
 			requestEnd := time.Now()
 
 			if err == nil {
@@ -475,15 +472,16 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 
 func DoCounterUpdates(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
-		query := session.Query("UPDATE " + keyspaceName + "." + counterTableName +
-			" SET c1 = c1 + ?, c2 = c2 + ?, c3 = c3 + ?, c4 = c4 + ?, c5 = c5 + ? WHERE pk = ? AND ck = ?")
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
-		bound := query.Bind(ck, ck+1, ck+2, ck+3, ck+4, pk, ck)
+
+		query := session.Query("UPDATE "+keyspaceName+"."+counterTableName+
+			" SET c1 = c1 + ?, c2 = c2 + ?, c3 = c3 + ?, c4 = c4 + ?, c5 = c5 + ? WHERE pk = ? AND ck = ?").
+			Bind(ck, ck+1, ck+2, ck+3, ck+4, pk, ck)
 		currentAttempts := 0
 		for {
 			requestStart := time.Now()
-			err := bound.Exec()
+			err := query.Exec()
 			requestEnd := time.Now()
 
 			if err == nil {
@@ -549,27 +547,26 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 		pk := workload.NextPartitionKey()
 		query := BuildReadQuery(table, selectOrderByParsed[counter%numOfOrderings], session)
 
-		var bound *gocql.Query
 		switch {
 		case inRestriction:
-			args := make([]interface{}, 1, rowsPerRequest+1)
+			args := make([]any, 1, rowsPerRequest+1)
 			args[0] = pk
-			for i := 0; i < rowsPerRequest; i++ {
+			for range rowsPerRequest {
 				if workload.IsPartitionDone() {
 					args = append(args, 0)
 				} else {
 					args = append(args, workload.NextClusteringKey())
 				}
 			}
-			bound = query.Bind(args...)
+			query.Bind(args...)
 		case noLowerBound:
-			bound = query.Bind(pk)
+			query.Bind(pk)
 		default:
 			ck := workload.NextClusteringKey()
 			if provideUpperBound {
-				bound = query.Bind(pk, ck, ck+int64(rowsPerRequest))
+				query.Bind(pk, ck, ck+int64(rowsPerRequest))
 			} else {
-				bound = query.Bind(pk, ck)
+				query.Bind(pk, ck)
 			}
 		}
 
@@ -579,7 +576,7 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 		currentAttempts := 0
 		for {
 			requestStart := time.Now()
-			iter := bound.Iter()
+			iter := query.Iter()
 			if table == tableName {
 				for iter.Scan(&resPk, &resCk, &value) {
 					rb.IncRows()

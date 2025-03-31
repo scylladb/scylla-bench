@@ -62,7 +62,7 @@ fmt:
 
 .PHONY: test
 test:
-	@go test -covermode=atomic -race -coverprofile=coverage.txt -timeout 5m -json -v ./... 2>&1 | gotestfmt -showteststatus
+	@go test -covermode=atomic -race -coverprofile=coverage.txt -timeout 5m -json -v ./... 2>&1 | go tool gotestfmt -showteststatus
 
 .PHONY: check
 check:
