@@ -19,7 +19,7 @@ _use-custom-gocql-version:
   	fi;\
   	echo "Using custom gocql commit \"${GOCQL_VERSION}\"";\
 	go mod edit -replace "github.com/gocql/gocql=${GOCQL_REPO}@${GOCQL_VERSION}";\
-	go mod tidy -compat=1.17;\
+	go mod tidy \
 	}
 
 build: _prepare_build_dir
@@ -62,7 +62,7 @@ fmt:
 
 .PHONY: test
 test:
-	@go test -covermode=atomic -race -coverprofile=coverage.txt -timeout 5m -json -v ./... 2>&1 | gotestfmt -showteststatus
+	@go test -covermode=atomic -race -coverprofile=coverage.txt -timeout 5m -json -v ./... 2>&1 | go tool gotestfmt -showteststatus
 
 .PHONY: check
 check:
