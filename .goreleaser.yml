@@ -20,6 +20,14 @@ builds:
       - v3 # v3 Enables AMD64 SIMD (SSE4.x,AVX2) optimizations
     goarm64:
       - v8.3 # ARM crypto extension for RANDOM Number generation
+    ldflags:
+      - -s -w
+      - -X github.com/scylladb/scylla-bench/internal/version.version={{.Version}}
+      - -X github.com/scylladb/scylla-bench/internal/version.commit={{.Commit}}
+      - -X github.com/scylladb/scylla-bench/internal/version.date={{.Date}}
+      - -X github.com/scylladb/scylla-bench/internal/version.driverVersion={{.Env.DRIVER_VERSION}}
+      - -X github.com/scylladb/scylla-bench/internal/version.driverCommit={{.Env.DRIVER_COMMIT}}
+      - -X github.com/scylladb/scylla-bench/internal/version.driverDate={{.Env.DRIVER_DATE}}
 
 archives:
   - name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
