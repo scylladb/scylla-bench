@@ -24,6 +24,10 @@ var (
 	version = "dev"
 	commit  = "unknown"
 	date    = "unknown"
+
+	driverVersion = "unknown"
+	driverCommit  = "unknown"
+	driverDate    = "unknown"
 )
 
 type ComponentInfo struct {
@@ -212,6 +216,15 @@ func extractRepoOwner(repoPath, defaultOwner string) string {
 
 // Extracts driver version info
 func getDriverVersionInfo() ComponentInfo {
+	// check if driver version info was set via ldflags
+	if driverVersion != "unknown" {
+		return ComponentInfo{
+			Version:    driverVersion,
+			CommitSHA:  driverCommit,
+			CommitDate: driverDate,
+		}
+	}
+
 	var (
 		err error
 		sha string
