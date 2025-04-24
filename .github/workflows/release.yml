@@ -40,7 +40,6 @@ jobs:
 
       - name: Extract scylladb-gocql driver info
         run: |
-          chmod +x ./scripts/extract-driver-version.sh
           ./scripts/extract-driver-version.sh >> "$GITHUB_ENV"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
