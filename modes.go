@@ -384,12 +384,8 @@ func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, wo
 		}
 		bound := query.Bind(pk, ck, value)
 
+		queryStr := ""
 		currentAttempts := 0
-		// NOTE: use custom query string instead of 'query.String()' to avoid huge values printings
-		queryStr := fmt.Sprintf(
-			"[query statement=%q values=%+v consistency=%s]",
-			request, []any{pk, ck, "<" + strconv.Itoa(len(value)) + "-bytes-value>"},
-			query.GetConsistency())
 		for {
 			requestStart := time.Now()
 			err = bound.Exec()
@@ -402,6 +398,13 @@ func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, wo
 				return nil, latency
 			}
 			if retryHandler == "sb" {
+				if queryStr == "" {
+					// NOTE: use custom query string instead of 'query.String()' to avoid huge values printings
+					queryStr = fmt.Sprintf(
+						"[query statement=%q values=%+v consistency=%s]",
+						request, []any{pk, ck, "<" + strconv.Itoa(len(value)) + "-bytes-value>"},
+						query.GetConsistency())
+				}
 				err = handleSbRetryError(queryStr, err, currentAttempts)
 			}
 			if err != nil {
@@ -445,9 +448,7 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 		endingCk := int(startingCk) + batchSize - 1
 		avgValueSize := valuesSizesSummary / batchSize
 
-		queryStr := fmt.Sprintf(
-			"BATCH >>> [query statement=%q pk=%v cks=%v..%v avgValueSize=%v consistency=%s]",
-			request, currentPk, startingCk, endingCk, avgValueSize, batch.GetConsistency())
+		queryStr := ""
 		currentAttempts := 0
 		for {
 			requestStart := time.Now()
@@ -461,6 +462,11 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 				return nil, latency
 			}
 			if retryHandler == "sb" {
+				if queryStr == "" {
+					queryStr = fmt.Sprintf(
+						"BATCH >>> [query statement=%q pk=%v cks=%v..%v avgValueSize=%v consistency=%s]",
+						request, currentPk, startingCk, endingCk, avgValueSize, batch.GetConsistency())
+				}
 				err = handleSbRetryError(queryStr, err, currentAttempts)
 			}
 			if err != nil {
@@ -479,6 +485,7 @@ func DoCounterUpdates(session *gocql.Session, threadResult *results.TestThreadRe
 		query := session.Query("UPDATE "+keyspaceName+"."+counterTableName+
 			" SET c1 = c1 + ?, c2 = c2 + ?, c3 = c3 + ?, c4 = c4 + ?, c5 = c5 + ? WHERE pk = ? AND ck = ?").
 			Bind(ck, ck+1, ck+2, ck+3, ck+4, pk, ck)
+		queryStr := ""
 		currentAttempts := 0
 		for {
 			requestStart := time.Now()
@@ -492,7 +499,10 @@ func DoCounterUpdates(session *gocql.Session, threadResult *results.TestThreadRe
 				return nil, latency
 			}
 			if retryHandler == "sb" {
-				err = handleSbRetryError(query.String(), err, currentAttempts)
+				if queryStr == "" {
+					queryStr = query.String()
+				}
+				err = handleSbRetryError(queryStr, err, currentAttempts)
 			}
 			if err != nil {
 				return err, time.Duration(0)
@@ -573,6 +583,7 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 
 		var resPk, resCk int64
 		var value []byte
+		var queryStr string
 
 		currentAttempts := 0
 		for {
@@ -617,7 +628,10 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 				return nil, latency
 			}
 			if retryHandler == "sb" {
-				err = handleSbRetryError(query.String(), err, currentAttempts)
+				if queryStr == "" {
+					queryStr = query.String()
+				}
+				err = handleSbRetryError(queryStr, err, currentAttempts)
 			}
 			if err != nil {
 				return err, time.Duration(0)
@@ -633,6 +647,7 @@ func DoScanTable(session *gocql.Session, threadResult *results.TestThreadResult,
 		query := session.Query(request)
 		currentRange := workload.NextTokenRange()
 		currentAttempts := 0
+		var queryStr string
 		for {
 			requestStart := time.Now()
 			bound := query.Bind(currentRange.Start, currentRange.End)
@@ -649,7 +664,10 @@ func DoScanTable(session *gocql.Session, threadResult *results.TestThreadResult,
 				return nil, latency
 			}
 			if retryHandler == "sb" {
-				err = handleSbRetryError(query.String(), err, currentAttempts)
+				if queryStr == "" {
+					queryStr = query.String()
+				}
+				err = handleSbRetryError(queryStr, err, currentAttempts)
 			}
 			if err != nil {
 				return err, time.Duration(0)
