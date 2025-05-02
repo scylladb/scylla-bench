@@ -382,6 +382,7 @@ func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, wo
 		if err != nil {
 			panic(err)
 		}
+		bound := query.Bind(pk, ck, value)
 
 		currentAttempts := 0
 		// NOTE: use custom query string instead of 'query.String()' to avoid huge values printings
@@ -391,7 +392,7 @@ func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, wo
 			query.GetConsistency())
 		for {
 			requestStart := time.Now()
-			err = query.Exec()
+			err = bound.Exec()
 			requestEnd := time.Now()
 
 			if err == nil {
