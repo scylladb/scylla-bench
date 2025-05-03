@@ -97,6 +97,7 @@ require (
 	github.com/karamaru-alpha/copyloopvar v1.2.1 // indirect
 	github.com/kisielk/errcheck v1.9.0 // indirect
 	github.com/kkHAIKE/contextcheck v1.1.6 // indirect
+	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/kulti/thelper v0.6.3 // indirect
 	github.com/kunwardeep/paralleltest v1.0.10 // indirect
 	github.com/lasiar/canonicalheader v1.1.2 // indirect
@@ -202,7 +203,7 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-replace github.com/gocql/gocql => github.com/scylladb/gocql v1.14.4
+replace github.com/gocql/gocql => github.com/scylladb/gocql v1.15.0
 
 tool (
 	github.com/golangci/golangci-lint/cmd/golangci-lint
