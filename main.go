@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gocql/gocql"
+	"github.com/gocql/gocql/hostpolicy"
 	"github.com/gocql/gocql/scyllacloud"
 	"github.com/hailocab/go-hostpool"
 	"github.com/pkg/errors"
@@ -668,7 +669,7 @@ func newHostSelectionPolicy(policy string, hosts []string, datacenter, rack stri
 	case "round-robin":
 		return gocql.RoundRobinHostPolicy(), nil
 	case "host-pool":
-		return gocql.HostPoolHostPolicy(hostpool.New(hosts)), nil
+		return hostpolicy.HostPool(hostpool.New(hosts)), nil
 	case "token-aware":
 		if datacenter != "" {
 			if rack != "" {
