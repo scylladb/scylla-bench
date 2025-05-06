@@ -20,12 +20,13 @@ import (
 	stdErrors "errors"
 
 	"github.com/scylladb/scylla-bench/pkg/results"
+	"github.com/scylladb/scylla-bench/random"
+
 	//nolint
 	. "github.com/scylladb/scylla-bench/pkg/workloads"
-	"github.com/scylladb/scylla-bench/random"
 )
 
-const reportInterval time.Duration = 1 * time.Second
+var reportInterval = 1 * time.Second
 
 type RateLimiter interface {
 	Wait()
@@ -71,7 +72,10 @@ func NewRateLimiter(maximumRate int, _ time.Duration) RateLimiter {
 	}
 }
 
-func RunConcurrently(maximumRate int, workload func(id int, testResult *results.TestThreadResult, rateLimiter RateLimiter)) *results.TestResults {
+func RunConcurrently(
+	maximumRate int,
+	workload func(id int, testResult *results.TestThreadResult, rateLimiter RateLimiter),
+) *results.TestResults {
 	var timeOffsetUnit int64
 	if maximumRate != 0 {
 		timeOffsetUnit = int64(time.Second) / int64(maximumRate)
@@ -149,7 +153,12 @@ var (
 	errDoNotRegister     = errors.New("do not register this test results")
 )
 
-func RunTest(threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, test func(rb *results.TestThreadResult) (error, time.Duration)) {
+func RunTest(
+	threadResult *results.TestThreadResult,
+	workload WorkloadGenerator,
+	rateLimiter RateLimiter,
+	test func(rb *results.TestThreadResult) (error, time.Duration),
+) {
 	start := time.Now()
 	partialStart := start
 	iter := NewTestIterator(workload)
@@ -217,12 +226,12 @@ const (
 	generatedDataMinSize          = generatedDataHeaderSize + 33
 )
 
-func GenerateData(pk, ck, size int64) ([]byte, error) {
+func GenerateData(pk, ck, size int64, validateData bool) ([]byte, error) {
 	if !validateData {
 		return make([]byte, size), nil
 	}
 
-	var buf bytes.Buffer
+	buf := bytes.Buffer{}
 	buf.Grow(int(size))
 
 	if size < generatedDataHeaderSize {
@@ -232,47 +241,40 @@ func GenerateData(pk, ck, size int64) ([]byte, error) {
 		if err := binary.Write(&buf, binary.LittleEndian, pk^ck); err != nil {
 			return nil, err
 		}
-
-		return buf.Bytes(), nil
-	}
-
-	if err := binary.Write(&buf, binary.LittleEndian, size); err != nil {
-		return nil, err
-	}
-
-	if err := binary.Write(&buf, binary.LittleEndian, pk); err != nil {
-		return nil, err
-	}
-
-	if err := binary.Write(&buf, binary.LittleEndian, ck); err != nil {
-		return nil, err
-	}
-
-	if size < generatedDataMinSize {
-		for i := generatedDataHeaderSize; i < size; i++ {
-			if err := binary.Write(&buf, binary.LittleEndian, int8(0)); err != nil {
+	} else {
+		if err := binary.Write(&buf, binary.LittleEndian, size); err != nil {
+			return nil, err
+		}
+		if err := binary.Write(&buf, binary.LittleEndian, pk); err != nil {
+			return nil, err
+		}
+		if err := binary.Write(&buf, binary.LittleEndian, ck); err != nil {
+			return nil, err
+		}
+		if size < generatedDataMinSize {
+			for i := generatedDataHeaderSize; i < size; i++ {
+				if err := binary.Write(&buf, binary.LittleEndian, int8(0)); err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			payload := make([]byte, size-generatedDataHeaderSize-sha256.Size)
+			_, _ = random.String(payload)
+			if err := binary.Write(&buf, binary.LittleEndian, payload); err != nil {
+				return nil, err
+			}
+			if err := binary.Write(&buf, binary.LittleEndian, sha256.Sum256(payload)); err != nil {
 				return nil, err
 			}
 		}
-
-		return buf.Bytes(), nil
 	}
 
-	payload := buf.AvailableBuffer()
-	_, _ = random.String(payload[:size-sha256.Size])
-
-	if err := binary.Write(&buf, binary.LittleEndian, payload); err != nil {
-		return nil, err
-	}
-
-	if err := binary.Write(&buf, binary.LittleEndian, sha256.Sum256(payload)); err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
+	value := make([]byte, size)
+	copy(value, buf.Bytes())
+	return value, nil
 }
 
-func ValidateData(pk, ck int64, data []byte) error {
+func ValidateData(pk, ck int64, data []byte, validateData bool) error {
 	if !validateData {
 		return nil
 	}
@@ -301,14 +303,19 @@ func ValidateData(pk, ck int64, data []byte) error {
 
 	// There is no random payload for sizes < minFullSize
 	if size < generatedDataMinSize {
-		expectedBuf, err := GenerateData(pk, ck, size)
+		expectedBuf, err := GenerateData(pk, ck, size, validateData)
 		if err != nil {
 			return errors.Wrap(err, "failed to generate expected data for validation")
+		}
+
+		if err = buf.UnreadByte(); err != nil {
+			return err
 		}
 
 		if !bytes.Equal(buf.Bytes(), expectedBuf) {
 			return errors.Errorf("actual value doesn't match expected value:\nexpected: %x\nactual: %x", expectedBuf, buf.Bytes())
 		}
+
 		return nil
 	}
 
@@ -327,6 +334,7 @@ func ValidateData(pk, ck int64, data []byte) error {
 	if err := binary.Read(buf, binary.LittleEndian, &storedCk); err != nil {
 		return errors.Wrap(err, "failed to validate data, cannot read pk from value")
 	}
+
 	if storedCk != ck {
 		return errors.Errorf("actual ck (%d) doesn't match ck stored in value (%d)", ck, storedCk)
 	}
@@ -343,7 +351,7 @@ func ValidateData(pk, ck int64, data []byte) error {
 
 	var storedChecksum [sha256.Size]byte
 
-	if err := binary.Read(buf, binary.LittleEndian, storedChecksum); err != nil {
+	if err := binary.Read(buf, binary.LittleEndian, storedChecksum[:]); err != nil {
 		return errors.Wrap(err, "failed to verify checksum, cannot read checksum from value")
 	}
 
@@ -354,6 +362,7 @@ func ValidateData(pk, ck int64, data []byte) error {
 			storedChecksum,
 			payload)
 	}
+
 	return nil
 }
 
@@ -371,14 +380,14 @@ func handleSbRetryError(queryStr string, err error, currentAttempts int) error {
 	return nil
 }
 
-func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
+func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
-		request := "INSERT INTO " + keyspaceName + "." + tableName + " (pk, ck, v) VALUES (?, ?, ?)"
+		request := fmt.Sprintf("INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)", keyspaceName, tableName)
 		query := session.Query(request)
 		defer query.Release()
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
-		value, err := GenerateData(pk, ck, clusteringRowSizeDist.Generate())
+		value, err := GenerateData(pk, ck, clusteringRowSizeDist.Generate(), validateData)
 		if err != nil {
 			panic(err)
 		}
@@ -415,7 +424,7 @@ func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, wo
 	})
 }
 
-func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
+func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
 	request := fmt.Sprintf("INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)", keyspaceName, tableName)
 
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
@@ -435,9 +444,9 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 			}
 			batchSize++
 
-			value, err := GenerateData(currentPk, ck, clusteringRowSizeDist.Generate())
+			value, err := GenerateData(currentPk, ck, clusteringRowSizeDist.Generate(), validateData)
 			if err != nil {
-				panic(err)
+				log.Panic(err)
 			}
 			valuesSizesSummary += len(value)
 			batch.Query(request, currentPk, ck, value)
@@ -477,7 +486,7 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 	})
 }
 
-func DoCounterUpdates(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
+func DoCounterUpdates(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, _ bool) {
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
@@ -512,16 +521,15 @@ func DoCounterUpdates(session *gocql.Session, threadResult *results.TestThreadRe
 	})
 }
 
-func DoReads(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
-	DoReadsFromTable(tableName, session, threadResult, workload, rateLimiter)
+func DoReads(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
+	DoReadsFromTable(tableName, session, threadResult, workload, rateLimiter, validateData)
 }
 
-func DoCounterReads(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
-	DoReadsFromTable(counterTableName, session, threadResult, workload, rateLimiter)
+func DoCounterReads(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
+	DoReadsFromTable(counterTableName, session, threadResult, workload, rateLimiter, validateData)
 }
 
-func BuildReadQuery(table, orderBy string, session *gocql.Session) *gocql.Query {
-	var request string
+func BuildReadQueryString(table, orderBy string) string {
 	var selectFields string
 	if table == tableName {
 		selectFields = "pk, ck, v"
@@ -540,18 +548,22 @@ func BuildReadQuery(table, orderBy string, session *gocql.Session) *gocql.Query 
 		for i := 0; i < rowsPerRequest; i++ {
 			arr[i] = "?"
 		}
-		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck IN (%s) %s %s", selectFields, keyspaceName, table, strings.Join(arr, ", "), orderBy, bypassCacheClause)
+		return fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck IN (%s) %s %s", selectFields, keyspaceName, table, strings.Join(arr, ","), orderBy, bypassCacheClause)
 	case provideUpperBound:
-		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ? %s %s", selectFields, keyspaceName, table, orderBy, bypassCacheClause)
+		return fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? AND ck < ? %s %s", selectFields, keyspaceName, table, orderBy, bypassCacheClause)
 	case noLowerBound:
-		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? %s LIMIT %d %s", selectFields, keyspaceName, table, orderBy, rowsPerRequest, bypassCacheClause)
+		return fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? %s LIMIT %d %s", selectFields, keyspaceName, table, orderBy, rowsPerRequest, bypassCacheClause)
 	default:
-		request = fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? %s LIMIT %d %s", selectFields, keyspaceName, table, orderBy, rowsPerRequest, bypassCacheClause)
+		return fmt.Sprintf("SELECT %s FROM %s.%s WHERE pk = ? AND ck >= ? %s LIMIT %d %s", selectFields, keyspaceName, table, orderBy, rowsPerRequest, bypassCacheClause)
 	}
-	return session.Query(request)
 }
 
-func DoReadsFromTable(table string, session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
+func BuildReadQuery(table, orderBy string, session *gocql.Session) *gocql.Query {
+	return session.Query(BuildReadQueryString(table, orderBy))
+}
+
+//nolint:lll
+func DoReadsFromTable(table string, session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
 	counter, numOfOrderings := 0, len(selectOrderByParsed)
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
 		counter++
@@ -593,7 +605,7 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 				for iter.Scan(&resPk, &resCk, &value) {
 					rb.IncRows()
 					if validateData {
-						err := ValidateData(resPk, resCk, value)
+						err := ValidateData(resPk, resCk, value, validateData)
 						if err != nil {
 							rb.IncErrors()
 							log.Printf("data corruption in pk(%d), ck(%d): %s", resPk, resCk, err)
@@ -624,8 +636,7 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 
 			if err == nil {
 				rb.IncOps()
-				latency := requestEnd.Sub(requestStart)
-				return nil, latency
+				return nil, requestEnd.Sub(requestStart)
 			}
 			if retryHandler == "sb" {
 				if queryStr == "" {
@@ -641,7 +652,7 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 	})
 }
 
-func DoScanTable(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
+func DoScanTable(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, _ bool) {
 	request := fmt.Sprintf("SELECT * FROM %s.%s WHERE token(pk) >= ? AND token(pk) <= ?", keyspaceName, tableName)
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
 		query := session.Query(request)
