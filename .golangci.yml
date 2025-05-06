@@ -42,7 +42,6 @@ linters:
     - predeclared
     - revive
     - thelper
-    - tparallel
     - typecheck
     - unused
     - gomodguard
