@@ -41,7 +41,6 @@ func TestSequentialWorkload(t *testing.T) {
 			rowCounter := int64(0)
 			for {
 				if wrkld.IsDone() {
-					t.Log("got end of stream")
 					if currentPk != lastPk {
 						t.Errorf("wrong last PK; got %d; expected %d", currentPk, lastPk)
 					}
@@ -57,15 +56,11 @@ func TestSequentialWorkload(t *testing.T) {
 				pk := wrkld.NextPartitionKey()
 				if pk != currentPk {
 					t.Errorf("wrong PK; got %d; expected %d", pk, currentPk)
-				} else {
-					t.Logf("got PK %d", pk)
 				}
 
 				ck := wrkld.NextClusteringKey()
 				if ck != currentCk {
 					t.Errorf("wrong CK; got %d; expected %d", pk, currentCk)
-				} else {
-					t.Logf("got CK %d", ck)
 				}
 
 				currentCk++
@@ -73,8 +68,6 @@ func TestSequentialWorkload(t *testing.T) {
 				if currentCk == tc.clusteringRowCount {
 					if !wrkld.IsPartitionDone() {
 						t.Errorf("expected end of partition at %d", currentCk)
-					} else {
-						t.Log("got end of partition")
 					}
 					currentCk = 0
 					currentPk++
