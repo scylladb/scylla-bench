@@ -184,7 +184,7 @@ func GetWorkload(name string, threadID int, partitionOffset int64, mode string, 
 	panic("unreachable")
 }
 
-func GetMode(name string) func(session *gocql.Session, testResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter) {
+func GetMode(name string) func(session *gocql.Session, testResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
 	switch name {
 	case "write":
 		if rowsPerRequest == 1 {
@@ -656,7 +656,7 @@ func main() {
 	fmt.Println("Hdr memory consumption:\t", results.GetHdrMemoryConsumption(concurrency), "bytes")
 
 	testResult := RunConcurrently(maximumRate, func(i int, testResult *results.TestThreadResult, rateLimiter RateLimiter) {
-		GetMode(mode)(session, testResult, GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution), rateLimiter)
+		GetMode(mode)(session, testResult, GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution), rateLimiter, validateData)
 	})
 
 	testResult.GetTotalResults()
