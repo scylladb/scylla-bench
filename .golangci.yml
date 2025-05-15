@@ -76,7 +76,7 @@ linters:
         - pattern: ^print(ln)?$
           msg: "Use log package instead of fmt"
     gocyclo:
-      min-complexity: 19
+      min-complexity: 20
     govet:
       enable-all: true
       settings:

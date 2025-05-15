@@ -68,9 +68,9 @@ func newGithubClient() *githubClient {
 }
 
 // Performs an HTTP GET request and decodes the JSON response to the target
-func (g *githubClient) getJSON(path string, target interface{}) error {
+func (g *githubClient) getJSON(path string, target any) error {
 	url := g.baseURL + path
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}

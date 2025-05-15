@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
+	stdErrors "errors"
 	"fmt"
 	"log"
 	"math"
@@ -17,13 +18,10 @@ import (
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
 
-	stdErrors "errors"
-
 	"github.com/scylladb/scylla-bench/pkg/results"
-	"github.com/scylladb/scylla-bench/random"
-
 	//nolint
 	. "github.com/scylladb/scylla-bench/pkg/workloads"
+	"github.com/scylladb/scylla-bench/random"
 )
 
 var reportInterval = 1 * time.Second
@@ -157,7 +155,7 @@ func RunTest(
 	threadResult *results.TestThreadResult,
 	workload WorkloadGenerator,
 	rateLimiter RateLimiter,
-	test func(rb *results.TestThreadResult) (error, time.Duration),
+	test func(rb *results.TestThreadResult) (time.Duration, error),
 ) {
 	start := time.Now()
 	partialStart := start
@@ -171,7 +169,7 @@ func RunTest(
 			expectedStartTime = time.Now()
 		}
 
-		err, rawLatency := test(threadResult)
+		rawLatency, err := test(threadResult)
 		endTime := time.Now()
 		switch {
 		case err == nil:
@@ -381,7 +379,7 @@ func handleSbRetryError(queryStr string, err error, currentAttempts int) error {
 }
 
 func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
-	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
+	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (time.Duration, error) {
 		request := fmt.Sprintf("INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)", keyspaceName, tableName)
 		query := session.Query(request)
 		defer query.Release()
@@ -403,8 +401,7 @@ func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, wo
 			if err == nil {
 				rb.IncOps()
 				rb.IncRows()
-				latency := requestEnd.Sub(requestStart)
-				return nil, latency
+				return requestEnd.Sub(requestStart), nil
 			}
 			if retryHandler == "sb" {
 				if queryStr == "" {
@@ -417,7 +414,7 @@ func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, wo
 				err = handleSbRetryError(queryStr, err, currentAttempts)
 			}
 			if err != nil {
-				return err, time.Duration(0)
+				return time.Duration(0), err
 			}
 			currentAttempts++
 		}
@@ -427,7 +424,7 @@ func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, wo
 func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
 	request := fmt.Sprintf("INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)", keyspaceName, tableName)
 
-	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
+	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (time.Duration, error) {
 		batch := session.Batch(gocql.UnloggedBatch)
 		batchSize := 0
 
@@ -436,7 +433,7 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 		valuesSizesSummary := 0
 		for !workload.IsPartitionDone() && batchSize < rowsPerRequest {
 			if atomic.LoadUint32(&stopAll) != 0 {
-				return errDoNotRegister, 0
+				return time.Duration(0), errDoNotRegister
 			}
 			ck := workload.NextClusteringKey()
 			if batchSize == 0 {
@@ -452,7 +449,7 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 			batch.Query(request, currentPk, ck, value)
 		}
 		if batchSize == 0 {
-			return errDoNotRegister, 0
+			return time.Duration(0), errDoNotRegister
 		}
 		endingCk := int(startingCk) + batchSize - 1
 		avgValueSize := valuesSizesSummary / batchSize
@@ -467,8 +464,7 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 			if err == nil {
 				rb.IncOps()
 				rb.AddRows(batchSize)
-				latency := requestEnd.Sub(requestStart)
-				return nil, latency
+				return requestEnd.Sub(requestStart), nil
 			}
 			if retryHandler == "sb" {
 				if queryStr == "" {
@@ -479,7 +475,7 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 				err = handleSbRetryError(queryStr, err, currentAttempts)
 			}
 			if err != nil {
-				return err, time.Duration(0)
+				return time.Duration(0), err
 			}
 			currentAttempts++
 		}
@@ -487,7 +483,7 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 }
 
 func DoCounterUpdates(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, _ bool) {
-	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
+	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (time.Duration, error) {
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
 
@@ -504,8 +500,7 @@ func DoCounterUpdates(session *gocql.Session, threadResult *results.TestThreadRe
 			if err == nil {
 				rb.IncOps()
 				rb.IncRows()
-				latency := requestEnd.Sub(requestStart)
-				return nil, latency
+				return requestEnd.Sub(requestStart), nil
 			}
 			if retryHandler == "sb" {
 				if queryStr == "" {
@@ -514,7 +509,7 @@ func DoCounterUpdates(session *gocql.Session, threadResult *results.TestThreadRe
 				err = handleSbRetryError(queryStr, err, currentAttempts)
 			}
 			if err != nil {
-				return err, time.Duration(0)
+				return time.Duration(0), err
 			}
 			currentAttempts++
 		}
@@ -562,10 +557,17 @@ func BuildReadQuery(table, orderBy string, session *gocql.Session) *gocql.Query 
 	return session.Query(BuildReadQueryString(table, orderBy))
 }
 
-//nolint:lll
-func DoReadsFromTable(table string, session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
+// nolint:gocyclo
+func DoReadsFromTable(
+	table string,
+	session *gocql.Session,
+	threadResult *results.TestThreadResult,
+	workload WorkloadGenerator,
+	rateLimiter RateLimiter,
+	validateData bool,
+) {
 	counter, numOfOrderings := 0, len(selectOrderByParsed)
-	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
+	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (time.Duration, error) {
 		counter++
 		pk := workload.NextPartitionKey()
 		query := BuildReadQuery(table, selectOrderByParsed[counter%numOfOrderings], session)
@@ -636,7 +638,7 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 
 			if err == nil {
 				rb.IncOps()
-				return nil, requestEnd.Sub(requestStart)
+				return requestEnd.Sub(requestStart), nil
 			}
 			if retryHandler == "sb" {
 				if queryStr == "" {
@@ -645,7 +647,7 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 				err = handleSbRetryError(queryStr, err, currentAttempts)
 			}
 			if err != nil {
-				return err, time.Duration(0)
+				return time.Duration(0), err
 			}
 			currentAttempts++
 		}
@@ -654,7 +656,7 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 
 func DoScanTable(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, _ bool) {
 	request := fmt.Sprintf("SELECT * FROM %s.%s WHERE token(pk) >= ? AND token(pk) <= ?", keyspaceName, tableName)
-	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
+	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (time.Duration, error) {
 		query := session.Query(request)
 		currentRange := workload.NextTokenRange()
 		currentAttempts := 0
@@ -671,8 +673,7 @@ func DoScanTable(session *gocql.Session, threadResult *results.TestThreadResult,
 
 			if err == nil {
 				rb.IncOps()
-				latency := requestEnd.Sub(requestStart)
-				return nil, latency
+				return requestEnd.Sub(requestStart), nil
 			}
 			if retryHandler == "sb" {
 				if queryStr == "" {
@@ -681,7 +682,7 @@ func DoScanTable(session *gocql.Session, threadResult *results.TestThreadResult,
 				err = handleSbRetryError(queryStr, err, currentAttempts)
 			}
 			if err != nil {
-				return err, time.Duration(0)
+				return time.Duration(0), err
 			}
 			currentAttempts++
 		}

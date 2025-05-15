@@ -19,7 +19,6 @@ import (
 
 	"github.com/scylladb/scylla-bench/internal/version"
 	"github.com/scylladb/scylla-bench/pkg/results"
-
 	//nolint:revive
 	. "github.com/scylladb/scylla-bench/pkg/workloads"
 	"github.com/scylladb/scylla-bench/random"
@@ -120,7 +119,10 @@ func Query(session *gocql.Session, request string) {
 
 func PrepareDatabase(session *gocql.Session, replicationFactor int) {
 	//nolint:lll
-	Query(session, fmt.Sprintf("CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : %d }", keyspaceName, replicationFactor))
+	Query(
+		session,
+		fmt.Sprintf("CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : %d }", keyspaceName, replicationFactor),
+	)
 
 	switch mode {
 	case "counter_update":
@@ -315,7 +317,12 @@ func main() {
 	flag.BoolVar(&provideUpperBound, "provide-upper-bound", false, "whether read requests should provide an upper bound")
 	flag.BoolVar(&inRestriction, "in-restriction", false, "use IN restriction in read requests")
 	//nolint:lll
-	flag.StringVar(&selectOrderBy, "select-order-by", "none", "controls order part 'order by ck asc/desc' of the read query, you can set it to: none,asc,desc or to the list of them, i.e. 'none,asc', in such case it will run queries with these orders one by one")
+	flag.StringVar(
+		&selectOrderBy,
+		"select-order-by",
+		"none",
+		"controls order part 'order by ck asc/desc' of the read query, you can set it to: none,asc,desc or to the list of them, i.e. 'none,asc', in such case it will run queries with these orders one by one",
+	)
 	flag.BoolVar(&noLowerBound, "no-lower-bound", false, "do not provide lower bound in read requests")
 	flag.BoolVar(&bypassCache, "bypass-cache", false, "Execute queries with the \"BYPASS CACHE\" CQL clause")
 	flag.IntVar(&rangeCount, "range-count", 1, "number of ranges to split the token space into (relevant only for scan mode)")
@@ -357,7 +364,12 @@ func main() {
 	flag.StringVar(&datacenter, "datacenter", "", "datacenter for the rack-aware policy")
 	//nolint:lll
 	flag.StringVar(&rack, "rack", "", "rack for the rack-aware policy")
-	flag.IntVar(&maxErrorsAtRow, "error-at-row-limit", 0, "set limit of errors caught by one thread at row after which workflow will be terminated and error reported. Set it to 0 if you want to haven no limit")
+	flag.IntVar(
+		&maxErrorsAtRow,
+		"error-at-row-limit",
+		0,
+		"set limit of errors caught by one thread at row after which workflow will be terminated and error reported. Set it to 0 if you want to haven no limit",
+	)
 	flag.IntVar(
 		&maxErrors,
 		"error-limit", 0,
