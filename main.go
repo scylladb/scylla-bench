@@ -25,6 +25,14 @@ import (
 	"github.com/scylladb/scylla-bench/random"
 )
 
+type (
+	Session interface {
+		Query(string, ...interface{}) *gocql.Query
+	}
+)
+
+type ModeFunc func(session *gocql.Session, testResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, validateData bool)
+
 type DistributionValue struct {
 	Dist *random.Distribution
 }
@@ -111,14 +119,14 @@ var (
 	truncateTable            bool
 )
 
-func Query(session *gocql.Session, request string) {
+func Query(session Session, request string) {
 	err := session.Query(request).Exec()
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 }
 
-func PrepareDatabase(session *gocql.Session, replicationFactor int) {
+func PrepareDatabase(session Session, replicationFactor int) {
 	//nolint:lll
 	Query(session, fmt.Sprintf("CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : %d }", keyspaceName, replicationFactor))
 
@@ -166,7 +174,7 @@ func GetWorkload(name string, threadID int, partitionOffset int64, mode string, 
 		case "write":
 			return NewTimeSeriesWriter(threadID, concurrency, partitionCount, partitionOffset, clusteringRowCount, startTime, int64(maximumRate/concurrency))
 		default:
-			log.Fatal("time series workload supports only write and read modes")
+			log.Panic("time series workload supports only write and read modes")
 		}
 	case "scan":
 		rangesPerThread := rangeCount / concurrency
@@ -179,12 +187,12 @@ func GetWorkload(name string, threadID int, partitionOffset int64, mode string, 
 		}
 		return NewRangeScan(rangeCount, thisOffset, thisCount)
 	default:
-		log.Fatal("unknown workload: ", name, ". Available workloads: sequential, uniform, timeseries, scan")
+		log.Panic("unknown workload: ", name, ". Available workloads: sequential, uniform, timeseries, scan")
 	}
 	panic("unreachable")
 }
 
-func GetMode(name string) func(session *gocql.Session, testResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
+func GetMode(name string) ModeFunc {
 	switch name {
 	case "write":
 		if rowsPerRequest == 1 {
@@ -200,7 +208,7 @@ func GetMode(name string) func(session *gocql.Session, testResult *results.TestT
 	case "scan":
 		return DoScanTable
 	default:
-		log.Fatal("unknown mode: ", name, ". Available modes: write, counter_update, read, counter_read, scan")
+		log.Panicf("unknown mode: %s. Available modes: write, counter_update, read, counter_read, scan", name)
 	}
 	panic("unreachable")
 }
@@ -221,7 +229,7 @@ func getRetryPolicy() *gocql.ExponentialBackoffRetryPolicy {
 	values := strings.Split(retryInterval, ",")
 	lenValues := len(values)
 	if (lenValues == 0) || (lenValues > 2) {
-		log.Fatal("Wrong value for retry interval: '", retryInterval,
+		log.Panic("Wrong value for retry interval: '", retryInterval,
 			"'. Only 1 or 2 values are expected.")
 	}
 	for i := range values {
@@ -233,14 +241,14 @@ func getRetryPolicy() *gocql.ExponentialBackoffRetryPolicy {
 	}
 	retryMinIntervalMillisecond, err = strconv.Atoi(values[0])
 	if err != nil {
-		log.Fatal("Wrong value for retry minimum interval: '", values[0], "'")
+		log.Panic("Wrong value for retry minimum interval: '", values[0], "'")
 	}
 	retryMaxIntervalMillisecond, err = strconv.Atoi(values[lenValues-1])
 	if err != nil {
-		log.Fatal("Wrong value for retry maximum interval: '", values[lenValues-1], "'")
+		log.Panic("Wrong value for retry maximum interval: '", values[lenValues-1], "'")
 	}
 	if retryMinIntervalMillisecond > retryMaxIntervalMillisecond {
-		log.Fatal("Wrong retry interval values provided: 'min' (",
+		log.Panic("Wrong retry interval values provided: 'min' (",
 			values[0], "ms) interval is bigger than 'max' ("+
 				values[lenValues-1]+"ms)")
 	}
@@ -392,12 +400,12 @@ func main() {
 	}
 
 	if mode == "" {
-		log.Fatal("test mode needs to be specified")
+		log.Panic("test mode needs to be specified")
 	}
 
 	if mode == "scan" {
 		if workload != "" {
-			log.Fatal("workload type cannot be scpecified for scan mode")
+			log.Panic("workload type cannot be scpecified for scan mode")
 		}
 		workload = "scan"
 		if concurrency > rangeCount {
@@ -405,19 +413,19 @@ func main() {
 			log.Printf("adjusting concurrency to the highest useful value of %v", concurrency)
 		}
 	} else if workload == "" {
-		log.Fatal("workload type needs to be specified")
+		log.Panic("workload type needs to be specified")
 	}
 
 	if workload == "uniform" && testDuration == 0 {
-		log.Fatal("uniform workload requires limited test duration")
+		log.Panic("uniform workload requires limited test duration")
 	}
 
 	if iterations > 1 && workload != "sequential" && workload != "scan" {
-		log.Fatal("iterations only supported for the sequential and scan workload")
+		log.Panic("iterations only supported for the sequential and scan workload")
 	}
 
 	if partitionOffset != 0 && workload == "scan" {
-		log.Fatal("partition-offset is not supported by the 'scan' workload")
+		log.Panic("partition-offset is not supported by the 'scan' workload")
 	}
 
 	if selectOrderBy == "" {
@@ -433,34 +441,34 @@ func main() {
 		case "desc":
 			selectOrderByParsed = append(selectOrderByParsed, "ORDER BY ck DESC")
 		default:
-			log.Fatal(fmt.Sprintf("value in -select-order-by[%d] is neither of none,asc,desc", idx))
+			log.Panicf("value in -select-order-by[%d] is neither of none,asc,desc", idx)
 		}
 	}
 
 	readModeTweaks := toInt(inRestriction) + toInt(provideUpperBound) + toInt(noLowerBound)
 	if mode != "read" && mode != "counter_read" {
 		if readModeTweaks != 0 {
-			log.Fatal("in-restriction, no-lower-bound and provide-uppder-bound flags make sense only in read mode")
+			log.Panic("in-restriction, no-lower-bound and provide-uppder-bound flags make sense only in read mode")
 		}
 	} else if readModeTweaks > 1 {
-		log.Fatal("in-restriction, no-lower-bound and provide-uppder-bound flags are mutually exclusive")
+		log.Panic("in-restriction, no-lower-bound and provide-uppder-bound flags are mutually exclusive")
 	}
 
 	if workload == "timeseries" && mode == "read" && writeRate == 0 {
-		log.Fatal("write rate must be provided for time series reads loads")
+		log.Panic("write rate must be provided for time series reads loads")
 	}
 	if workload == "timeseries" && mode == "read" && startTimestamp == 0 {
-		log.Fatal("start timestamp must be provided for time series reads loads")
+		log.Panic("start timestamp must be provided for time series reads loads")
 	}
 	if workload == "timeseries" && mode == "write" && int64(concurrency) > partitionCount {
-		log.Fatal("time series writes require concurrency less than or equal partition count")
+		log.Panic("time series writes require concurrency less than or equal partition count")
 	}
 	if workload == "timeseries" && mode == "write" && maximumRate == 0 {
-		log.Fatal("max-rate must be provided for time series write loads")
+		log.Panic("max-rate must be provided for time series write loads")
 	}
 
 	if 0 >= hdrLatencySigFig || hdrLatencySigFig > 5 {
-		log.Fatal("hdr-latency-sig should be int from 1 to 5")
+		log.Panicf("hdr-latency-sig should be int from 1 to 5, got %d", hdrLatencySigFig)
 	}
 
 	if timeout != 0 {
@@ -470,7 +478,7 @@ func main() {
 	}
 
 	if err := results.ValidateGlobalLatencyType(latencyType); err != nil {
-		log.Fatal(errors.Wrap(err, "Bad value for latency-type"))
+		log.Panic(errors.Wrap(err, "Bad value for latency-type"))
 	}
 	var cluster *gocql.ClusterConfig
 	var err error
@@ -480,17 +488,17 @@ func main() {
 	} else if !tlsEncryption && username == "" && password == "" {
 		cluster, err = scyllacloud.NewCloudCluster(cloudConfigPath)
 		if err != nil {
-			log.Fatal(err)
+			log.Panic(err)
 		}
 	} else {
-		log.Fatal("can't use -tls/-username/-password and -cloud-config-path at the same time")
+		log.Panic("can't use -tls/-username/-password and -cloud-config-path at the same time")
 	}
 
 	retryPolicy = getRetryPolicy()
 	if retryHandler == "gocql" {
 		cluster.RetryPolicy = retryPolicy
 	} else if retryHandler != "sb" {
-		log.Fatal("'-retry-handler' option accepts only 'sb' and 'gocql' values.")
+		log.Panic("'-retry-handler' option accepts only 'sb' and 'gocql' values.")
 	}
 	cluster.DefaultIdempotence = true
 	cluster.NumConns = connectionCount
@@ -499,7 +507,7 @@ func main() {
 
 	policy, err := newHostSelectionPolicy(hostSelectionPolicy, strings.Split(nodes, ","), datacenter, rack)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	cluster.PoolConfig.HostSelectionPolicy = policy
 
@@ -525,6 +533,7 @@ func main() {
 	default:
 		log.Fatal("unknown consistency level: ", consistencyLevel)
 	}
+
 	if clientCompression {
 		cluster.Compressor = &gocql.SnappyCompressor{}
 	}
@@ -543,30 +552,30 @@ func main() {
 
 		if caCertFile != "" {
 			if _, err := os.Stat(caCertFile); err != nil {
-				log.Fatal(err)
+				log.Panic(err)
 			}
 			sslOpts.CaPath = caCertFile
 		}
 
 		if clientKeyFile != "" {
 			if _, err := os.Stat(clientKeyFile); err != nil {
-				log.Fatal(err)
+				log.Panic(err)
 			}
 			sslOpts.KeyPath = clientKeyFile
 		}
 
 		if clientCertFile != "" {
 			if _, err := os.Stat(clientCertFile); err != nil {
-				log.Fatal(err)
+				log.Panic(err)
 			}
 			sslOpts.CertPath = clientCertFile
 		}
 
 		if clientKeyFile != "" && clientCertFile == "" {
-			log.Fatal("tls-client-cert-file is required when tls-client-key-file is provided")
+			log.Panic("tls-client-cert-file is required when tls-client-key-file is provided")
 		}
 		if clientCertFile != "" && clientKeyFile == "" {
-			log.Fatal("tls-client-key-file is required when tls-client-cert-file is provided")
+			log.Panic("tls-client-key-file is required when tls-client-cert-file is provided")
 		}
 
 		cluster.SslOpts = sslOpts
@@ -574,7 +583,7 @@ func main() {
 
 	session, err := cluster.CreateSession()
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	defer session.Close()
 

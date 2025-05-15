@@ -19,6 +19,134 @@ func GenerateTestData(pk, ck, size int64) []byte {
 	return Must(GenerateData(pk, ck, size, true))
 }
 
+func TestBuildReadQuery(t *testing.T) {
+	t.Parallel()
+
+	keyspaceName = "test"
+	tableName = "test_table"
+	// Define test cases
+	testCases := []struct {
+		name           string
+		table          string
+		orderBy        string
+		setupVars      func()
+		expectedResult string
+	}{
+		{
+			name:    "normal table with default settings",
+			table:   "test_table",
+			orderBy: "",
+			setupVars: func() {
+				inRestriction = false
+				provideUpperBound = false
+				noLowerBound = false
+				bypassCache = false
+			},
+			expectedResult: "SELECT pk, ck, v FROM",
+		},
+		{
+			name:    "counter table with ORDER BY",
+			table:   "counter_table",
+			orderBy: "ORDER BY ck ASC",
+			setupVars: func() {
+				inRestriction = false
+				provideUpperBound = false
+				noLowerBound = false
+				bypassCache = false
+			},
+			expectedResult: "SELECT pk, ck, c1, c2, c3, c4, c5 FROM",
+		},
+		{
+			name:           "with inRestriction",
+			table:          "test_table",
+			orderBy:        "",
+			setupVars:      func() { inRestriction = true; provideUpperBound = false; noLowerBound = false; bypassCache = false },
+			expectedResult: "SELECT pk, ck, v FROM",
+		},
+		{
+			name:    "with inRestriction and rows per request",
+			table:   "test_table",
+			orderBy: "",
+			setupVars: func() {
+				inRestriction = true
+				provideUpperBound = false
+				noLowerBound = false
+				bypassCache = false
+
+				rowsPerRequest = 3
+			},
+			expectedResult: "SELECT pk, ck, v FROM",
+		},
+		{
+			name:           "with provideUpperBound",
+			table:          "test_table",
+			orderBy:        "",
+			setupVars:      func() { inRestriction = false; provideUpperBound = true; noLowerBound = false; bypassCache = false },
+			expectedResult: "SELECT pk, ck, v FROM",
+		},
+		{
+			name:           "with noLowerBound",
+			table:          "test_table",
+			orderBy:        "",
+			setupVars:      func() { inRestriction = false; provideUpperBound = false; noLowerBound = true; bypassCache = false },
+			expectedResult: "SELECT pk, ck, v FROM",
+		},
+		{
+			name:           "with bypassCache",
+			table:          "test_table",
+			orderBy:        "",
+			setupVars:      func() { inRestriction = false; provideUpperBound = false; noLowerBound = false; bypassCache = true },
+			expectedResult: "SELECT pk, ck, v FROM",
+		},
+	}
+
+	// Run test cases
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Setup variables
+			tc.setupVars()
+
+			// Call the function
+			query := BuildReadQueryString(tc.table, tc.orderBy)
+
+			// Check result
+			if !strings.HasPrefix(query, tc.expectedResult) {
+				t.Errorf("Expected query to contain %q, got %q", tc.expectedResult, query)
+			}
+
+			// More specific assertions based on the query type
+			if tc.setupVars == nil {
+				return
+			}
+
+			switch {
+			case inRestriction:
+				if !strings.Contains(query, "IN (") {
+					t.Errorf("Expected IN clause in query for inRestriction=true, got: %s", query)
+				}
+			case provideUpperBound:
+				if !strings.Contains(query, "ck < ?") {
+					t.Errorf("Expected upper bound in query for provideUpperBound=true, got: %s", query)
+				}
+			case noLowerBound:
+				if strings.Contains(query, "ck >=") {
+					t.Errorf("Expected no lower bound in query for noLowerBound=true, got: %s", query)
+				}
+			}
+
+			// Check for BYPASS CACHE
+			if bypassCache && !strings.Contains(query, "BYPASS CACHE") {
+				t.Errorf("Expected BYPASS CACHE in query for bypassCache=true, got: %s", query)
+			}
+
+			// Check for ORDER BY
+			if tc.orderBy != "" && !strings.Contains(query, tc.orderBy) {
+				t.Errorf("Expected ORDER BY clause %q in query, got: %s", tc.orderBy, query)
+			}
+		})
+	}
+}
+
 func TestGenerateData(t *testing.T) {
 	t.Parallel()
 

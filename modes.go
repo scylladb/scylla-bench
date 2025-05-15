@@ -22,8 +22,7 @@ import (
 	"github.com/scylladb/scylla-bench/pkg/results"
 	"github.com/scylladb/scylla-bench/random"
 
-	//nolint
-	. "github.com/scylladb/scylla-bench/pkg/workloads"
+	"github.com/scylladb/scylla-bench/pkg/workloads"
 )
 
 var reportInterval = 1 * time.Second
@@ -101,11 +100,11 @@ func RunConcurrently(
 }
 
 type TestIterator struct {
-	workload  WorkloadGenerator
+	workload  workloads.WorkloadGenerator
 	iteration uint
 }
 
-func NewTestIterator(workload WorkloadGenerator) *TestIterator {
+func NewTestIterator(workload workloads.WorkloadGenerator) *TestIterator {
 	return &TestIterator{workload: workload, iteration: 0}
 }
 
@@ -153,12 +152,8 @@ var (
 	errDoNotRegister     = errors.New("do not register this test results")
 )
 
-func RunTest(
-	threadResult *results.TestThreadResult,
-	workload WorkloadGenerator,
-	rateLimiter RateLimiter,
-	test func(rb *results.TestThreadResult) (error, time.Duration),
-) {
+//nolint:lll
+func RunTest(threadResult *results.TestThreadResult, workload workloads.WorkloadGenerator, rateLimiter RateLimiter, test func(rb *results.TestThreadResult) (error, time.Duration)) {
 	start := time.Now()
 	partialStart := start
 	iter := NewTestIterator(workload)
@@ -380,7 +375,7 @@ func handleSbRetryError(queryStr string, err error, currentAttempts int) error {
 	return nil
 }
 
-func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
+func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, workload workloads.WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
 		request := fmt.Sprintf("INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)", keyspaceName, tableName)
 		query := session.Query(request)
@@ -424,7 +419,7 @@ func DoWrites(session *gocql.Session, threadResult *results.TestThreadResult, wo
 	})
 }
 
-func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
+func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadResult, workload workloads.WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
 	request := fmt.Sprintf("INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)", keyspaceName, tableName)
 
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
@@ -486,7 +481,7 @@ func DoBatchedWrites(session *gocql.Session, threadResult *results.TestThreadRes
 	})
 }
 
-func DoCounterUpdates(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, _ bool) {
+func DoCounterUpdates(session *gocql.Session, threadResult *results.TestThreadResult, workload workloads.WorkloadGenerator, rateLimiter RateLimiter, _ bool) {
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
@@ -521,11 +516,11 @@ func DoCounterUpdates(session *gocql.Session, threadResult *results.TestThreadRe
 	})
 }
 
-func DoReads(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
+func DoReads(session *gocql.Session, threadResult *results.TestThreadResult, workload workloads.WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
 	DoReadsFromTable(tableName, session, threadResult, workload, rateLimiter, validateData)
 }
 
-func DoCounterReads(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
+func DoCounterReads(session *gocql.Session, threadResult *results.TestThreadResult, workload workloads.WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
 	DoReadsFromTable(counterTableName, session, threadResult, workload, rateLimiter, validateData)
 }
 
@@ -563,7 +558,7 @@ func BuildReadQuery(table, orderBy string, session *gocql.Session) *gocql.Query 
 }
 
 //nolint:lll
-func DoReadsFromTable(table string, session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
+func DoReadsFromTable(table string, session *gocql.Session, threadResult *results.TestThreadResult, workload workloads.WorkloadGenerator, rateLimiter RateLimiter, validateData bool) {
 	counter, numOfOrderings := 0, len(selectOrderByParsed)
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
 		counter++
@@ -652,7 +647,7 @@ func DoReadsFromTable(table string, session *gocql.Session, threadResult *result
 	})
 }
 
-func DoScanTable(session *gocql.Session, threadResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, _ bool) {
+func DoScanTable(session *gocql.Session, threadResult *results.TestThreadResult, workload workloads.WorkloadGenerator, rateLimiter RateLimiter, _ bool) {
 	request := fmt.Sprintf("SELECT * FROM %s.%s WHERE token(pk) >= ? AND token(pk) <= ?", keyspaceName, tableName)
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (error, time.Duration) {
 		query := session.Query(request)
