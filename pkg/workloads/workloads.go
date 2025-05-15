@@ -95,7 +95,12 @@ type RandomUniform struct {
 
 func NewRandomUniform(i int, partitionCount, partitionOffset, clusteringRowCount int64) *RandomUniform {
 	generator := rand.New(rand.NewSource(int64(time.Now().Nanosecond() * (i + 1))))
-	return &RandomUniform{generator, int64(partitionCount), int64(partitionOffset), int64(clusteringRowCount)}
+	return &RandomUniform{
+		Generator:          generator,
+		PartitionCount:     partitionCount,
+		PartitionOffset:    partitionOffset,
+		ClusteringRowCount: clusteringRowCount,
+	}
 }
 
 func (ru *RandomUniform) NextTokenRange() TokenRange {
@@ -138,7 +143,7 @@ type TimeSeriesWrite struct {
 }
 
 func NewTimeSeriesWriter(threadID, threadCount int, pkCount, basicPkOffset, ckCount int64, startTime time.Time, rate int64) *TimeSeriesWrite {
-	period := time.Duration(int64(time.Second.Nanoseconds()) * (pkCount / int64(threadCount)) / rate)
+	period := time.Duration(time.Second.Nanoseconds() * (pkCount / int64(threadCount)) / rate)
 	pkStride := int64(threadCount)
 	pkOffset := int64(threadID) + basicPkOffset
 	return &TimeSeriesWrite{

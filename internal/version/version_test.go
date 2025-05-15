@@ -176,12 +176,12 @@ func TestGetDriverVersionWithEnvVar(t *testing.T) {
 	originalRepo := os.Getenv("GOCQL_REPO")
 	originalVersion := os.Getenv("GOCQL_VERSION")
 	defer func() {
-		os.Setenv("GOCQL_REPO", originalRepo)
-		os.Setenv("GOCQL_VERSION", originalVersion)
+		t.Setenv("GOCQL_REPO", originalRepo)
+		t.Setenv("GOCQL_VERSION", originalVersion)
 	}()
 
-	os.Setenv("GOCQL_REPO", "github.com/testowner/gocql")
-	os.Setenv("GOCQL_VERSION", "1234567890abcdef")
+	t.Setenv("GOCQL_REPO", "github.com/testowner/gocql")
+	t.Setenv("GOCQL_VERSION", "1234567890abcdef")
 
 	info := getDriverVersionInfo()
 	if info.Version == "" {
