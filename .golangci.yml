@@ -1,69 +1,133 @@
+version: "2"
 run:
-  concurrency: 8
-  timeout: 10m
+  concurrency: 16
+  go: "1.24"
+  modules-download-mode: mod
   issues-exit-code: 1
   tests: true
-  modules-download-mode: mod
   allow-parallel-runners: true
-  go: '1.24'
-
-output:
-  print-issued-lines: true
-  print-linter-name: true
-  sort-results: true
-
-issues:
-  max-same-issues: 1
-  max-issues-per-linter: 10
-  exclude:
-    - Error return value of `.*.Unlock` is not checked
-    - Error return value of `.*.Completed` is not checked
 linters:
-  disable-all: true
   enable:
     - asasalint
     - bidichk
-    - errcheck
-    - govet
     - bodyclose
-    - ineffassign
-    - unused
-    - durationcheck
-    - goheader
-    - goimports
-    - misspell
-    - gofumpt
-    - gosimple
-    - staticcheck
     - decorder
-    - lll
+    - durationcheck
+    - errcheck
     - errorlint
     - gocritic
+    - gocyclo
+    - gomodguard
+    - govet
+    - ineffassign
+    - lll
+    - makezero
+    - misspell
+    - nilerr
+    - prealloc
     - predeclared
     - revive
+    - staticcheck
     - thelper
     - tparallel
-    - typecheck
     - unused
-    - gomodguard
-    - gocyclo
-    - nilerr
-    - makezero
     - wastedassign
-    - prealloc
+    - forbidigo
+    - gomoddirectives
+    - usestdlibvars
+    - usetesting
+    - unconvert
 
-
-linters-settings:
-  govet:
-    settings:
-      shadow:
-        strict: true
-    enable-all: true
-  gocyclo:
-    min-complexity: 50
-  lll:
-    line-length: 180
-  gofumpt:
-    extra-rules: true
-  goimports:
-    local-prefixes: github.com/scylladb/scylla-bench
+  settings:
+    unconvert:
+      fast-math: true
+      safe: true
+    usetesting:
+      os-create-temp: true
+      os-mkdir-temp: true
+      os-setenv: true
+      os-temp-dir: true
+      os-chdir: true
+      context-background: true
+      context-todo: true
+    usestdlibvars:
+      http-method: true
+      http-status-code: true
+      time-weekday: true
+      time-month: true
+      time-layout: true
+      crypto-hash: true
+      default-rpc-path: true
+      sql-isolation-level: true
+      tls-signature-scheme: true
+      constant-kind: true
+    gomoddirectives:
+      replace-local: true
+      retract-allow-no-explanation: true
+      exclude-forbidden: true
+      toolchain-forbidden: true
+      go-debug-forbidden: true
+      go-version-pattern: '1\.24(\.\d+)?'
+      replace-allow-list:
+        - github.com/gocql/gocql
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: ^print(ln)?$
+          msg: "Use log package instead of fmt"
+    gocyclo:
+      min-complexity: 19
+    govet:
+      enable-all: true
+      settings:
+        shadow:
+          strict: true
+    lll:
+      line-length: 180
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: (.+)\.go$
+        text: Error return value of `.*.Unlock` is not checked
+      - path: (.+)\.go$
+        text: Error return value of `.*.Completed` is not checked
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 1000
+  max-same-issues: 100
+  uniq-by-line: true
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+    - gci
+    - golines
+  settings:
+    gofumpt:
+      extra-rules: true
+    goimports:
+      local-prefixes:
+        - github.com/scylladb/scylla-bench
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/scylladb/scylla-bench)
+      no-inline-comments: true
+    golines:
+      max-len: 180
+      shorten-comments: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

@@ -58,7 +58,7 @@ endif
 
 .PHONY: fmt
 fmt:
-	@go tool gofumpt -w -extra .
+	@go tool golangci-lint fmt
 
 .PHONY: test
 test:
