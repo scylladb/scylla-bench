@@ -293,6 +293,11 @@ func main() {
 		showJSONVersion bool
 	)
 
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stdout, "Usage:\n%s [options]\n\n", os.Args[0])
+		flag.PrintDefaults()
+	}
+
 	flag.StringVar(&mode, "mode", "", "operating mode: write, read, counter_update, counter_read, scan")
 	flag.StringVar(&workload, "workload", "", "workload: sequential, uniform, timeseries")
 	flag.StringVar(&consistencyLevel, "consistency-level", "quorum", "consistency level")
@@ -379,10 +384,6 @@ func main() {
 	flag.Parse()
 	counterTableName = "test_counters"
 
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stdout, "Usage:\n%s [options]\n\n", os.Args[0])
-		flag.PrintDefaults()
-	}
 
 	if showVersion || showJSONVersion {
 		info := version.GetVersionInfo()
