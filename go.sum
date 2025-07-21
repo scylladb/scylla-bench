@@ -287,6 +287,8 @@ github.com/google/pprof v0.0.0-20200708004538-1a94d8640e99/go.mod h1:ZgVRPoUq/hf
 github.com/google/pprof v0.0.0-20241210010833-40e02aabc2ad h1:a6HEuzUHeKH6hwfN/ZoQgRgVIWFJljSWa/zetS2WTvg=
 github.com/google/pprof v0.0.0-20241210010833-40e02aabc2ad/go.mod h1:vavhavw2zAxS5dIdcRluK6cSGGPlZynqzFM8NdvU144=
 github.com/google/renameio v0.1.0/go.mod h1:KWCgfxg9yswjAJkECMjeO8J8rahYeXnNhOm40UhjYkI=
+github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
+github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/googleapis/gax-go/v2 v2.0.4/go.mod h1:0Wqv26UfaUD9n4G6kQubkQ+KchISgw+vpHVxEJEs9eg=
 github.com/googleapis/gax-go/v2 v2.0.5/go.mod h1:DWXyrwAJ9X0FpwwEdw+IPEYBICEFu5mhpdKc/us6bOk=
 github.com/gordonklaus/ineffassign v0.1.0 h1:y2Gd/9I7MdY1oEIt+n+rowjBNDcLQq3RsH5hwJd0f9s=
@@ -508,6 +510,8 @@ github.com/sashamelentyev/usestdlibvars v1.28.0 h1:jZnudE2zKCtYlGzLVreNp5pmCdOxX
 github.com/sashamelentyev/usestdlibvars v1.28.0/go.mod h1:9nl0jgOfHKWNFS43Ojw0i7aRoS4j6EBye3YBhmAIRF8=
 github.com/scylladb/gocql v1.15.0 h1:UZvfttXqNUm4m28KF1PzyJ7WAEJNYOP2sauUqYD2obg=
 github.com/scylladb/gocql v1.15.0/go.mod h1:+I2gRPugWIC/TmRxCRvyP47nB2yxAFuEJFsSSP4A10o=
+github.com/scylladb/gocql v1.15.1 h1:t75NkDFys0XxipPsnTrSEbwx8B8R/jTUt5OAY9W7i+c=
+github.com/scylladb/gocql v1.15.1/go.mod h1:+rInt+HjERaMEYC4N8LocQQEAdREhYKU4QPkE00K5dA=
 github.com/securego/gosec/v2 v2.22.1 h1:IcBt3TpI5Y9VN1YlwjSpM2cHu0i3Iw52QM+PQeg7jN8=
 github.com/securego/gosec/v2 v2.22.1/go.mod h1:4bb95X4Jz7VSEPdVjC0hD7C/yR6kdeUBvCPOy9gDQ0g=
 github.com/shurcooL/go v0.0.0-20180423040247-9e1955d9fb6e/go.mod h1:TDJrrUr11Vxrven61rcy3hJMUqaf/CLWYhHNPmT14Lk=
