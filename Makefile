@@ -73,6 +73,7 @@ fieldalign:
 	@go tool fieldalignment -fix github.com/scylladb/scylla-bench
 	@go tool fieldalignment -fix github.com/scylladb/scylla-bench/internal/version
 	@go tool fieldalignment -fix github.com/scylladb/scylla-bench/random
+	@go tool fieldalignment -fix github.com/scylladb/scylla-bench/pkg/testutil
 	@go tool fieldalignment -fix github.com/scylladb/scylla-bench/pkg/workloads
 	@go tool fieldalignment -fix github.com/scylladb/scylla-bench/pkg/results
 

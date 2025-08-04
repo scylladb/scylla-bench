@@ -202,6 +202,68 @@ Example: `-clustering-row-size=uniform:100..1000`
 
 All command line arguments that accept a random distribution, also accept a single number, in which case a Fixed distribution will be used. This ensures backward compatibility.
 
+## Testing with TestContainers
+
+scylla-bench includes support for testing with [TestContainers](https://testcontainers.com/), which allows running tests against a real ScyllaDB instance in a Docker container without requiring a pre-existing installation.
+
+### Setting up TestContainers
+
+To use TestContainers with scylla-bench:
+
+1. Make sure Docker is installed and running on your system
+2. Use the `pkg/testutil` package which provides a `ScyllaDBContainer` helper
+
+Example usage:
+
+```go
+package mytest
+
+import (
+    "context"
+    "testing"
+    "time"
+    
+    "github.com/scylladb/scylla-bench/pkg/testutil"
+)
+
+func TestWithScyllaDB(t *testing.T) {
+    // Create a context with timeout
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+    defer cancel()
+
+    // Start a ScyllaDB container
+    container, err := testutil.NewScyllaDBContainer(ctx)
+    if err != nil {
+        t.Fatalf("Failed to start ScyllaDB container: %v", err)
+    }
+    defer container.Close(ctx)
+
+    // Use the container's session
+    session := container.Session
+
+    // Create keyspace and table
+    err = container.CreateKeyspace("test_keyspace", 1)
+    if err != nil {
+        t.Fatalf("Failed to create keyspace: %v", err)
+    }
+
+    err = container.CreateTable("test_keyspace", "test_table")
+    if err != nil {
+        t.Fatalf("Failed to create table: %v", err)
+    }
+
+    // Run your tests...
+}
+```
+
+### Memory Leak Tests
+
+scylla-bench includes memory leak tests that use TestContainers to verify that resources are properly released, especially under high retry pressure. To run these tests:
+
+```bash
+RUN_MEMORY_LEAK_TEST=true go test -v -run TestMemoryLeak
+```
+
 ## Examples
 
 1. Sequential write to populate the database: `scylla-bench -workload sequential -mode write -nodes 127.0.0.1`
