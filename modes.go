@@ -560,6 +560,7 @@ func DoCounterUpdates(
 			query := session.Query("UPDATE "+keyspaceName+"."+counterTableName+
 				" SET c1 = c1 + ?, c2 = c2 + ?, c3 = c3 + ?, c4 = c4 + ?, c5 = c5 + ? WHERE pk = ? AND ck = ?").
 				Bind(ck, ck+1, ck+2, ck+3, ck+4, pk, ck)
+			defer query.Release()
 			queryStr := ""
 			currentAttempts := 0
 			for {
@@ -691,6 +692,7 @@ func DoReadsFromTable(
 			counter++
 			pk := workload.NextPartitionKey()
 			query := BuildReadQuery(table, selectOrderByParsed[counter%numOfOrderings], session)
+			defer query.Release()
 
 			switch {
 			case inRestriction:

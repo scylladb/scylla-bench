@@ -3,3 +3,4 @@ build/
 scylla-bench
 coverage.txt
 dist/
+*.pprof
