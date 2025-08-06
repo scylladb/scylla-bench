@@ -19,9 +19,7 @@ import (
 
 	"github.com/scylladb/scylla-bench/internal/version"
 	"github.com/scylladb/scylla-bench/pkg/results"
-
-	//nolint:revive
-	. "github.com/scylladb/scylla-bench/pkg/workloads"
+	"github.com/scylladb/scylla-bench/pkg/workloads"
 	"github.com/scylladb/scylla-bench/random"
 )
 
@@ -31,13 +29,16 @@ type (
 	}
 )
 
-type ModeFunc func(session *gocql.Session, testResult *results.TestThreadResult, workload WorkloadGenerator, rateLimiter RateLimiter, validateData bool)
+type ModeFunc func(session *gocql.Session, testResult *results.TestThreadResult, workload workloads.Generator, rateLimiter RateLimiter, validateData bool)
 
 type DistributionValue struct {
 	Dist *random.Distribution
 }
 
-func MakeDistributionValue(dist *random.Distribution, defaultDist random.Distribution) *DistributionValue {
+func MakeDistributionValue(
+	dist *random.Distribution,
+	defaultDist random.Distribution,
+) *DistributionValue {
 	*dist = defaultDist
 	return &DistributionValue{dist}
 }
@@ -128,7 +129,14 @@ func Query(session Session, request string) {
 
 func PrepareDatabase(session Session, replicationFactor int) {
 	//nolint:lll
-	Query(session, fmt.Sprintf("CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : %d }", keyspaceName, replicationFactor))
+	Query(
+		session,
+		fmt.Sprintf(
+			"CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = { 'class' : 'NetworkTopologyStrategy', 'replication_factor' : %d }",
+			keyspaceName,
+			replicationFactor,
+		),
+	)
 
 	switch mode {
 	case "counter_update":
@@ -137,7 +145,10 @@ func PrepareDatabase(session Session, replicationFactor int) {
 		Query(session, "CREATE TABLE IF NOT EXISTS "+keyspaceName+"."+counterTableName+
 			" (pk bigint, ck bigint, c1 counter, c2 counter, c3 counter, c4 counter, c5 counter, PRIMARY KEY(pk, ck)) WITH compression = { }")
 	default:
-		Query(session, "CREATE TABLE IF NOT EXISTS "+keyspaceName+"."+tableName+" (pk bigint, ck bigint, v blob, PRIMARY KEY(pk, ck)) WITH compression = { }")
+		Query(
+			session,
+			"CREATE TABLE IF NOT EXISTS "+keyspaceName+"."+tableName+" (pk bigint, ck bigint, v blob, PRIMARY KEY(pk, ck)) WITH compression = { }",
+		)
 
 	}
 	if truncateTable {
@@ -152,7 +163,14 @@ func PrepareDatabase(session Session, replicationFactor int) {
 	}
 }
 
-func GetWorkload(name string, threadID int, partitionOffset int64, mode string, writeRate int64, distribution string) WorkloadGenerator {
+func GetWorkload(
+	name string,
+	threadID int,
+	partitionOffset int64,
+	mode string,
+	writeRate int64,
+	distribution string,
+) workloads.Generator {
 	switch name {
 	case "sequential":
 		totalRowCount := partitionCount * clusteringRowCount
@@ -164,15 +182,32 @@ func GetWorkload(name string, threadID int, partitionOffset int64, mode string, 
 			currentRemainderPartialOffset = currentThreadID
 		}
 		rowOffset := partitionOffset*clusteringRowCount + currentThreadID*rowCount + currentRemainderPartialOffset
-		return NewSequentialVisitAll(rowOffset, rowCount+additionalRows, clusteringRowCount)
+		return workloads.NewSequentialVisitAll(rowOffset, rowCount+additionalRows, clusteringRowCount)
 	case "uniform":
-		return NewRandomUniform(threadID, partitionCount, partitionOffset, clusteringRowCount)
+		return workloads.NewRandomUniform(threadID, partitionCount, partitionOffset, clusteringRowCount)
 	case "timeseries":
 		switch mode {
 		case "read":
-			return NewTimeSeriesReader(threadID, concurrency, partitionCount, partitionOffset, clusteringRowCount, writeRate, distribution, startTime)
+			return workloads.NewTimeSeriesReader(
+				threadID,
+				concurrency,
+				partitionCount,
+				partitionOffset,
+				clusteringRowCount,
+				writeRate,
+				distribution,
+				startTime,
+			)
 		case "write":
-			return NewTimeSeriesWriter(threadID, concurrency, partitionCount, partitionOffset, clusteringRowCount, startTime, int64(maximumRate/concurrency))
+			return workloads.NewTimeSeriesWriter(
+				threadID,
+				concurrency,
+				partitionCount,
+				partitionOffset,
+				clusteringRowCount,
+				startTime,
+				int64(maximumRate/concurrency),
+			)
 		default:
 			log.Panic("time series workload supports only write and read modes")
 		}
@@ -185,9 +220,13 @@ func GetWorkload(name string, threadID int, partitionOffset int64, mode string, 
 		} else {
 			thisCount = rangesPerThread
 		}
-		return NewRangeScan(rangeCount, thisOffset, thisCount)
+		return workloads.NewRangeScan(rangeCount, thisOffset, thisCount)
 	default:
-		log.Panic("unknown workload: ", name, ". Available workloads: sequential, uniform, timeseries, scan")
+		log.Panic(
+			"unknown workload: ",
+			name,
+			". Available workloads: sequential, uniform, timeseries, scan",
+		)
 	}
 	panic("unreachable")
 }
@@ -208,7 +247,10 @@ func GetMode(name string) ModeFunc {
 	case "scan":
 		return DoScanTable
 	default:
-		log.Panicf("unknown mode: %s. Available modes: write, counter_update, read, counter_read, scan", name)
+		log.Panicf(
+			"unknown mode: %s. Available modes: write, counter_update, read, counter_read, scan",
+			name,
+		)
 	}
 	panic("unreachable")
 }
@@ -298,7 +340,12 @@ func main() {
 		flag.PrintDefaults()
 	}
 
-	flag.StringVar(&mode, "mode", "", "operating mode: write, read, counter_update, counter_read, scan")
+	flag.StringVar(
+		&mode,
+		"mode",
+		"",
+		"operating mode: write, read, counter_update, counter_read, scan",
+	)
 	flag.StringVar(&workload, "workload", "", "workload: sequential, uniform, timeseries")
 	flag.StringVar(&consistencyLevel, "consistency-level", "quorum", "consistency level")
 	flag.IntVar(&replicationFactor, "replication-factor", 1, "replication factor")
@@ -314,46 +361,145 @@ func main() {
 			"Where 'sb' means 'scylla-bench' level of retries and 'gocql' means driver itself.")
 
 	flag.StringVar(&nodes, "nodes", "127.0.0.1", "nodes")
-	flag.BoolVar(&clientCompression, "client-compression", true, "use compression for client-coordinator communication")
+	flag.BoolVar(
+		&clientCompression,
+		"client-compression",
+		true,
+		"use compression for client-coordinator communication",
+	)
 	flag.IntVar(&concurrency, "concurrency", 16, "number of used goroutines")
 	flag.IntVar(&connectionCount, "connection-count", 4, "number of connections")
-	flag.IntVar(&maximumRate, "max-rate", 0, "the maximum rate of outbound requests in op/s (0 for unlimited)")
+	flag.IntVar(
+		&maximumRate,
+		"max-rate",
+		0,
+		"the maximum rate of outbound requests in op/s (0 for unlimited)",
+	)
 	flag.IntVar(&pageSize, "page-size", 1000, "page size")
 
 	flag.Int64Var(&partitionCount, "partition-count", 10000, "number of partitions")
-	flag.Int64Var(&clusteringRowCount, "clustering-row-count", 100, "number of clustering rows in a partition")
-	flag.Var(MakeDistributionValue(&clusteringRowSizeDist, random.Fixed{Value: 4}), "clustering-row-size", "size of a single clustering row, can use random values")
+	flag.Int64Var(
+		&clusteringRowCount,
+		"clustering-row-count",
+		100,
+		"number of clustering rows in a partition",
+	)
+	flag.Var(
+		MakeDistributionValue(&clusteringRowSizeDist, random.Fixed{Value: 4}),
+		"clustering-row-size",
+		"size of a single clustering row, can use random values",
+	)
 
 	flag.IntVar(&rowsPerRequest, "rows-per-request", 1, "clustering rows per single request")
-	flag.BoolVar(&provideUpperBound, "provide-upper-bound", false, "whether read requests should provide an upper bound")
+	flag.BoolVar(
+		&provideUpperBound,
+		"provide-upper-bound",
+		false,
+		"whether read requests should provide an upper bound",
+	)
 	flag.BoolVar(&inRestriction, "in-restriction", false, "use IN restriction in read requests")
 	//nolint:lll
-	flag.StringVar(&selectOrderBy, "select-order-by", "none", "controls order part 'order by ck asc/desc' of the read query, you can set it to: none,asc,desc or to the list of them, i.e. 'none,asc', in such case it will run queries with these orders one by one")
-	flag.BoolVar(&noLowerBound, "no-lower-bound", false, "do not provide lower bound in read requests")
-	flag.BoolVar(&bypassCache, "bypass-cache", false, "Execute queries with the \"BYPASS CACHE\" CQL clause")
-	flag.IntVar(&rangeCount, "range-count", 1, "number of ranges to split the token space into (relevant only for scan mode)")
+	flag.StringVar(
+		&selectOrderBy,
+		"select-order-by",
+		"none",
+		"controls order part 'order by ck asc/desc' of the read query, you can set it to: none,asc,desc or to the list of them, i.e. 'none,asc', in such case it will run queries with these orders one by one",
+	)
+	flag.BoolVar(
+		&noLowerBound,
+		"no-lower-bound",
+		false,
+		"do not provide lower bound in read requests",
+	)
+	flag.BoolVar(
+		&bypassCache,
+		"bypass-cache",
+		false,
+		"Execute queries with the \"BYPASS CACHE\" CQL clause",
+	)
+	flag.IntVar(
+		&rangeCount,
+		"range-count",
+		1,
+		"number of ranges to split the token space into (relevant only for scan mode)",
+	)
 
-	flag.DurationVar(&testDuration, "duration", 0, "duration of the test in seconds (0 for unlimited)")
-	flag.UintVar(&iterations, "iterations", 1, "number of iterations to run (0 for unlimited, relevant only for workloads that have a defined number of ops to execute)")
+	flag.DurationVar(
+		&testDuration,
+		"duration",
+		0,
+		"duration of the test in seconds (0 for unlimited)",
+	)
+	flag.UintVar(
+		&iterations,
+		"iterations",
+		1,
+		"number of iterations to run (0 for unlimited, relevant only for workloads that have a defined number of ops to execute)",
+	)
 
-	flag.Int64Var(&partitionOffset, "partition-offset", 0, "start of the partition range (not applicable to the 'scan' workload)")
+	flag.Int64Var(
+		&partitionOffset,
+		"partition-offset",
+		0,
+		"start of the partition range (not applicable to the 'scan' workload)",
+	)
 
 	flag.BoolVar(&measureLatency, "measure-latency", true, "measure request latency")
-	flag.StringVar(&hdrLatencyFile, "hdr-latency-file", "", "log co-fixed and raw latency hdr histograms into a file")
-	flag.StringVar(&hdrLatencyUnits, "hdr-latency-units", "ns", "ns (nano seconds), us (microseconds), ms (milliseconds)")
-	flag.IntVar(&hdrLatencySigFig, "hdr-latency-sig", 3, "significant figures of the hdr histogram, number from 1 to 5 (default: 3)")
+	flag.StringVar(
+		&hdrLatencyFile,
+		"hdr-latency-file",
+		"",
+		"log co-fixed and raw latency hdr histograms into a file",
+	)
+	flag.StringVar(
+		&hdrLatencyUnits,
+		"hdr-latency-units",
+		"ns",
+		"ns (nano seconds), us (microseconds), ms (milliseconds)",
+	)
+	flag.IntVar(
+		&hdrLatencySigFig,
+		"hdr-latency-sig",
+		3,
+		"significant figures of the hdr histogram, number from 1 to 5 (default: 3)",
+	)
 
 	flag.BoolVar(
 		&truncateTable, "truncate-table", false,
 		"Truncate a table before running a stress command with 'write' or 'counter_update' modes")
-	flag.BoolVar(&validateData, "validate-data", false, "write meaningful data and validate while reading")
+	flag.BoolVar(
+		&validateData,
+		"validate-data",
+		false,
+		"write meaningful data and validate while reading",
+	)
 
 	var startTimestamp int64
-	flag.Int64Var(&writeRate, "write-rate", 0, "rate of writes (relevant only for time series reads)")
-	flag.Int64Var(&startTimestamp, "start-timestamp", 0, "start timestamp of the write load (relevant only for time series reads)")
-	flag.StringVar(&distribution, "distribution", "uniform", "distribution of keys (relevant only for time series reads): uniform, hnormal")
+	flag.Int64Var(
+		&writeRate,
+		"write-rate",
+		0,
+		"rate of writes (relevant only for time series reads)",
+	)
+	flag.Int64Var(
+		&startTimestamp,
+		"start-timestamp",
+		0,
+		"start timestamp of the write load (relevant only for time series reads)",
+	)
+	flag.StringVar(
+		&distribution,
+		"distribution",
+		"uniform",
+		"distribution of keys (relevant only for time series reads): uniform, hnormal",
+	)
 
-	flag.StringVar(&latencyType, "latency-type", "raw", "type of the latency to print during the run: raw, fixed-coordinated-omission")
+	flag.StringVar(
+		&latencyType,
+		"latency-type",
+		"raw",
+		"type of the latency to print during the run: raw, fixed-coordinated-omission",
+	)
 
 	flag.StringVar(&keyspaceName, "keyspace", "scylla_bench", "keyspace to use")
 	flag.StringVar(&tableName, "table", "test", "table to use")
@@ -362,15 +508,40 @@ func main() {
 
 	flag.BoolVar(&tlsEncryption, "tls", false, "use TLS encryption")
 	flag.BoolVar(&hostVerification, "tls-host-verification", false, "verify server certificate")
-	flag.StringVar(&caCertFile, "tls-ca-cert-file", "", "path to CA certificate file, needed to enable encryption")
-	flag.StringVar(&clientCertFile, "tls-client-cert-file", "", "path to client certificate file, needed to enable client certificate authentication")
-	flag.StringVar(&clientKeyFile, "tls-client-key-file", "", "path to client key file, needed to enable client certificate authentication")
+	flag.StringVar(
+		&caCertFile,
+		"tls-ca-cert-file",
+		"",
+		"path to CA certificate file, needed to enable encryption",
+	)
+	flag.StringVar(
+		&clientCertFile,
+		"tls-client-cert-file",
+		"",
+		"path to client certificate file, needed to enable client certificate authentication",
+	)
+	flag.StringVar(
+		&clientKeyFile,
+		"tls-client-key-file",
+		"",
+		"path to client key file, needed to enable client certificate authentication",
+	)
 
-	flag.StringVar(&hostSelectionPolicy, "host-selection-policy", "token-aware", "set the driver host selection policy (round-robin,host-pool,token-aware),default 'token-aware'")
+	flag.StringVar(
+		&hostSelectionPolicy,
+		"host-selection-policy",
+		"token-aware",
+		"set the driver host selection policy (round-robin,host-pool,token-aware),default 'token-aware'",
+	)
 	flag.StringVar(&datacenter, "datacenter", "", "datacenter for the rack-aware policy")
 	//nolint:lll
 	flag.StringVar(&rack, "rack", "", "rack for the rack-aware policy")
-	flag.IntVar(&maxErrorsAtRow, "error-at-row-limit", 0, "set limit of errors caught by one thread at row after which workflow will be terminated and error reported. Set it to 0 if you want to haven no limit")
+	flag.IntVar(
+		&maxErrorsAtRow,
+		"error-at-row-limit",
+		0,
+		"set limit of errors caught by one thread at row after which workflow will be terminated and error reported. Set it to 0 if you want to haven no limit",
+	)
 	flag.IntVar(
 		&maxErrors,
 		"error-limit", 0,
@@ -378,12 +549,21 @@ func main() {
 			"If it is set to '0' then no limit for number of errors is applied.")
 
 	flag.StringVar(&cloudConfigPath, "cloud-config-path", "", "set the cloud config bundle")
-	flag.BoolVar(&showVersion, "version", false, "show versions information of the tool and driver (human-readable)")
-	flag.BoolVar(&showJSONVersion, "version-json", false, "show versions information of the tool and driver in JSON format")
+	flag.BoolVar(
+		&showVersion,
+		"version",
+		false,
+		"show versions information of the tool and driver (human-readable)",
+	)
+	flag.BoolVar(
+		&showJSONVersion,
+		"version-json",
+		false,
+		"show versions information of the tool and driver in JSON format",
+	)
 
 	flag.Parse()
 	counterTableName = "test_counters"
-
 
 	if showVersion || showJSONVersion {
 		info := version.GetVersionInfo()
@@ -449,7 +629,9 @@ func main() {
 	readModeTweaks := toInt(inRestriction) + toInt(provideUpperBound) + toInt(noLowerBound)
 	if mode != "read" && mode != "counter_read" {
 		if readModeTweaks != 0 {
-			log.Panic("in-restriction, no-lower-bound and provide-uppder-bound flags make sense only in read mode")
+			log.Panic(
+				"in-restriction, no-lower-bound and provide-uppder-bound flags make sense only in read mode",
+			)
 		}
 	} else if readModeTweaks > 1 {
 		log.Panic("in-restriction, no-lower-bound and provide-uppder-bound flags are mutually exclusive")
@@ -506,7 +688,12 @@ func main() {
 	cluster.PageSize = pageSize
 	cluster.Timeout = timeout
 
-	policy, err := newHostSelectionPolicy(hostSelectionPolicy, strings.Split(nodes, ","), datacenter, rack)
+	policy, err := newHostSelectionPolicy(
+		hostSelectionPolicy,
+		strings.Split(nodes, ","),
+		datacenter,
+		rack,
+	)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -665,16 +852,31 @@ func main() {
 
 	fmt.Println("Hdr memory consumption:\t", results.GetHdrMemoryConsumption(concurrency), "bytes")
 
-	testResult := RunConcurrently(maximumRate, func(i int, testResult *results.TestThreadResult, rateLimiter RateLimiter) {
-		GetMode(mode)(session, testResult, GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution), rateLimiter, validateData)
-	})
+	testResult := RunConcurrently(
+		maximumRate,
+		func(i int, testResult *results.TestThreadResult, rateLimiter RateLimiter) {
+			GetMode(
+				mode,
+			)(
+				session,
+				testResult,
+				GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution),
+				rateLimiter,
+				validateData,
+			)
+		},
+	)
 
 	testResult.GetTotalResults()
 	testResult.PrintTotalResults()
 	os.Exit(testResult.GetFinalStatus())
 }
 
-func newHostSelectionPolicy(policy string, hosts []string, datacenter, rack string) (gocql.HostSelectionPolicy, error) {
+func newHostSelectionPolicy(
+	policy string,
+	hosts []string,
+	datacenter, rack string,
+) (gocql.HostSelectionPolicy, error) {
 	switch policy {
 	case "round-robin":
 		return gocql.RoundRobinHostPolicy(), nil
@@ -683,7 +885,9 @@ func newHostSelectionPolicy(policy string, hosts []string, datacenter, rack stri
 	case "token-aware":
 		if datacenter != "" {
 			if rack != "" {
-				return gocql.TokenAwareHostPolicy(gocql.RackAwareRoundRobinPolicy(datacenter, rack)), nil
+				return gocql.TokenAwareHostPolicy(
+					gocql.RackAwareRoundRobinPolicy(datacenter, rack),
+				), nil
 			}
 			return gocql.TokenAwareHostPolicy(gocql.DCAwareRoundRobinPolicy(datacenter)), nil
 		}

@@ -91,7 +91,11 @@ func (g *Generator) Generate(population, size Distribution, out interface{}) {
 //
 // The population argument controls the uniqueness distribution of the generated
 // data. The size argument controls the size in bytes of the generated data.
-func (g *Generator) GenerateUnique(name string, population, size Distribution, out interface{}) bool {
+func (g *Generator) GenerateUnique(
+	name string,
+	population, size Distribution,
+	out interface{},
+) bool {
 	s, ok := g.generateSeed(name, population)
 	if !ok {
 		return false
@@ -152,7 +156,9 @@ func ParseDistribution(s string) (Distribution, error) {
 		}
 
 		if j = strings.IndexRune(s, ')'); j != -1 {
-			return nil, errors.New("unexpected parameter list end delimiter ')' when using alternative ':' syntax")
+			return nil, errors.New(
+				"unexpected parameter list end delimiter ')' when using alternative ':' syntax",
+			)
 		}
 
 		j = len(s)
@@ -179,7 +185,9 @@ func ParseDistribution(s string) (Distribution, error) {
 	case "uniform":
 		p := strings.Split(s[i+1:j], "..")
 		if len(p) != 2 {
-			return nil, errors.New("interval for uniform distribution has invalid format, expected: min..max")
+			return nil, errors.New(
+				"interval for uniform distribution has invalid format, expected: min..max",
+			)
 		}
 		minimum, err := strconv.ParseUint(p[0], 10, 32)
 		if err != nil {

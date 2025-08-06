@@ -31,5 +31,5 @@ jobs:
         run: make build
       - name: Unit Tests
         run: make test
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v8
         name: Linting

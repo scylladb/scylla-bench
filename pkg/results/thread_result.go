@@ -19,10 +19,22 @@ func NewTestThreadResult() *TestThreadResult {
 	r.PartialResult = &Result{}
 	r.FullResult.Final = true
 	if globalResultConfiguration.measureLatency {
-		r.FullResult.RawLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration, "raw-latency")
-		r.FullResult.CoFixedLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration, "co-fixed-lantecy")
-		r.PartialResult.RawLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration, "raw-latency")
-		r.PartialResult.CoFixedLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration, "co-fixed-lantecy")
+		r.FullResult.RawLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"raw-latency",
+		)
+		r.FullResult.CoFixedLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"co-fixed-lantecy",
+		)
+		r.PartialResult.RawLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"raw-latency",
+		)
+		r.PartialResult.CoFixedLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"co-fixed-lantecy",
+		)
 	}
 	r.ResultChannel = make(chan Result, 10000)
 	return r
@@ -60,8 +72,14 @@ func (r *TestThreadResult) SubmitCriticalError(err error) {
 func (r *TestThreadResult) ResetPartialResult() {
 	r.PartialResult = &Result{}
 	if globalResultConfiguration.measureLatency {
-		r.PartialResult.RawLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration, "raw-latency")
-		r.PartialResult.CoFixedLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration, "co-fixed-lantecy")
+		r.PartialResult.RawLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"raw-latency",
+		)
+		r.PartialResult.CoFixedLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"co-fixed-lantecy",
+		)
 	}
 }
 

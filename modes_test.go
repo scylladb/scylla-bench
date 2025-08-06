@@ -126,11 +126,17 @@ func TestBuildReadQuery(t *testing.T) {
 				}
 			case provideUpperBound:
 				if !strings.Contains(query, "ck < ?") {
-					t.Errorf("Expected upper bound in query for provideUpperBound=true, got: %s", query)
+					t.Errorf(
+						"Expected upper bound in query for provideUpperBound=true, got: %s",
+						query,
+					)
 				}
 			case noLowerBound:
 				if strings.Contains(query, "ck >=") {
-					t.Errorf("Expected no lower bound in query for noLowerBound=true, got: %s", query)
+					t.Errorf(
+						"Expected no lower bound in query for noLowerBound=true, got: %s",
+						query,
+					)
 				}
 			}
 

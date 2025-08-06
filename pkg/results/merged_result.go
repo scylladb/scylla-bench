@@ -27,8 +27,14 @@ func NewMergedResult() *MergedResult {
 	result := &MergedResult{}
 	if globalResultConfiguration.measureLatency {
 		result.HistogramStartTime = time.Now().UnixNano()
-		result.RawLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration, "raw")
-		result.CoFixedLatency = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration, "co-fixed")
+		result.RawLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"raw",
+		)
+		result.CoFixedLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"co-fixed",
+		)
 	}
 	return result
 }
@@ -130,11 +136,27 @@ func (mr *MergedResult) PrintPartialResult() {
 	if globalResultConfiguration.measureLatency {
 		scale := globalResultConfiguration.hdrLatencyScale
 		latencyHist := mr.getLatencyHistogram()
-		fmt.Printf(withLatencyLineFmt, Round(mr.Time), mr.Operations, mr.ClusteringRows, mr.Errors,
-			Round(time.Duration(latencyHist.Max()*scale)), Round(time.Duration(latencyHist.ValueAtQuantile(99.9)*scale)), Round(time.Duration(latencyHist.ValueAtQuantile(99)*scale)),
-			Round(time.Duration(latencyHist.ValueAtQuantile(95)*scale)), Round(time.Duration(latencyHist.ValueAtQuantile(90)*scale)),
-			Round(time.Duration(latencyHist.ValueAtQuantile(50)*scale)), Round(time.Duration(latencyHist.Mean()*float64(scale))),
-			latencyError)
+		fmt.Printf(
+			withLatencyLineFmt,
+			Round(mr.Time),
+			mr.Operations,
+			mr.ClusteringRows,
+			mr.Errors,
+			Round(
+				time.Duration(latencyHist.Max()*scale),
+			),
+			Round(time.Duration(latencyHist.ValueAtQuantile(99.9)*scale)),
+			Round(time.Duration(latencyHist.ValueAtQuantile(99)*scale)),
+			Round(
+				time.Duration(latencyHist.ValueAtQuantile(95)*scale),
+			),
+			Round(time.Duration(latencyHist.ValueAtQuantile(90)*scale)),
+			Round(
+				time.Duration(latencyHist.ValueAtQuantile(50)*scale),
+			),
+			Round(time.Duration(latencyHist.Mean()*float64(scale))),
+			latencyError,
+		)
 	} else {
 		fmt.Printf(withoutLatencyLineFmt, Round(mr.Time), mr.Operations, mr.ClusteringRows, mr.Errors)
 	}

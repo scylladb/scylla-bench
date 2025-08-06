@@ -18,7 +18,7 @@ type TokenRange struct {
 	End   int64
 }
 
-type WorkloadGenerator interface {
+type Generator interface {
 	NextTokenRange() TokenRange
 	NextPartitionKey() int64
 	NextClusteringKey() int64
@@ -93,9 +93,17 @@ type RandomUniform struct {
 	ClusteringRowCount int64
 }
 
-func NewRandomUniform(i int, partitionCount, partitionOffset, clusteringRowCount int64) *RandomUniform {
+func NewRandomUniform(
+	i int,
+	partitionCount, partitionOffset, clusteringRowCount int64,
+) *RandomUniform {
 	generator := rand.New(rand.NewSource(int64(time.Now().Nanosecond() * (i + 1))))
-	return &RandomUniform{generator, int64(partitionCount), int64(partitionOffset), int64(clusteringRowCount)}
+	return &RandomUniform{
+		generator,
+		int64(partitionCount),
+		int64(partitionOffset),
+		int64(clusteringRowCount),
+	}
 }
 
 func (ru *RandomUniform) NextTokenRange() TokenRange {
@@ -137,8 +145,15 @@ type TimeSeriesWrite struct {
 	MoveToNextPartition bool
 }
 
-func NewTimeSeriesWriter(threadID, threadCount int, pkCount, basicPkOffset, ckCount int64, startTime time.Time, rate int64) *TimeSeriesWrite {
-	period := time.Duration(int64(time.Second.Nanoseconds()) * (pkCount / int64(threadCount)) / rate)
+func NewTimeSeriesWriter(
+	threadID, threadCount int,
+	pkCount, basicPkOffset, ckCount int64,
+	startTime time.Time,
+	rate int64,
+) *TimeSeriesWrite {
+	period := time.Duration(
+		int64(time.Second.Nanoseconds()) * (pkCount / int64(threadCount)) / rate,
+	)
 	pkStride := int64(threadCount)
 	pkOffset := int64(threadID) + basicPkOffset
 	return &TimeSeriesWrite{
@@ -203,7 +218,12 @@ type TimeSeriesRead struct {
 	Period            int64
 }
 
-func NewTimeSeriesReader(threadID, threadCount int, pkCount, basicPkOffset, ckCount, writeRate int64, distribution string, startTime time.Time) *TimeSeriesRead {
+func NewTimeSeriesReader(
+	threadID, threadCount int,
+	pkCount, basicPkOffset, ckCount, writeRate int64,
+	distribution string,
+	startTime time.Time,
+) *TimeSeriesRead {
 	var halfNormalDist bool
 	switch distribution {
 	case "uniform":

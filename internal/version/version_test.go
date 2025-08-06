@@ -46,7 +46,11 @@ func TestVersionInfoFormatHuman(t *testing.T) {
 	}
 	for _, substr := range expectedSubstrings {
 		if !strings.Contains(humanOutput, substr) {
-			t.Errorf("Expected human output to contain '%s'. Actual output: %s", substr, humanOutput)
+			t.Errorf(
+				"Expected human output to contain '%s'. Actual output: %s",
+				substr,
+				humanOutput,
+			)
 		}
 	}
 }
@@ -76,10 +80,18 @@ func TestVersionInfoFormatJSON(t *testing.T) {
 	}
 
 	if parsed.ScyllaBench.Version != "v1.0.0" {
-		t.Errorf("Expected ScyllaBench version '%s', got '%s'", info.ScyllaBench.Version, parsed.ScyllaBench.Version)
+		t.Errorf(
+			"Expected ScyllaBench version '%s', got '%s'",
+			info.ScyllaBench.Version,
+			parsed.ScyllaBench.Version,
+		)
 	}
 	if parsed.Driver.CommitSHA != "987654abcdef" {
-		t.Errorf("Expected Driver commit SHA '%s', got '%s'", info.Driver.CommitSHA, parsed.Driver.CommitSHA)
+		t.Errorf(
+			"Expected Driver commit SHA '%s', got '%s'",
+			info.Driver.CommitSHA,
+			parsed.Driver.CommitSHA,
+		)
 	}
 }
 
