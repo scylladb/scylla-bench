@@ -71,7 +71,10 @@ func ValidateGlobalLatencyType(latencyType string) error {
 	_, ok := LatencyTypes[latencyType]
 	if !ok {
 		//nolint:revive,lll,simple
-		return fmt.Errorf("unknown value %s, supported values are: raw, fixed-coordinated-omission", latencyType)
+		return fmt.Errorf(
+			"unknown value %s, supported values are: raw, fixed-coordinated-omission",
+			latencyType,
+		)
 	}
 	return nil
 }

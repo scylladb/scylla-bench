@@ -177,7 +177,8 @@ func getGitVersionInfo() (ver, sha, buildDate string, ok bool) {
 
 	// If not a released version, use the most recent tag to build a dev version string
 	//nolint
-	if closestTag, ok := tryGitCommand("describe", "--tags", "--abbrev=0"); ok && strings.HasPrefix(closestTag, "v") {
+	if closestTag, ok := tryGitCommand("describe", "--tags", "--abbrev=0"); ok &&
+		strings.HasPrefix(closestTag, "v") {
 		return fmt.Sprintf("%s-dev-%s", closestTag, sha[:8]), sha, buildDate, true
 	}
 
@@ -267,7 +268,8 @@ func getDriverVersionInfo() ComponentInfo {
 		}
 
 		// Otherwise try to extract released version (e.g. v1.2.3)
-		if strings.HasPrefix(replacement.Version, "v") && !strings.Contains(replacement.Version, "-") {
+		if strings.HasPrefix(replacement.Version, "v") &&
+			!strings.Contains(replacement.Version, "-") {
 			info.Version = replacement.Version
 			if date, sha, err = github.getReleaseInfo("scylladb", "gocql", replacement.Version); err == nil {
 				info.CommitDate = date

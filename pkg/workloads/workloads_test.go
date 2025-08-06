@@ -48,7 +48,11 @@ func TestSequentialWorkload(t *testing.T) {
 						t.Errorf("wrong last CK; got %d; expected %d", currentCk, lastCk)
 					}
 					if rowCounter != tc.rowCount {
-						t.Errorf("Expected '%d' rows to be processed, but got '%d'", tc.rowCount, rowCounter)
+						t.Errorf(
+							"Expected '%d' rows to be processed, but got '%d'",
+							tc.rowCount,
+							rowCounter,
+						)
 					}
 					break
 				}
@@ -99,7 +103,12 @@ func TestUniformWorkload(t *testing.T) {
 
 	for i, tc := range testCases {
 		t.Run(fmt.Sprintf("rand%d", i), func(t *testing.T) {
-			wrkld := NewRandomUniform(i, tc.partitionCount, tc.partitionOffset, tc.clusteringRowCount)
+			wrkld := NewRandomUniform(
+				i,
+				tc.partitionCount,
+				tc.partitionOffset,
+				tc.clusteringRowCount,
+			)
 
 			pkMin := tc.partitionOffset
 			pkMax := tc.partitionCount + tc.partitionOffset

@@ -95,7 +95,21 @@ func (tr *TestResults) GetTotalResults() {
 
 func (tr *TestResults) PrintResultsHeader() {
 	if globalResultConfiguration.measureLatency {
-		fmt.Printf(withLatencyLineFmt, "time", "ops/s", "rows/s", "errors", "max", "99.9th", "99th", "95th", "90th", "median", "mean", "")
+		fmt.Printf(
+			withLatencyLineFmt,
+			"time",
+			"ops/s",
+			"rows/s",
+			"errors",
+			"max",
+			"99.9th",
+			"99th",
+			"95th",
+			"90th",
+			"median",
+			"mean",
+			"",
+		)
 	} else {
 		fmt.Printf(withoutLatencyLineFmt, "time", "ops/s", "rows/s", "errors")
 	}

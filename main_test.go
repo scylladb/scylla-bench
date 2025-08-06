@@ -238,7 +238,11 @@ func TestNewHostSelectionPolicy(t *testing.T) {
 
 			gotType := reflect.TypeOf(got).String()
 			if gotType != tt.wantType {
-				t.Errorf("newHostSelectionPolicy() returned policy of type %v, want %v", gotType, tt.wantType)
+				t.Errorf(
+					"newHostSelectionPolicy() returned policy of type %v, want %v",
+					gotType,
+					tt.wantType,
+				)
 			}
 		})
 	}
