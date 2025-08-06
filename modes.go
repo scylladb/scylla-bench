@@ -624,16 +624,12 @@ func BuildReadQueryString(table, orderBy string) string {
 
 	switch {
 	case inRestriction:
-		arr := make([]string, rowsPerRequest)
-		for i := 0; i < rowsPerRequest; i++ {
-			arr[i] = "?"
-		}
 		return fmt.Sprintf(
 			"SELECT %s FROM %s.%s WHERE pk = ? AND ck IN (%s) %s %s",
 			selectFields,
 			keyspaceName,
 			table,
-			strings.Join(arr, ","),
+			strings.TrimRight(strings.Repeat("?,", rowsPerRequest), ","),
 			orderBy,
 			bypassCacheClause,
 		)
@@ -669,12 +665,58 @@ func BuildReadQueryString(table, orderBy string) string {
 	}
 }
 
-func BuildReadQuery(table, orderBy string, session *gocql.Session) *gocql.Query {
-	return session.Query(BuildReadQueryString(table, orderBy))
+func executeReadsQuery(query *gocql.Query, table string, rb *results.TestThreadResult, validateData bool) error {
+	iter := query.Iter()
+	var err error
+	defer func() {
+		err = iter.Close()
+	}()
+
+	var (
+		resPk, resCk int64
+		value        []byte
+	)
+
+	if table == tableName {
+		for iter.Scan(&resPk, &resCk, &value) {
+			rb.IncRows()
+			if !validateData {
+				continue
+			}
+
+			scanErr := ValidateData(resPk, resCk, value, validateData)
+			if scanErr != nil {
+				rb.IncErrors()
+				log.Printf("data corruption in pk(%d), ck(%d): %s", resPk, resCk, scanErr)
+			}
+		}
+
+		return err
+	}
+
+	var c1, c2, c3, c4, c5 int64
+	for iter.Scan(&resPk, &resCk, &c1, &c2, &c3, &c4, &c5) {
+		rb.IncRows()
+		if !validateData {
+			continue
+		}
+
+		// in case of uniform workload the same row can be updated number of times
+		var updateNum int64
+		if resCk == 0 {
+			updateNum = c2
+		} else {
+			updateNum = c1 / resCk
+		}
+		if c1 != resCk*updateNum || c2 != c1+updateNum || c3 != c1+updateNum*2 || c4 != c1+updateNum*3 || c5 != c1+updateNum*4 {
+			rb.IncErrors()
+			log.Print("counter data corruption:", resPk, resCk, c1, c2, c3, c4, c5)
+		}
+	}
+
+	return err
 }
 
-//
-//nolint:lll
 func DoReadsFromTable(
 	table string,
 	session *gocql.Session,
@@ -684,151 +726,88 @@ func DoReadsFromTable(
 	validateData bool,
 ) {
 	counter, numOfOrderings := 0, len(selectOrderByParsed)
-	RunTest(
-		threadResult,
-		workload,
-		rateLimiter,
-		func(rb *results.TestThreadResult) (time.Duration, error) {
-			counter++
-			pk := workload.NextPartitionKey()
-			query := BuildReadQuery(table, selectOrderByParsed[counter%numOfOrderings], session)
-			defer query.Release()
+	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (time.Duration, error) {
+		counter++
+		pk := workload.NextPartitionKey()
+		query := session.Query(BuildReadQueryString(table, selectOrderByParsed[counter%numOfOrderings]))
+		defer query.Release()
 
-			switch {
-			case inRestriction:
-				args := make([]any, 1, rowsPerRequest+1)
-				args[0] = pk
-				for range rowsPerRequest {
-					if workload.IsPartitionDone() {
-						args = append(args, 0)
-					} else {
-						args = append(args, workload.NextClusteringKey())
-					}
-				}
-				query.Bind(args...)
-			case noLowerBound:
-				query.Bind(pk)
-			default:
-				ck := workload.NextClusteringKey()
-				if provideUpperBound {
-					query.Bind(pk, ck, ck+int64(rowsPerRequest))
+		switch {
+		case inRestriction:
+			args := make([]any, 1, rowsPerRequest+1)
+			args[0] = pk
+			for range rowsPerRequest {
+				if workload.IsPartitionDone() {
+					args = append(args, 0)
 				} else {
-					query.Bind(pk, ck)
+					args = append(args, workload.NextClusteringKey())
 				}
 			}
-
-			var resPk, resCk int64
-			var value []byte
-			var queryStr string
-
-			currentAttempts := 0
-			for {
-				requestStart := time.Now()
-				iter := query.Iter()
-				if table == tableName {
-					for iter.Scan(&resPk, &resCk, &value) {
-						rb.IncRows()
-						if validateData {
-							err := ValidateData(resPk, resCk, value, validateData)
-							if err != nil {
-								rb.IncErrors()
-								log.Printf(
-									"data corruption in pk(%d), ck(%d): %s",
-									resPk,
-									resCk,
-									err,
-								)
-							}
-						}
-					}
-				} else {
-					var c1, c2, c3, c4, c5 int64
-					for iter.Scan(&resPk, &resCk, &c1, &c2, &c3, &c4, &c5) {
-						rb.IncRows()
-						if validateData {
-							// in case of uniform workload the same row can be updated number of times
-							var updateNum int64
-							if resCk == 0 {
-								updateNum = c2
-							} else {
-								updateNum = c1 / resCk
-							}
-							if c1 != resCk*updateNum || c2 != c1+updateNum || c3 != c1+updateNum*2 || c4 != c1+updateNum*3 || c5 != c1+updateNum*4 {
-								rb.IncErrors()
-								log.Print("counter data corruption:", resPk, resCk, c1, c2, c3, c4, c5)
-							}
-						}
-					}
-				}
-				requestEnd := time.Now()
-				err := iter.Close()
-
-				if err == nil {
-					rb.IncOps()
-					return requestEnd.Sub(requestStart), nil
-				}
-				if retryHandler == "sb" {
-					if queryStr == "" {
-						queryStr = query.String()
-					}
-					err = handleSbRetryError(queryStr, err, currentAttempts)
-				}
-				if err != nil {
-					return time.Duration(0), err
-				}
-				currentAttempts++
+			query.Bind(args...)
+		case noLowerBound:
+			query.Bind(pk)
+		default:
+			ck := workload.NextClusteringKey()
+			if provideUpperBound {
+				query.Bind(pk, ck, ck+int64(rowsPerRequest))
+			} else {
+				query.Bind(pk, ck)
 			}
-		},
-	)
+		}
+
+		queryStr := query.String()
+
+		for currentAttempts := 0; ; currentAttempts++ {
+			requestStart := time.Now()
+			err := executeReadsQuery(query, table, rb, validateData)
+			requestEnd := time.Now()
+
+			if err == nil {
+				rb.IncOps()
+				return requestEnd.Sub(requestStart), nil
+			}
+
+			if retryHandler == "sb" {
+				err = handleSbRetryError(queryStr, err, currentAttempts)
+			}
+
+			if err != nil {
+				return time.Duration(0), err
+			}
+		}
+	})
 }
 
-func DoScanTable(
-	session *gocql.Session,
-	threadResult *results.TestThreadResult,
-	workload workloads.Generator,
-	rateLimiter RateLimiter,
-	_ bool,
-) {
-	request := fmt.Sprintf(
-		"SELECT * FROM %s.%s WHERE token(pk) >= ? AND token(pk) <= ?",
-		keyspaceName,
-		tableName,
-	)
-	RunTest(
-		threadResult,
-		workload,
-		rateLimiter,
-		func(rb *results.TestThreadResult) (time.Duration, error) {
-			query := session.Query(request)
-			currentRange := workload.NextTokenRange()
-			currentAttempts := 0
-			var queryStr string
-			for {
-				requestStart := time.Now()
-				bound := query.Bind(currentRange.Start, currentRange.End)
-				iter := bound.Iter()
-				for iter.Scan(nil, nil, nil) {
-					rb.IncRows()
-				}
-				requestEnd := time.Now()
-				err := iter.Close()
+func DoScanTable(session *gocql.Session, threadResult *results.TestThreadResult, workload workloads.Generator, rateLimiter RateLimiter, _ bool) {
+	request := fmt.Sprintf("SELECT * FROM %s.%s WHERE token(pk) >= ? AND token(pk) <= ?", keyspaceName, tableName)
 
-				if err == nil {
-					rb.IncOps()
-					latency := requestEnd.Sub(requestStart)
-					return latency, nil
-				}
-				if retryHandler == "sb" {
-					if queryStr == "" {
-						queryStr = query.String()
-					}
-					err = handleSbRetryError(queryStr, err, currentAttempts)
-				}
-				if err != nil {
+	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (time.Duration, error) {
+		query := session.Query(request)
+		defer query.Release()
+		currentRange := workload.NextTokenRange()
+
+		queryStr := query.String()
+
+		for currentAttempts := 0; ; currentAttempts++ {
+			requestStart := time.Now()
+			query.Bind(currentRange.Start, currentRange.End)
+			iter := query.Iter()
+			for iter.Scan(nil, nil, nil) {
+				rb.IncRows()
+			}
+			requestEnd := time.Now()
+			err := iter.Close()
+
+			if err == nil {
+				rb.IncOps()
+				return requestEnd.Sub(requestStart), nil
+			}
+
+			if retryHandler == "sb" {
+				if err = handleSbRetryError(queryStr, err, currentAttempts); err != nil {
 					return time.Duration(0), err
 				}
-				currentAttempts++
 			}
-		},
-	)
+		}
+	})
 }
