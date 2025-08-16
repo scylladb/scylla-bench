@@ -1,6 +1,6 @@
 module github.com/scylladb/scylla-bench
 
-go 1.24
+go 1.24.0
 
 require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2
@@ -255,7 +255,7 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
-	golang.org/x/exp/typeparams v0.0.0-20250808145144-a408d31f581a // indirect
+	golang.org/x/exp/typeparams v0.0.0-20250813145105-42675adae3e6 // indirect
 	golang.org/x/mod v0.27.0 // indirect
 	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
