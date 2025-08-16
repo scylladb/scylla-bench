@@ -10,7 +10,7 @@ jobs:
   update-dockerhub-description:
     runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Update Docker Hub Description for scylladb/scylla-bench
       uses: peter-evans/dockerhub-description@v4
       with:
