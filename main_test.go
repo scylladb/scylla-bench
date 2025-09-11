@@ -566,3 +566,43 @@ func TestGetRetryPolicyEdgeCases(t *testing.T) {
 		})
 	}
 }
+
+// Test mixed mode with different workloads to ensure compatibility
+func TestMixedModeWithWorkloads(t *testing.T) {
+	t.Parallel()
+	
+	// Save original values
+	originalConcurrency := concurrency
+	originalPartitionCount := partitionCount
+	originalClusteringRowCount := clusteringRowCount
+	
+	defer func() {
+		concurrency = originalConcurrency
+		partitionCount = originalPartitionCount
+		clusteringRowCount = originalClusteringRowCount
+	}()
+	
+	// Set required values for the test
+	concurrency = 1
+	partitionCount = 10
+	clusteringRowCount = 5
+	
+	workloads := []string{"sequential", "uniform"}
+	
+	for _, workload := range workloads {
+		t.Run("workload_"+workload, func(t *testing.T) {
+			// Test that GetWorkload works with mixed mode
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("GetWorkload panicked with mixed mode and %s workload: %v", workload, r)
+				}
+			}()
+			
+			// These should not panic
+			generator := GetWorkload(workload, 0, 0, "mixed", 100, "uniform")
+			if generator == nil {
+				t.Errorf("GetWorkload returned nil for %s workload with mixed mode", workload)
+			}
+		})
+	}
+}
