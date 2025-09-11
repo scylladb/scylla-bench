@@ -119,6 +119,15 @@ func TestGetMode(t *testing.T) {
 			},
 		},
 		{
+			name:           "mixed mode",
+			modeName:       "mixed",
+			rowsPerRequest: 1,
+			expectPanic:    false,
+			validateFunc: func(mf ModeFunc) bool {
+				return getFuncName(mf) == getFuncName(DoMixed)
+			},
+		},
+		{
 			name:           "invalid mode",
 			modeName:       "invalid_mode",
 			rowsPerRequest: 1,

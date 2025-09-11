@@ -246,9 +246,11 @@ func GetMode(name string) ModeFunc {
 		return DoCounterReads
 	case "scan":
 		return DoScanTable
+	case "mixed":
+		return DoMixed
 	default:
 		log.Panicf(
-			"unknown mode: %s. Available modes: write, counter_update, read, counter_read, scan",
+			"unknown mode: %s. Available modes: write, counter_update, read, counter_read, scan, mixed",
 			name,
 		)
 	}
@@ -344,7 +346,7 @@ func main() {
 		&mode,
 		"mode",
 		"",
-		"operating mode: write, read, counter_update, counter_read, scan",
+		"operating mode: write, read, counter_update, counter_read, scan, mixed",
 	)
 	flag.StringVar(&workload, "workload", "", "workload: sequential, uniform, timeseries")
 	flag.StringVar(&consistencyLevel, "consistency-level", "quorum", "consistency level")

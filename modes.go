@@ -811,3 +811,135 @@ func DoScanTable(session *gocql.Session, threadResult *results.TestThreadResult,
 		}
 	})
 }
+
+func DoMixed(
+	session *gocql.Session,
+	threadResult *results.TestThreadResult,
+	workload workloads.Generator,
+	rateLimiter RateLimiter,
+	validateData bool,
+) {
+	operationCount := int64(0)
+	
+	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (time.Duration, error) {
+		operationCount++
+		
+		// Perform write on even operations, read on odd operations
+		// This gives us 50% reads and 50% writes
+		if operationCount%2 == 0 {
+			// Perform write operation
+			return doMixedWrite(session, workload, rb, validateData)
+		} else {
+			// Perform read operation
+			return doMixedRead(session, workload, rb, validateData)
+		}
+	})
+}
+
+func doMixedWrite(
+	session *gocql.Session,
+	workload workloads.Generator,
+	rb *results.TestThreadResult,
+	validateData bool,
+) (time.Duration, error) {
+	request := fmt.Sprintf(
+		"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)",
+		keyspaceName,
+		tableName,
+	)
+	query := session.Query(request)
+	defer query.Release()
+	pk := workload.NextPartitionKey()
+	ck := workload.NextClusteringKey()
+	value, err := GenerateData(pk, ck, clusteringRowSizeDist.Generate(), validateData)
+	if err != nil {
+		panic(err)
+	}
+	bound := query.Bind(pk, ck, value)
+
+	queryStr := ""
+	currentAttempts := 0
+	for {
+		requestStart := time.Now()
+		err = bound.Exec()
+		requestEnd := time.Now()
+
+		if err == nil {
+			rb.IncOps()
+			rb.IncRows()
+			latency := requestEnd.Sub(requestStart)
+			return latency, nil
+		}
+		if retryHandler == "sb" {
+			if queryStr == "" {
+				// NOTE: use custom query string instead of 'query.String()' to avoid huge values printings
+				queryStr = fmt.Sprintf(
+					"[query statement=%q values=%+v consistency=%s]",
+					request,
+					[]any{pk, ck, "<" + strconv.Itoa(len(value)) + "-bytes-value>"},
+					query.GetConsistency(),
+				)
+			}
+			err = handleSbRetryError(queryStr, err, currentAttempts)
+		}
+		if err != nil {
+			return time.Duration(0), err
+		}
+		currentAttempts++
+	}
+}
+
+func doMixedRead(
+	session *gocql.Session,
+	workload workloads.Generator,
+	rb *results.TestThreadResult,
+	validateData bool,
+) (time.Duration, error) {
+	pk := workload.NextPartitionKey()
+	query := session.Query(BuildReadQueryString(tableName, ""))
+	defer query.Release()
+
+	switch {
+	case inRestriction:
+		args := make([]any, 1, rowsPerRequest+1)
+		args[0] = pk
+		for range rowsPerRequest {
+			if workload.IsPartitionDone() {
+				args = append(args, 0)
+			} else {
+				args = append(args, workload.NextClusteringKey())
+			}
+		}
+		query.Bind(args...)
+	case noLowerBound:
+		query.Bind(pk)
+	default:
+		ck := workload.NextClusteringKey()
+		if provideUpperBound {
+			query.Bind(pk, ck, ck+int64(rowsPerRequest))
+		} else {
+			query.Bind(pk, ck)
+		}
+	}
+
+	queryStr := query.String()
+
+	for currentAttempts := 0; ; currentAttempts++ {
+		requestStart := time.Now()
+		err := executeReadsQuery(query, tableName, rb, validateData)
+		requestEnd := time.Now()
+
+		if err == nil {
+			rb.IncOps()
+			return requestEnd.Sub(requestStart), nil
+		}
+
+		if retryHandler == "sb" {
+			err = handleSbRetryError(queryStr, err, currentAttempts)
+		}
+
+		if err != nil {
+			return time.Duration(0), err
+		}
+	}
+}
