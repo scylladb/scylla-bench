@@ -820,10 +820,10 @@ func DoMixed(
 	validateData bool,
 ) {
 	operationCount := int64(0)
-	
+
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (time.Duration, error) {
 		operationCount++
-		
+
 		// Perform write on even operations, read on odd operations
 		// This gives us 50% reads and 50% writes
 		if operationCount%2 == 0 {
