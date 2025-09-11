@@ -25,6 +25,9 @@ import (
 
 var reportInterval = 1 * time.Second
 
+// Global atomic counter for mixed mode operations to ensure true 50/50 distribution across threads
+var globalMixedOperationCount int64
+
 type RateLimiter interface {
 	Wait()
 	Expected() time.Time
@@ -819,24 +822,24 @@ func DoMixed(
 	rateLimiter RateLimiter,
 	validateData bool,
 ) {
-	operationCount := int64(0)
-
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (time.Duration, error) {
-		operationCount++
+		// Use global atomic counter to ensure true 50/50 distribution across all threads
+		opCount := atomic.AddInt64(&globalMixedOperationCount, 1)
 
 		// Perform write on even operations, read on odd operations
-		// This gives us 50% reads and 50% writes
-		if operationCount%2 == 0 {
-			// Perform write operation
-			return doMixedWrite(session, workload, rb, validateData)
+		// This gives us 50% reads and 50% writes globally across all threads
+		if opCount%2 == 0 {
+			// Perform write operation using existing write logic
+			return doSingleWrite(session, workload, rb, validateData)
 		} else {
-			// Perform read operation
-			return doMixedRead(session, workload, rb, validateData)
+			// Perform read operation using existing read logic
+			return doSingleRead(session, workload, rb, validateData)
 		}
 	})
 }
 
-func doMixedWrite(
+// doSingleWrite performs a single write operation, reusing the core logic from DoWrites
+func doSingleWrite(
 	session *gocql.Session,
 	workload workloads.Generator,
 	rb *results.TestThreadResult,
@@ -889,7 +892,8 @@ func doMixedWrite(
 	}
 }
 
-func doMixedRead(
+// doSingleRead performs a single read operation, reusing the core logic from DoReadsFromTable
+func doSingleRead(
 	session *gocql.Session,
 	workload workloads.Generator,
 	rb *results.TestThreadResult,

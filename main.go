@@ -153,7 +153,7 @@ func PrepareDatabase(session Session, replicationFactor int) {
 	}
 	if truncateTable {
 		switch mode {
-		case "write":
+		case "write", "mixed":
 			log.Printf("Truncating the '%s' table", tableName)
 			Query(session, "TRUNCATE TABLE "+keyspaceName+"."+tableName)
 		case "counter_update":
@@ -208,8 +208,19 @@ func GetWorkload(
 				startTime,
 				int64(maximumRate/concurrency),
 			)
+		case "mixed":
+			// For mixed mode, use a time series writer for both read and write operations
+			return workloads.NewTimeSeriesWriter(
+				threadID,
+				concurrency,
+				partitionCount,
+				partitionOffset,
+				clusteringRowCount,
+				startTime,
+				int64(maximumRate/concurrency),
+			)
 		default:
-			log.Panic("time series workload supports only write and read modes")
+			log.Panic("time series workload supports only write, read, and mixed modes")
 		}
 	case "scan":
 		rangesPerThread := rangeCount / concurrency
