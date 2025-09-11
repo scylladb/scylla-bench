@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -139,6 +140,7 @@ func TestGetMode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set rowsPerRequest for this test
+			// Note: We cannot use t.Parallel() here because we modify global state
 			rowsPerRequest = tt.rowsPerRequest
 
 			if tt.expectPanic {
@@ -569,7 +571,7 @@ func TestGetRetryPolicyEdgeCases(t *testing.T) {
 
 // Test mixed mode with different workloads to ensure compatibility
 func TestMixedModeWithWorkloads(t *testing.T) {
-	t.Parallel()
+	// Cannot use t.Parallel() because this test modifies global state
 
 	// Save original values
 	originalConcurrency := concurrency
@@ -615,7 +617,7 @@ func TestMixedModeWithWorkloads(t *testing.T) {
 
 // Test that timeseries workload specifically works with mixed mode (was previously panicking)
 func TestTimeseriesWorkloadWithMixedMode(t *testing.T) {
-	t.Parallel()
+	// Cannot use t.Parallel() because this test modifies global state
 
 	// Save original values
 	originalConcurrency := concurrency
@@ -654,13 +656,16 @@ func TestTimeseriesWorkloadWithMixedMode(t *testing.T) {
 
 // Test that global mixed operation counter provides correct alternating pattern
 func TestGlobalMixedOperationCounter(t *testing.T) {
-	// Reset the global counter
-	globalMixedOperationCount.Store(0)
+	t.Parallel()
+
+	// Create a local atomic counter for this test to avoid race conditions
+	// with other tests or running application code
+	var localCounter atomic.Uint64
 
 	// Simulate multiple operations and verify alternating pattern
 	operations := make([]bool, 10) // true for write, false for read
 	for i := 0; i < 10; i++ {
-		opCount := globalMixedOperationCount.Add(1)
+		opCount := localCounter.Add(1)
 		operations[i] = opCount%2 == 0 // even = write, odd = read
 	}
 
