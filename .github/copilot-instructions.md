@@ -24,7 +24,7 @@ scylla-bench is a benchmarking tool for ScyllaDB written in Go. It minimizes cli
 - Mock external dependencies when testing business logic
 - Achieve high code coverage for new functionality
 
-#### Integration Tests  
+#### Integration Tests
 - **Required for all features that interact with ScyllaDB**
 - Must use TestContainers with real ScyllaDB instances: `scylladb/scylla:2025.2`
 - Use `t.Parallel()` for concurrent test execution
@@ -138,7 +138,7 @@ scylla-bench supports multiple benchmarking modes, each designed for specific te
 # Populate database first with writes
 ./build/scylla-bench -workload sequential -mode write -nodes 127.0.0.1
 
-# Then test reads on populated data  
+# Then test reads on populated data
 ./build/scylla-bench -workload uniform -mode read -concurrency 128 -duration 15m
 
 # Mixed read/write workload (50% reads, 50% writes)
@@ -221,7 +221,7 @@ Basic usage patterns:
 ### Makefile Targets
 ```bash
 make build           # Build release binary
-make build-debug     # Build debug binary  
+make build-debug     # Build debug binary
 make test           # Run test suite
 make fmt            # Format code with gofumpt
 make clean          # Clean build artifacts
