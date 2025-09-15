@@ -591,7 +591,7 @@ func TestMixedModeWithWorkloads(t *testing.T) {
 	concurrency = 1
 	partitionCount = 10
 	clusteringRowCount = 5
-	maximumRate = 1000  // Set a non-zero rate for timeseries workload
+	maximumRate = 1000 // Set a non-zero rate for timeseries workload
 	startTime = time.Now()
 
 	workloads := []string{"sequential", "uniform", "timeseries"}
@@ -670,7 +670,7 @@ func TestGlobalMixedOperationCounter(t *testing.T) {
 	expected := []bool{false, true, false, true, false, true, false, true, false, true}
 	for i, op := range operations {
 		if op != expected[i] {
-			t.Errorf("Operation %d: expected %v (write=%v, read=%v), got %v", 
+			t.Errorf("Operation %d: expected %v (write=%v, read=%v), got %v",
 				i+1, expected[i], true, false, op)
 		}
 	}
