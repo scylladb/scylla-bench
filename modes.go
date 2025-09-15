@@ -26,7 +26,7 @@ import (
 var reportInterval = 1 * time.Second
 
 // Global atomic counter for mixed mode operations to ensure true 50/50 distribution across threads
-var globalMixedOperationCount int64
+var globalMixedOperationCount atomic.Uint64
 
 type RateLimiter interface {
 	Wait()
@@ -838,7 +838,7 @@ func DoMixed(
 
 	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (time.Duration, error) {
 		// Use global atomic counter to ensure true 50/50 distribution across all threads
-		opCount := atomic.AddInt64(&globalMixedOperationCount, 1)
+		opCount := globalMixedOperationCount.Add(1)
 
 		// Perform write on even operations, read on odd operations
 		// This gives us 50% reads and 50% writes globally across all threads

@@ -5,7 +5,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -656,12 +655,12 @@ func TestTimeseriesWorkloadWithMixedMode(t *testing.T) {
 // Test that global mixed operation counter provides correct alternating pattern
 func TestGlobalMixedOperationCounter(t *testing.T) {
 	// Reset the global counter
-	atomic.StoreInt64(&globalMixedOperationCount, 0)
+	globalMixedOperationCount.Store(0)
 
 	// Simulate multiple operations and verify alternating pattern
 	operations := make([]bool, 10) // true for write, false for read
 	for i := 0; i < 10; i++ {
-		opCount := atomic.AddInt64(&globalMixedOperationCount, 1)
+		opCount := globalMixedOperationCount.Add(1)
 		operations[i] = opCount%2 == 0 // even = write, odd = read
 	}
 
