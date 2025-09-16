@@ -13,6 +13,7 @@ scylla-bench is a benchmarking tool for ScyllaDB written in Go. It minimizes cli
   - Subsequent builds are faster (~3-5 seconds)
 - Build artifacts are placed in `./build/scylla-bench`
 
+<<<<<<< HEAD
 ### Testing Requirements
 
 **CRITICAL**: All new features and code changes MUST include comprehensive tests:
@@ -54,6 +55,50 @@ go test -race ./...
 - Include error path testing and edge cases
 - Document test scenarios and expected outcomes
 
+||||||| parent of 3af6613 (Add comprehensive mode descriptions and testing requirements with race flag and t.Parallel())
+=======
+### Testing Requirements
+
+**CRITICAL**: All new features and code changes MUST include comprehensive tests:
+
+#### Unit Tests
+- **Required for all new functions and methods**
+- Use `t.Parallel()` in all test functions to enable parallel execution
+- Run with `-race` flag to detect race conditions: `go test -race ./...`
+- Mock external dependencies when testing business logic
+- Achieve high code coverage for new functionality
+
+#### Integration Tests  
+- **Required for all features that interact with ScyllaDB**
+- Must use TestContainers with real ScyllaDB instances: `scylladb/scylla:2025.2`
+- Use `t.Parallel()` for concurrent test execution
+- Set `RUN_CONTAINER_TESTS=true` to enable: `RUN_CONTAINER_TESTS=true go test -race -v ./pkg/testutil`
+- Test against actual ScyllaDB behavior, not mocks
+- Include data validation scenarios when applicable
+
+#### Test Execution Commands
+```bash
+# All tests with race detection (required before committing)
+make test  # Includes -race flag
+
+# Container integration tests specifically
+RUN_CONTAINER_TESTS=true go test -race -v ./pkg/testutil
+
+# Memory leak tests (when applicable)
+RUN_MEMORY_LEAK_TEST=true go test -race -v -run TestMemoryLeak
+
+# Manual race detection check
+go test -race ./...
+```
+
+#### Test Structure Requirements
+- All tests MUST use `t.Parallel()` unless they modify global state
+- Integration tests MUST clean up containers and resources
+- Use table-driven tests for multiple test cases
+- Include error path testing and edge cases
+- Document test scenarios and expected outcomes
+
+>>>>>>> 3af6613 (Add comprehensive mode descriptions and testing requirements with race flag and t.Parallel())
 ### Testing
 - Run all tests: `make test` -- takes 30-40 seconds. NEVER CANCEL. Set timeout to 30+ minutes.
 - **All tests run with `-race` flag enabled to detect race conditions**
@@ -121,6 +166,7 @@ replace github.com/gocql/gocql => github.com/scylladb/gocql v1.15.0
 - Set `RUN_CONTAINER_TESTS=true` to enable container tests
 - Memory leak tests generate `.pprof` files for analysis
 
+<<<<<<< HEAD
 ## Benchmarking Modes
 
 scylla-bench supports multiple benchmarking modes, each designed for specific testing scenarios:
@@ -150,6 +196,38 @@ scylla-bench supports multiple benchmarking modes, each designed for specific te
 
 See the "Running scylla-bench" section below for more comprehensive examples.
 
+||||||| parent of 3af6613 (Add comprehensive mode descriptions and testing requirements with race flag and t.Parallel())
+=======
+## Benchmarking Modes
+
+scylla-bench supports multiple benchmarking modes, each designed for specific testing scenarios:
+
+### Available Modes
+- **`write`** -- Insert new data into the database using INSERT statements. Creates partitions and clustering rows according to the workload pattern. Essential for populating databases and testing write performance.
+- **`read`** -- Read existing data from the main table using SELECT statements. Requires data to be written first. Tests read performance and caching behavior.
+- **`counter_update`** -- Update counter columns using UPDATE statements with counter increments. Tests counter performance and consistency.
+- **`counter_read`** -- Read counter values from the counter table. Used to verify counter updates and test counter read performance.
+- **`scan`** -- Perform full table scans using token range queries. Tests large-scale data retrieval and scanning performance without specific partition targeting.
+
+### Mode Usage Patterns
+```bash
+# Populate database first with writes
+./build/scylla-bench -workload sequential -mode write -nodes 127.0.0.1
+
+# Then test reads on populated data  
+./build/scylla-bench -workload uniform -mode read -concurrency 128 -duration 15m
+
+# Test counter operations
+./build/scylla-bench -workload uniform -mode counter_update -duration 30m
+./build/scylla-bench -workload uniform -mode counter_read -duration 5m
+
+# Full table scan
+./build/scylla-bench -mode scan -timeout 5m -concurrency 1
+```
+
+See the "Running scylla-bench" section below for more comprehensive examples.
+
+>>>>>>> 3af6613 (Add comprehensive mode descriptions and testing requirements with race flag and t.Parallel())
 ## Building and Running
 
 ### Build Commands
