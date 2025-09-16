@@ -128,7 +128,6 @@ scylla-bench supports multiple benchmarking modes, each designed for specific te
 ### Available Modes
 - **`write`** -- Insert new data into the database using INSERT statements. Creates partitions and clustering rows according to the workload pattern. Essential for populating databases and testing write performance.
 - **`read`** -- Read existing data from the main table using SELECT statements. Requires data to be written first. Tests read performance and caching behavior.
-- **`mixed`** -- Performs alternating 50% reads and 50% writes using a global atomic counter to ensure true distribution across all threads. Combines write and read operations in a single benchmark run. Compatible with all workloads (sequential, uniform, timeseries).
 - **`counter_update`** -- Update counter columns using UPDATE statements with counter increments. Tests counter performance and consistency.
 - **`counter_read`** -- Read counter values from the counter table. Used to verify counter updates and test counter read performance.
 - **`scan`** -- Perform full table scans using token range queries. Tests large-scale data retrieval and scanning performance without specific partition targeting.
@@ -140,12 +139,6 @@ scylla-bench supports multiple benchmarking modes, each designed for specific te
 
 # Then test reads on populated data
 ./build/scylla-bench -workload uniform -mode read -concurrency 128 -duration 15m
-
-# Mixed read/write workload (50% reads, 50% writes)
-./build/scylla-bench -workload uniform -mode mixed -concurrency 128 -duration 30m -nodes 127.0.0.1
-
-# Mixed mode with timeseries workload
-./build/scylla-bench -workload timeseries -mode mixed -duration 15m -concurrency 64
 
 # Test counter operations
 ./build/scylla-bench -workload uniform -mode counter_update -duration 30m
