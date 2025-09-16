@@ -202,6 +202,7 @@ Basic usage patterns:
 2. Run `make test` -- ensures all tests pass
 3. Validate the main scenarios listed above
 4. **Do NOT run** `make check` due to known linting issues
+5. **Use single commit per PR** -- Squash multiple commits into one meaningful commit with a descriptive message
 
 ## Common Commands Reference
 
