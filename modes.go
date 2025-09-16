@@ -845,9 +845,8 @@ func DoMixed(
 		if opCount%2 == 0 {
 			// Perform write operation using existing write logic
 			return writeTestFunc(rb)
-		} else {
-			// Perform read operation using existing read logic
-			return readTestFunc(rb)
 		}
+		// Perform read operation using existing read logic
+		return readTestFunc(rb)
 	})
 }
