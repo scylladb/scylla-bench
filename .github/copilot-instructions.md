@@ -24,7 +24,7 @@ scylla-bench is a benchmarking tool for ScyllaDB written in Go. It minimizes cli
 - Mock external dependencies when testing business logic
 - Achieve high code coverage for new functionality
 
-#### Integration Tests  
+#### Integration Tests
 - **Required for all features that interact with ScyllaDB**
 - Must use TestContainers with real ScyllaDB instances: `scylladb/scylla:2025.2`
 - Use `t.Parallel()` for concurrent test execution
@@ -128,6 +128,7 @@ scylla-bench supports multiple benchmarking modes, each designed for specific te
 ### Available Modes
 - **`write`** -- Insert new data into the database using INSERT statements. Creates partitions and clustering rows according to the workload pattern. Essential for populating databases and testing write performance.
 - **`read`** -- Read existing data from the main table using SELECT statements. Requires data to be written first. Tests read performance and caching behavior.
+- **`mixed`** -- Performs alternating 50% reads and 50% writes using a global atomic counter to ensure true distribution across all threads. Combines write and read operations in a single benchmark run. Compatible with all workloads (sequential, uniform, timeseries).
 - **`counter_update`** -- Update counter columns using UPDATE statements with counter increments. Tests counter performance and consistency.
 - **`counter_read`** -- Read counter values from the counter table. Used to verify counter updates and test counter read performance.
 - **`scan`** -- Perform full table scans using token range queries. Tests large-scale data retrieval and scanning performance without specific partition targeting.
@@ -137,8 +138,14 @@ scylla-bench supports multiple benchmarking modes, each designed for specific te
 # Populate database first with writes
 ./build/scylla-bench -workload sequential -mode write -nodes 127.0.0.1
 
-# Then test reads on populated data  
+# Then test reads on populated data
 ./build/scylla-bench -workload uniform -mode read -concurrency 128 -duration 15m
+
+# Mixed read/write workload (50% reads, 50% writes)
+./build/scylla-bench -workload uniform -mode mixed -concurrency 128 -duration 30m -nodes 127.0.0.1
+
+# Mixed mode with timeseries workload
+./build/scylla-bench -workload timeseries -mode mixed -duration 15m -concurrency 64
 
 # Test counter operations
 ./build/scylla-bench -workload uniform -mode counter_update -duration 30m
@@ -166,6 +173,13 @@ Basic usage patterns:
 
 # Read test with high concurrency
 ./build/scylla-bench -workload uniform -mode read -concurrency 128 -duration 15m -nodes some_node
+
+# Mixed read/write test (50% reads, 50% writes)
+./build/scylla-bench -workload uniform -mode mixed -concurrency 128 -duration 30m -nodes 127.0.0.1
+
+# Mixed mode with different workloads
+./build/scylla-bench -workload sequential -mode mixed -duration 10m -concurrency 64
+./build/scylla-bench -workload timeseries -mode mixed -duration 15m -concurrency 32
 
 # Counter update test
 ./build/scylla-bench -workload uniform -mode counter_update -duration 30m -concurrency 128
@@ -195,6 +209,7 @@ Basic usage patterns:
 2. Run `make test` -- ensures all tests pass
 3. Validate the main scenarios listed above
 4. **Do NOT run** `make check` due to known linting issues
+5. **Use single commit per PR** -- Squash multiple commits into one meaningful commit with a descriptive message
 
 ## Common Commands Reference
 
@@ -207,7 +222,7 @@ Basic usage patterns:
 ### Makefile Targets
 ```bash
 make build           # Build release binary
-make build-debug     # Build debug binary  
+make build-debug     # Build debug binary
 make test           # Run test suite
 make fmt            # Format code with gofumpt
 make clean          # Clean build artifacts

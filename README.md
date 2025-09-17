@@ -126,6 +126,17 @@ Essentially the following query is executed:
 
 The number of iterations to run can be specified with the `-iterations` flag. The default is 1.
 
+#### Mixed mode (`-mode mixed`)
+
+Mixed mode performs a combination of read and write operations in a single benchmark run, providing a 50% read and 50% write workload similar to `cassandra-stress`. This mode alternates between write and read operations:
+
+- Write operations are performed on even operation counts
+- Read operations are performed on odd operation counts
+- Uses the existing write and read logic for consistency
+- Compatible with all workloads: sequential, uniform, and timeseries
+
+Mixed mode requires specifying a duration (e.g., `-duration 1h`) and works with all the same configuration options as the individual read and write modes.
+
 ### Workloads
 
 The second very important part of scylla-bench configuration is the workload. While mode chooses what kind of requests are to be sent to the cluster the workload decides which partitions and rows should be the target of these requests.
@@ -270,6 +281,7 @@ RUN_MEMORY_LEAK_TEST=true go test -v -run TestMemoryLeak
 2. Read test: `scylla-bench -workload uniform -mode read -concurrency 128 -duration 15m -nodes some_node`
 3. Read latency test: `scylla-bench -workload uniform -mode read -duration 15m -concurrency 32 -max-rate 32000 -nodes 192.168.8.4`
 4. Counter write test: `scylla-bench -workload uniform -mode counter_update -duration 30m -concurrency 128`
-5. Full table scan test: `scylla-bench -mode scan -timeout 5m -concurrency 1`
-6. Write to populate database with non-zero data: `scylla-bench -workload sequential -mode write -nodes 127.0.0.1 -clustering-row-size 16 -validate-data`
-7. Read with data verification: `scylla-bench -workload uniform -mode write -nodes 127.0.0.1 -clustering-row-size 16 -validate-data  -duration 10m`
+5. Mixed read/write test: `scylla-bench -workload uniform -mode mixed -concurrency 64 -duration 30m -nodes 127.0.0.1`
+6. Full table scan test: `scylla-bench -mode scan -timeout 5m -concurrency 1`
+7. Write to populate database with non-zero data: `scylla-bench -workload sequential -mode write -nodes 127.0.0.1 -clustering-row-size 16 -validate-data`
+8. Read with data verification: `scylla-bench -workload uniform -mode write -nodes 127.0.0.1 -clustering-row-size 16 -validate-data  -duration 10m`

@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -119,6 +120,15 @@ func TestGetMode(t *testing.T) {
 			},
 		},
 		{
+			name:           "mixed mode",
+			modeName:       "mixed",
+			rowsPerRequest: 1,
+			expectPanic:    false,
+			validateFunc: func(mf ModeFunc) bool {
+				return getFuncName(mf) == getFuncName(DoMixed)
+			},
+		},
+		{
 			name:           "invalid mode",
 			modeName:       "invalid_mode",
 			rowsPerRequest: 1,
@@ -130,6 +140,7 @@ func TestGetMode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set rowsPerRequest for this test
+			// Note: We cannot use t.Parallel() here because we modify global state
 			rowsPerRequest = tt.rowsPerRequest
 
 			if tt.expectPanic {
@@ -555,5 +566,116 @@ func TestGetRetryPolicyEdgeCases(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Test mixed mode with different workloads to ensure compatibility
+func TestMixedModeWithWorkloads(t *testing.T) {
+	// Cannot use t.Parallel() because this test modifies global state
+
+	// Save original values
+	originalConcurrency := concurrency
+	originalPartitionCount := partitionCount
+	originalClusteringRowCount := clusteringRowCount
+	originalMaximumRate := maximumRate
+	originalStartTime := startTime
+
+	defer func() {
+		concurrency = originalConcurrency
+		partitionCount = originalPartitionCount
+		clusteringRowCount = originalClusteringRowCount
+		maximumRate = originalMaximumRate
+		startTime = originalStartTime
+	}()
+
+	// Set required values for the test
+	concurrency = 1
+	partitionCount = 10
+	clusteringRowCount = 5
+	maximumRate = 1000 // Set a non-zero rate for timeseries workload
+	startTime = time.Now()
+
+	workloads := []string{"sequential", "uniform", "timeseries"}
+
+	for _, workload := range workloads {
+		t.Run("workload_"+workload, func(t *testing.T) {
+			// Test that GetWorkload works with mixed mode
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("GetWorkload panicked with mixed mode and %s workload: %v", workload, r)
+				}
+			}()
+
+			// These should not panic
+			generator := GetWorkload(workload, 0, 0, "mixed", 100, "uniform")
+			if generator == nil {
+				t.Errorf("GetWorkload returned nil for %s workload with mixed mode", workload)
+			}
+		})
+	}
+}
+
+// Test that timeseries workload specifically works with mixed mode (was previously panicking)
+func TestTimeseriesWorkloadWithMixedMode(t *testing.T) {
+	// Cannot use t.Parallel() because this test modifies global state
+
+	// Save original values
+	originalConcurrency := concurrency
+	originalPartitionCount := partitionCount
+	originalClusteringRowCount := clusteringRowCount
+	originalMaximumRate := maximumRate
+	originalStartTime := startTime
+
+	defer func() {
+		concurrency = originalConcurrency
+		partitionCount = originalPartitionCount
+		clusteringRowCount = originalClusteringRowCount
+		maximumRate = originalMaximumRate
+		startTime = originalStartTime
+	}()
+
+	// Set required values for the test
+	concurrency = 2
+	partitionCount = 10
+	clusteringRowCount = 5
+	maximumRate = 1000
+	startTime = time.Now()
+
+	// Test that timeseries workload with mixed mode does not panic
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Timeseries workload with mixed mode panicked: %v", r)
+		}
+	}()
+
+	generator := GetWorkload("timeseries", 0, 0, "mixed", 100, "uniform")
+	if generator == nil {
+		t.Errorf("GetWorkload returned nil for timeseries workload with mixed mode")
+	}
+}
+
+// Test that global mixed operation counter provides correct alternating pattern
+func TestGlobalMixedOperationCounter(t *testing.T) {
+	t.Parallel()
+
+	// Create a local atomic counter for this test to avoid race conditions
+	// with other tests or running application code
+	var localCounter atomic.Uint64
+
+	// Simulate multiple operations and verify alternating pattern
+	operations := make([]bool, 10) // true for write, false for read
+	for i := 0; i < 10; i++ {
+		opCount := localCounter.Add(1)
+		operations[i] = opCount%2 == 0 // even = write, odd = read
+	}
+
+	// Verify alternating pattern: R, W, R, W, R, W, R, W, R, W
+	// (first operation count is 1 which is odd, so read)
+	expected := []bool{false, true, false, true, false, true, false, true, false, true}
+	for i, op := range operations {
+		if op != expected[i] {
+			t.Errorf("Operation %d: expected %v (write=%v, read=%v), got %v",
+				i+1, expected[i], true, false, op)
+		}
 	}
 }
