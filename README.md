@@ -24,6 +24,111 @@ If you do that, a scylla-bench binary will be built __without using ScyllaDB's f
 
 This is due to the `go` tool not honoring replace directives in the `go.mod` file: https://github.com/golang/go/issues/30354
 
+## Docker
+
+scylla-bench can be built and run using Docker, which is useful for local development, testing, and deployment scenarios.
+
+### Building a Local Docker Image
+
+To build a local Docker image for development:
+
+```bash
+# Clone the repository
+git clone https://github.com/scylladb/scylla-bench
+cd scylla-bench/
+
+# Build the production Docker image
+make build-docker-image
+
+# Or build with a custom tag
+DOCKER_IMAGE_TAG=my-scylla-bench make build-docker-image
+```
+
+The Dockerfile supports multiple build targets:
+
+- **`production`** (default): Minimal image with the static binary (~8.6MB)
+- **`debug`**: Development image with debugging tools (gdb, delve debugger)
+- **`production-sct`**: Alternative production build for SCT (Scylla Cluster Tests)
+
+### Building Specific Targets
+
+```bash
+# Build debug image with debugging tools
+docker build --target debug -t scylla-bench:debug .
+
+# Build production image (same as make build-docker-image)
+docker build --target production -t scylla-bench:latest .
+
+# Build SCT-specific image
+make build-sct-docker-image
+```
+
+### Running with Docker
+
+```bash
+# Run scylla-bench from Docker container
+docker run --rm scylla-bench:latest --help
+
+# Run mixed mode benchmark against local ScyllaDB
+docker run --rm --network=host scylla-bench:latest \
+  -workload uniform -mode mixed -nodes 127.0.0.1 \
+  -concurrency 64 -duration 30s
+
+# Run with custom settings
+docker run --rm --network=host scylla-bench:latest \
+  -workload sequential -mode write -nodes scylla-node1,scylla-node2 \
+  -partition-count 10000 -clustering-row-count 100
+```
+
+### Debug Mode with Docker
+
+The debug image includes delve debugger and development tools:
+
+```bash
+# Build and run debug image
+docker build --target debug -t scylla-bench:debug .
+
+# Run with debugger (exposes port 2345 for delve)
+docker run --rm -p 2345:2345 -p 6060:6060 --network=host \
+  scylla-bench:debug -workload uniform -mode mixed -nodes 127.0.0.1
+
+# Connect with delve client
+dlv connect localhost:2345
+```
+
+### Docker Environment Variables
+
+The Docker images support several environment variables:
+
+- **`GODEBUG`**: Go runtime debugging options (pre-configured for optimal performance)
+- **`PATH`**: Binary path (automatically configured)
+- **`TZ`**: Timezone (defaults to UTC)
+
+### Docker Image Variants
+
+| Image Target | Size | Use Case | Debugging Tools |
+|--------------|------|----------|----------------|
+| `production` | ~8.6MB | Production, CI/CD | ❌ |
+| `debug` | ~500MB | Development, troubleshooting | ✅ (gdb, delve, vim) |
+| `production-sct` | ~8.6MB | SCT integration testing | ❌ |
+
+### Development Workflow with Docker
+
+```bash
+# 1. Make code changes
+# 2. Build new image
+make build-docker-image
+
+# 3. Test your changes
+docker run --rm --network=host scylla-bench:latest \
+  -workload uniform -mode mixed -nodes 127.0.0.1 -duration 10s
+
+# 4. Debug if needed
+docker build --target debug -t scylla-bench:debug .
+docker run --rm -p 2345:2345 --network=host scylla-bench:debug \
+  -workload uniform -mode mixed -nodes 127.0.0.1
+```
+
 ## Usage
 
 ### Schema adjustments
@@ -125,6 +230,17 @@ Essentially the following query is executed:
     SELECT * FROM scylla_bench.test WHERE token(pk) >= ? AND token(pk) <= ?
 
 The number of iterations to run can be specified with the `-iterations` flag. The default is 1.
+
+#### Mixed mode (`-mode mixed`)
+
+Mixed mode performs a combination of read and write operations in a single benchmark run, providing a 50% read and 50% write workload similar to `cassandra-stress`. This mode alternates between write and read operations:
+
+- Write operations are performed on even operation counts
+- Read operations are performed on odd operation counts
+- Uses the existing write and read logic for consistency
+- Compatible with all workloads: sequential, uniform, and timeseries
+
+Mixed mode requires specifying a duration (e.g., `-duration 1h`) and works with all the same configuration options as the individual read and write modes.
 
 ### Workloads
 
@@ -270,6 +386,7 @@ RUN_MEMORY_LEAK_TEST=true go test -v -run TestMemoryLeak
 2. Read test: `scylla-bench -workload uniform -mode read -concurrency 128 -duration 15m -nodes some_node`
 3. Read latency test: `scylla-bench -workload uniform -mode read -duration 15m -concurrency 32 -max-rate 32000 -nodes 192.168.8.4`
 4. Counter write test: `scylla-bench -workload uniform -mode counter_update -duration 30m -concurrency 128`
-5. Full table scan test: `scylla-bench -mode scan -timeout 5m -concurrency 1`
-6. Write to populate database with non-zero data: `scylla-bench -workload sequential -mode write -nodes 127.0.0.1 -clustering-row-size 16 -validate-data`
-7. Read with data verification: `scylla-bench -workload uniform -mode write -nodes 127.0.0.1 -clustering-row-size 16 -validate-data  -duration 10m`
+5. Mixed read/write test: `scylla-bench -workload uniform -mode mixed -concurrency 64 -duration 30m -nodes 127.0.0.1`
+6. Full table scan test: `scylla-bench -mode scan -timeout 5m -concurrency 1`
+7. Write to populate database with non-zero data: `scylla-bench -workload sequential -mode write -nodes 127.0.0.1 -clustering-row-size 16 -validate-data`
+8. Read with data verification: `scylla-bench -workload uniform -mode write -nodes 127.0.0.1 -clustering-row-size 16 -validate-data  -duration 10m`

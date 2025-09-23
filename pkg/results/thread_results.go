@@ -128,6 +128,20 @@ func (tr *TestResults) PrintTotalResults() {
 	if globalResultConfiguration.measureLatency {
 		printLatencyResults("raw latency", tr.totalResult.RawLatency)
 		printLatencyResults("c-o fixed latency", tr.totalResult.CoFixedLatency)
+
+		// Print read/write specific latencies for mixed mode
+		if tr.totalResult.RawReadLatency != nil && tr.totalResult.RawReadLatency.TotalCount() > 0 {
+			printLatencyResults("raw read latency", tr.totalResult.RawReadLatency)
+		}
+		if tr.totalResult.CoFixedReadLatency != nil && tr.totalResult.CoFixedReadLatency.TotalCount() > 0 {
+			printLatencyResults("c-o fixed read latency", tr.totalResult.CoFixedReadLatency)
+		}
+		if tr.totalResult.RawWriteLatency != nil && tr.totalResult.RawWriteLatency.TotalCount() > 0 {
+			printLatencyResults("raw write latency", tr.totalResult.RawWriteLatency)
+		}
+		if tr.totalResult.CoFixedWriteLatency != nil && tr.totalResult.CoFixedWriteLatency.TotalCount() > 0 {
+			printLatencyResults("c-o fixed write latency", tr.totalResult.CoFixedWriteLatency)
+		}
 	}
 	tr.totalResult.PrintCriticalErrors()
 }

@@ -25,6 +25,9 @@ import (
 
 var reportInterval = 1 * time.Second
 
+// Global atomic counter for mixed mode operations to ensure true 50/50 distribution across threads
+var globalMixedOperationCount atomic.Uint64
+
 type RateLimiter interface {
 	Wait()
 	Expected() time.Time
@@ -393,6 +396,57 @@ func handleSbRetryError(queryStr string, err error, currentAttempts int) error {
 	return nil
 }
 
+// createWriteTestFunc creates a test function for write operations that can be reused
+func createWriteTestFunc(session *gocql.Session, workload workloads.Generator, validateData bool) func(rb *results.TestThreadResult) (time.Duration, error) {
+	return func(rb *results.TestThreadResult) (time.Duration, error) {
+		request := fmt.Sprintf(
+			"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)",
+			keyspaceName,
+			tableName,
+		)
+		query := session.Query(request)
+		defer query.Release()
+		pk := workload.NextPartitionKey()
+		ck := workload.NextClusteringKey()
+		value, err := GenerateData(pk, ck, clusteringRowSizeDist.Generate(), validateData)
+		if err != nil {
+			panic(err)
+		}
+		bound := query.Bind(pk, ck, value)
+
+		queryStr := ""
+		currentAttempts := 0
+		for {
+			requestStart := time.Now()
+			err = bound.Exec()
+			requestEnd := time.Now()
+
+			if err == nil {
+				rb.IncOps()
+				rb.IncRows()
+				latency := requestEnd.Sub(requestStart)
+				return latency, nil
+			}
+			if retryHandler == "sb" {
+				if queryStr == "" {
+					// NOTE: use custom query string instead of 'query.String()' to avoid huge values printings
+					queryStr = fmt.Sprintf(
+						"[query statement=%q values=%+v consistency=%s]",
+						request,
+						[]any{pk, ck, "<" + strconv.Itoa(len(value)) + "-bytes-value>"},
+						query.GetConsistency(),
+					)
+				}
+				err = handleSbRetryError(queryStr, err, currentAttempts)
+			}
+			if err != nil {
+				return time.Duration(0), err
+			}
+			currentAttempts++
+		}
+	}
+}
+
 func DoWrites(
 	session *gocql.Session,
 	threadResult *results.TestThreadResult,
@@ -404,53 +458,7 @@ func DoWrites(
 		threadResult,
 		workload,
 		rateLimiter,
-		func(rb *results.TestThreadResult) (time.Duration, error) {
-			request := fmt.Sprintf(
-				"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)",
-				keyspaceName,
-				tableName,
-			)
-			query := session.Query(request)
-			defer query.Release()
-			pk := workload.NextPartitionKey()
-			ck := workload.NextClusteringKey()
-			value, err := GenerateData(pk, ck, clusteringRowSizeDist.Generate(), validateData)
-			if err != nil {
-				panic(err)
-			}
-			bound := query.Bind(pk, ck, value)
-
-			queryStr := ""
-			currentAttempts := 0
-			for {
-				requestStart := time.Now()
-				err = bound.Exec()
-				requestEnd := time.Now()
-
-				if err == nil {
-					rb.IncOps()
-					rb.IncRows()
-					latency := requestEnd.Sub(requestStart)
-					return latency, nil
-				}
-				if retryHandler == "sb" {
-					if queryStr == "" {
-						// NOTE: use custom query string instead of 'query.String()' to avoid huge values printings
-						queryStr = fmt.Sprintf(
-							"[query statement=%q values=%+v consistency=%s]",
-							request,
-							[]any{pk, ck, "<" + strconv.Itoa(len(value)) + "-bytes-value>"},
-							query.GetConsistency(),
-						)
-					}
-					err = handleSbRetryError(queryStr, err, currentAttempts)
-				}
-				if err != nil {
-					return time.Duration(0), err
-				}
-				currentAttempts++
-			}
-		},
+		createWriteTestFunc(session, workload, validateData),
 	)
 }
 
@@ -717,16 +725,10 @@ func executeReadsQuery(query *gocql.Query, table string, rb *results.TestThreadR
 	return err
 }
 
-func DoReadsFromTable(
-	table string,
-	session *gocql.Session,
-	threadResult *results.TestThreadResult,
-	workload workloads.Generator,
-	rateLimiter RateLimiter,
-	validateData bool,
-) {
+// createReadTestFunc creates a test function for read operations that can be reused
+func createReadTestFunc(table string, session *gocql.Session, workload workloads.Generator, validateData bool) func(rb *results.TestThreadResult) (time.Duration, error) {
 	counter, numOfOrderings := 0, len(selectOrderByParsed)
-	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (time.Duration, error) {
+	return func(rb *results.TestThreadResult) (time.Duration, error) {
 		counter++
 		pk := workload.NextPartitionKey()
 		query := session.Query(BuildReadQueryString(table, selectOrderByParsed[counter%numOfOrderings]))
@@ -775,7 +777,18 @@ func DoReadsFromTable(
 				return time.Duration(0), err
 			}
 		}
-	})
+	}
+}
+
+func DoReadsFromTable(
+	table string,
+	session *gocql.Session,
+	threadResult *results.TestThreadResult,
+	workload workloads.Generator,
+	rateLimiter RateLimiter,
+	validateData bool,
+) {
+	RunTest(threadResult, workload, rateLimiter, createReadTestFunc(table, session, workload, validateData))
 }
 
 func DoScanTable(session *gocql.Session, threadResult *results.TestThreadResult, workload workloads.Generator, rateLimiter RateLimiter, _ bool) {
@@ -810,4 +823,177 @@ func DoScanTable(session *gocql.Session, threadResult *results.TestThreadResult,
 			}
 		}
 	})
+}
+
+func DoMixed(
+	session *gocql.Session,
+	threadResult *results.TestThreadResult,
+	workload workloads.Generator,
+	rateLimiter RateLimiter,
+	validateData bool,
+) {
+	// Create reusable test functions for write and read operations with separate latency recording
+	writeTestFunc := createMixedWriteTestFunc(session, workload, validateData)
+	readTestFunc := createMixedReadTestFunc(tableName, session, workload, validateData)
+
+	RunTest(threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (time.Duration, error) {
+		// Use global atomic counter to ensure true 50/50 distribution across all threads
+		opCount := globalMixedOperationCount.Add(1)
+
+		// Perform write on even operations, read on odd operations
+		// This gives us 50% reads and 50% writes globally across all threads
+		if opCount%2 == 0 {
+			// Perform write operation using existing write logic
+			return writeTestFunc(rb)
+		}
+		// Perform read operation using existing read logic
+		return readTestFunc(rb)
+	})
+}
+
+// createMixedWriteTestFunc creates a test function for write operations in mixed mode with separate latency recording
+func createMixedWriteTestFunc(session *gocql.Session, workload workloads.Generator, validateData bool) func(rb *results.TestThreadResult) (time.Duration, error) {
+	return func(rb *results.TestThreadResult) (time.Duration, error) {
+		request := fmt.Sprintf(
+			"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)",
+			keyspaceName,
+			tableName,
+		)
+		query := session.Query(request)
+		defer query.Release()
+		pk := workload.NextPartitionKey()
+		ck := workload.NextClusteringKey()
+		value, err := GenerateData(pk, ck, clusteringRowSizeDist.Generate(), validateData)
+		if err != nil {
+			panic(err)
+		}
+		bound := query.Bind(pk, ck, value)
+
+		queryStr := ""
+		currentAttempts := 0
+		for {
+			requestStart := time.Now()
+			err = bound.Exec()
+			requestEnd := time.Now()
+
+			if err == nil {
+				rb.IncOps()
+				rb.IncRows()
+				latency := requestEnd.Sub(requestStart)
+				// Record latency in write-specific histograms for mixed mode
+				rb.RecordWriteRawLatency(latency)
+
+				// Also record in general histograms for compatibility
+				rb.RecordRawLatency(latency)
+				return latency, nil
+			}
+			if retryHandler == "sb" {
+				if queryStr == "" {
+					// NOTE: use custom query string instead of 'query.String()' to avoid huge values printings
+					queryStr = fmt.Sprintf(
+						"[query statement=%q values=%+v consistency=%s]",
+						request,
+						[]any{pk, ck, "<" + strconv.Itoa(len(value)) + "-bytes-value>"},
+						query.GetConsistency(),
+					)
+				}
+				err = handleSbRetryError(queryStr, err, currentAttempts)
+			}
+			if err != nil {
+				return time.Duration(0), err
+			}
+			currentAttempts++
+		}
+	}
+}
+
+// createMixedReadTestFunc creates a test function for read operations in mixed mode with separate latency recording
+func createMixedReadTestFunc(table string, session *gocql.Session, workload workloads.Generator, validateData bool) func(rb *results.TestThreadResult) (time.Duration, error) {
+	counter, numOfOrderings := 0, len(selectOrderByParsed)
+	return func(rb *results.TestThreadResult) (time.Duration, error) {
+		counter++
+		pk := workload.NextPartitionKey()
+		query := session.Query(BuildReadQueryString(table, selectOrderByParsed[counter%numOfOrderings]))
+		defer query.Release()
+
+		switch {
+		case inRestriction:
+			args := make([]any, 1, rowsPerRequest+1)
+			args[0] = pk
+			for range rowsPerRequest {
+				if workload.IsPartitionDone() {
+					args = append(args, 0)
+				} else {
+					args = append(args, workload.NextClusteringKey())
+				}
+			}
+			query.Bind(args...)
+		case noLowerBound:
+			query.Bind(pk)
+		case provideUpperBound:
+			query.Bind(pk, workload.NextClusteringKey(), workload.NextClusteringKey())
+		default:
+			query.Bind(pk, workload.NextClusteringKey())
+		}
+
+		queryStr := ""
+		currentAttempts := 0
+		for {
+			requestStart := time.Now()
+			iter := query.Iter()
+
+			var (
+				resPk, resCk int64
+				value        []byte
+			)
+
+			if table == tableName {
+				for iter.Scan(&resPk, &resCk, &value) {
+					rb.IncRows()
+					if !validateData {
+						continue
+					}
+
+					scanErr := ValidateData(resPk, resCk, value, validateData)
+					if scanErr != nil {
+						rb.IncErrors()
+						log.Printf("data corruption in pk(%d), ck(%d): %s", resPk, resCk, scanErr)
+					}
+				}
+			} else {
+				// Counter table
+				var c1, c2, c3, c4, c5 int64
+				for iter.Scan(&c1, &c2, &c3, &c4, &c5) {
+					rb.IncRows()
+				}
+			}
+
+			requestEnd := time.Now()
+			err := iter.Close()
+			if err == nil {
+				rb.IncOps()
+				latency := requestEnd.Sub(requestStart)
+				// Record latency in read-specific histograms for mixed mode
+				rb.RecordReadRawLatency(latency)
+
+				// Also record in general histograms for compatibility
+				rb.RecordRawLatency(latency)
+				return latency, nil
+			}
+
+			if retryHandler == "sb" {
+				if queryStr == "" {
+					queryStr = query.String()
+				}
+
+				err = handleSbRetryError(queryStr, err, currentAttempts)
+			}
+
+			if err != nil {
+				return time.Duration(0), err
+			}
+
+			currentAttempts++
+		}
+	}
 }

@@ -11,8 +11,13 @@ import (
 )
 
 type MergedResult struct {
-	RawLatency              *hdrhistogram.Histogram
-	CoFixedLatency          *hdrhistogram.Histogram
+	RawLatency     *hdrhistogram.Histogram
+	CoFixedLatency *hdrhistogram.Histogram
+	// Separate histograms for mixed mode read/write operations
+	RawReadLatency          *hdrhistogram.Histogram
+	CoFixedReadLatency      *hdrhistogram.Histogram
+	RawWriteLatency         *hdrhistogram.Histogram
+	CoFixedWriteLatency     *hdrhistogram.Histogram
 	CriticalErrors          []error
 	Time                    time.Duration
 	Operations              int
@@ -34,6 +39,23 @@ func NewMergedResult() *MergedResult {
 		result.CoFixedLatency = NewHistogram(
 			&globalResultConfiguration.latencyHistogramConfiguration,
 			"co-fixed",
+		)
+		// Create separate histograms for mixed mode read/write operations
+		result.RawReadLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"raw-read",
+		)
+		result.CoFixedReadLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"co-fixed-read",
+		)
+		result.RawWriteLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"raw-write",
+		)
+		result.CoFixedWriteLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"co-fixed-write",
 		)
 	}
 	return result
@@ -64,6 +86,31 @@ func (mr *MergedResult) AddResult(result Result) {
 			droppedCofixed := mr.CoFixedLatency.Merge(result.CoFixedLatency)
 			if droppedCofixed > 0 {
 				log.Print("dropped: ", droppedCofixed)
+			}
+		}
+		// Merge read/write specific histograms for mixed mode
+		if result.RawReadLatency != nil {
+			droppedRawRead := mr.RawReadLatency.Merge(result.RawReadLatency)
+			if droppedRawRead > 0 {
+				log.Print("dropped raw read: ", droppedRawRead)
+			}
+		}
+		if result.CoFixedReadLatency != nil {
+			droppedCoFixedRead := mr.CoFixedReadLatency.Merge(result.CoFixedReadLatency)
+			if droppedCoFixedRead > 0 {
+				log.Print("dropped co-fixed read: ", droppedCoFixedRead)
+			}
+		}
+		if result.RawWriteLatency != nil {
+			droppedRawWrite := mr.RawWriteLatency.Merge(result.RawWriteLatency)
+			if droppedRawWrite > 0 {
+				log.Print("dropped raw write: ", droppedRawWrite)
+			}
+		}
+		if result.CoFixedWriteLatency != nil {
+			droppedCoFixedWrite := mr.CoFixedWriteLatency.Merge(result.CoFixedWriteLatency)
+			if droppedCoFixedWrite > 0 {
+				log.Print("dropped co-fixed write: ", droppedCoFixedWrite)
 			}
 		}
 	}
@@ -119,6 +166,8 @@ func (mr *MergedResult) getLatencyHistogram() *hdrhistogram.Histogram {
 func (mr *MergedResult) SaveLatenciesToHdrHistogram(hdrLogWriter *hdrhistogram.HistogramLogWriter) {
 	startTimeMs := mr.HistogramStartTime / 1000000000
 	endTimeMs := time.Now().UnixNano() / 1000000000
+
+	// Save standard histograms
 	mr.CoFixedLatency.SetStartTimeMs(startTimeMs)
 	mr.CoFixedLatency.SetEndTimeMs(endTimeMs)
 	if err := hdrLogWriter.OutputIntervalHistogram(mr.CoFixedLatency); err != nil {
@@ -128,6 +177,36 @@ func (mr *MergedResult) SaveLatenciesToHdrHistogram(hdrLogWriter *hdrhistogram.H
 	mr.RawLatency.SetEndTimeMs(endTimeMs)
 	if err := hdrLogWriter.OutputIntervalHistogram(mr.RawLatency); err != nil {
 		fmt.Printf("Failed to write raw hdr histogram: %s\n", err.Error())
+	}
+
+	// Save read/write specific histograms for mixed mode
+	if mr.RawReadLatency != nil && mr.RawReadLatency.TotalCount() > 0 {
+		mr.RawReadLatency.SetStartTimeMs(startTimeMs)
+		mr.RawReadLatency.SetEndTimeMs(endTimeMs)
+		if err := hdrLogWriter.OutputIntervalHistogram(mr.RawReadLatency); err != nil {
+			fmt.Printf("Failed to write raw read hdr histogram: %s\n", err.Error())
+		}
+	}
+	if mr.CoFixedReadLatency != nil && mr.CoFixedReadLatency.TotalCount() > 0 {
+		mr.CoFixedReadLatency.SetStartTimeMs(startTimeMs)
+		mr.CoFixedReadLatency.SetEndTimeMs(endTimeMs)
+		if err := hdrLogWriter.OutputIntervalHistogram(mr.CoFixedReadLatency); err != nil {
+			fmt.Printf("Failed to write co-fixed read hdr histogram: %s\n", err.Error())
+		}
+	}
+	if mr.RawWriteLatency != nil && mr.RawWriteLatency.TotalCount() > 0 {
+		mr.RawWriteLatency.SetStartTimeMs(startTimeMs)
+		mr.RawWriteLatency.SetEndTimeMs(endTimeMs)
+		if err := hdrLogWriter.OutputIntervalHistogram(mr.RawWriteLatency); err != nil {
+			fmt.Printf("Failed to write raw write hdr histogram: %s\n", err.Error())
+		}
+	}
+	if mr.CoFixedWriteLatency != nil && mr.CoFixedWriteLatency.TotalCount() > 0 {
+		mr.CoFixedWriteLatency.SetStartTimeMs(startTimeMs)
+		mr.CoFixedWriteLatency.SetEndTimeMs(endTimeMs)
+		if err := hdrLogWriter.OutputIntervalHistogram(mr.CoFixedWriteLatency); err != nil {
+			fmt.Printf("Failed to write co-fixed write hdr histogram: %s\n", err.Error())
+		}
 	}
 }
 

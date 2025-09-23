@@ -35,12 +35,17 @@ type Configuration struct {
 type Result struct {
 	RawLatency     *hdrhistogram.Histogram
 	CoFixedLatency *hdrhistogram.Histogram
-	CriticalErrors []error
-	ElapsedTime    time.Duration
-	Operations     int
-	ClusteringRows int
-	Errors         int
-	Final          bool
+	// Separate histograms for mixed mode read/write operations
+	RawReadLatency      *hdrhistogram.Histogram
+	CoFixedReadLatency  *hdrhistogram.Histogram
+	RawWriteLatency     *hdrhistogram.Histogram
+	CoFixedWriteLatency *hdrhistogram.Histogram
+	CriticalErrors      []error
+	ElapsedTime         time.Duration
+	Operations          int
+	ClusteringRows      int
+	Errors              int
+	Final               bool
 }
 
 func SetGlobalHistogramConfiguration(minValue, maxValue int64, sigFig int) {

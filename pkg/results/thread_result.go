@@ -27,6 +27,23 @@ func NewTestThreadResult() *TestThreadResult {
 			&globalResultConfiguration.latencyHistogramConfiguration,
 			"co-fixed-lantecy",
 		)
+		// Create separate histograms for mixed mode read/write operations
+		r.FullResult.RawReadLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"raw-read-latency",
+		)
+		r.FullResult.CoFixedReadLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"co-fixed-read-latency",
+		)
+		r.FullResult.RawWriteLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"raw-write-latency",
+		)
+		r.FullResult.CoFixedWriteLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"co-fixed-write-latency",
+		)
 		r.PartialResult.RawLatency = NewHistogram(
 			&globalResultConfiguration.latencyHistogramConfiguration,
 			"raw-latency",
@@ -34,6 +51,23 @@ func NewTestThreadResult() *TestThreadResult {
 		r.PartialResult.CoFixedLatency = NewHistogram(
 			&globalResultConfiguration.latencyHistogramConfiguration,
 			"co-fixed-lantecy",
+		)
+		// Create separate histograms for mixed mode read/write operations in partial results
+		r.PartialResult.RawReadLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"raw-read-latency",
+		)
+		r.PartialResult.CoFixedReadLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"co-fixed-read-latency",
+		)
+		r.PartialResult.RawWriteLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"raw-write-latency",
+		)
+		r.PartialResult.CoFixedWriteLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"co-fixed-write-latency",
 		)
 	}
 	r.ResultChannel = make(chan Result, 10000)
@@ -80,6 +114,23 @@ func (r *TestThreadResult) ResetPartialResult() {
 			&globalResultConfiguration.latencyHistogramConfiguration,
 			"co-fixed-lantecy",
 		)
+		// Create separate histograms for mixed mode read/write operations in partial results
+		r.PartialResult.RawReadLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"raw-read-latency",
+		)
+		r.PartialResult.CoFixedReadLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"co-fixed-read-latency",
+		)
+		r.PartialResult.RawWriteLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"raw-write-latency",
+		)
+		r.PartialResult.CoFixedWriteLatency = NewHistogram(
+			&globalResultConfiguration.latencyHistogramConfiguration,
+			"co-fixed-write-latency",
+		)
 	}
 }
 
@@ -107,6 +158,62 @@ func (r *TestThreadResult) RecordCoFixedLatency(latency time.Duration) {
 	}
 	_ = r.FullResult.CoFixedLatency.RecordValue(lv)
 	_ = r.PartialResult.CoFixedLatency.RecordValue(lv)
+}
+
+// RecordReadRawLatency records raw latency for read operations in mixed mode
+func (r *TestThreadResult) RecordReadRawLatency(latency time.Duration) {
+	if !globalResultConfiguration.measureLatency {
+		return
+	}
+	lv := latency.Nanoseconds() / globalResultConfiguration.hdrLatencyScale
+
+	if lv >= globalResultConfiguration.latencyHistogramConfiguration.maxValue {
+		lv = globalResultConfiguration.latencyHistogramConfiguration.maxValue
+	}
+	_ = r.FullResult.RawReadLatency.RecordValue(lv)
+	_ = r.PartialResult.RawReadLatency.RecordValue(lv)
+}
+
+// RecordReadCoFixedLatency records coordinated omission fixed latency for read operations in mixed mode
+func (r *TestThreadResult) RecordReadCoFixedLatency(latency time.Duration) {
+	if !globalResultConfiguration.measureLatency {
+		return
+	}
+	lv := latency.Nanoseconds() / globalResultConfiguration.hdrLatencyScale
+
+	if lv >= globalResultConfiguration.latencyHistogramConfiguration.maxValue {
+		lv = globalResultConfiguration.latencyHistogramConfiguration.maxValue
+	}
+	_ = r.FullResult.CoFixedReadLatency.RecordValue(lv)
+	_ = r.PartialResult.CoFixedReadLatency.RecordValue(lv)
+}
+
+// RecordWriteRawLatency records raw latency for write operations in mixed mode
+func (r *TestThreadResult) RecordWriteRawLatency(latency time.Duration) {
+	if !globalResultConfiguration.measureLatency {
+		return
+	}
+	lv := latency.Nanoseconds() / globalResultConfiguration.hdrLatencyScale
+
+	if lv >= globalResultConfiguration.latencyHistogramConfiguration.maxValue {
+		lv = globalResultConfiguration.latencyHistogramConfiguration.maxValue
+	}
+	_ = r.FullResult.RawWriteLatency.RecordValue(lv)
+	_ = r.PartialResult.RawWriteLatency.RecordValue(lv)
+}
+
+// RecordWriteCoFixedLatency records coordinated omission fixed latency for write operations in mixed mode
+func (r *TestThreadResult) RecordWriteCoFixedLatency(latency time.Duration) {
+	if !globalResultConfiguration.measureLatency {
+		return
+	}
+	lv := latency.Nanoseconds() / globalResultConfiguration.hdrLatencyScale
+
+	if lv >= globalResultConfiguration.latencyHistogramConfiguration.maxValue {
+		lv = globalResultConfiguration.latencyHistogramConfiguration.maxValue
+	}
+	_ = r.FullResult.CoFixedWriteLatency.RecordValue(lv)
+	_ = r.PartialResult.CoFixedWriteLatency.RecordValue(lv)
 }
 
 func (r *TestThreadResult) SubmitResult() {
