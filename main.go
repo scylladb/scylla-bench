@@ -817,6 +817,17 @@ func main() {
 
 	fmt.Println("Configuration")
 	fmt.Println("HostSelectionPolicy:\t\t\t", policyName)
+
+	// Print detailed policy information
+	switch {
+	case rack != "" && datacenter != "":
+		fmt.Printf("Using provided rack name '%s' for RackAwareRoundRobinPolicy\n", rack)
+	case datacenter != "" && hostSelectionPolicy == "token-aware":
+		fmt.Printf("Using provided datacenter name '%s' for DCAwareRoundRobinPolicy\n", datacenter)
+	case hostSelectionPolicy == "token-aware":
+		fmt.Printf("Using default TokenAwareHostPolicy with RoundRobinHostPolicy fallback\n")
+	}
+
 	fmt.Println("Mode:\t\t\t", mode)
 	fmt.Println("Workload:\t\t", workload)
 	fmt.Println("Timeout:\t\t", timeout)
@@ -899,17 +910,14 @@ func newHostSelectionPolicy(
 	case "token-aware":
 		if datacenter != "" {
 			if rack != "" {
-				fmt.Printf("Using provided rack name rack='%s' dc='%s' for RackAwareRoundRobinPolicy\n", rack, datacenter)
 				return gocql.TokenAwareHostPolicy(
 					gocql.RackAwareRoundRobinPolicy(datacenter, rack),
 				), "token-rack-dc-aware", nil
 			}
 
-			fmt.Printf("Using provided datacenter name dc='%s' for DCAwareRoundRobinPolicy\n", datacenter)
 			return gocql.TokenAwareHostPolicy(gocql.DCAwareRoundRobinPolicy(datacenter)), "token-dc-aware", nil
 		}
 
-		fmt.Printf("Using default TokenAwareHostPolicy with RoundRobinHostPolicy fallback\n")
 		return gocql.TokenAwareHostPolicy(gocql.RoundRobinHostPolicy()), "token-round-robin", nil
 	default:
 		return nil, "", fmt.Errorf("unknown host selection policy, %s", policy)
