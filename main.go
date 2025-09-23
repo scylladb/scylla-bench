@@ -153,7 +153,7 @@ func PrepareDatabase(session Session, replicationFactor int) {
 	}
 	if truncateTable {
 		switch mode {
-		case "write":
+		case "write", "mixed":
 			log.Printf("Truncating the '%s' table", tableName)
 			Query(session, "TRUNCATE TABLE "+keyspaceName+"."+tableName)
 		case "counter_update":
@@ -208,8 +208,19 @@ func GetWorkload(
 				startTime,
 				int64(maximumRate/concurrency),
 			)
+		case "mixed":
+			// For mixed mode, use a time series writer for both read and write operations
+			return workloads.NewTimeSeriesWriter(
+				threadID,
+				concurrency,
+				partitionCount,
+				partitionOffset,
+				clusteringRowCount,
+				startTime,
+				int64(maximumRate/concurrency),
+			)
 		default:
-			log.Panic("time series workload supports only write and read modes")
+			log.Panic("time series workload supports only write, read, and mixed modes")
 		}
 	case "scan":
 		rangesPerThread := rangeCount / concurrency
@@ -246,9 +257,11 @@ func GetMode(name string) ModeFunc {
 		return DoCounterReads
 	case "scan":
 		return DoScanTable
+	case "mixed":
+		return DoMixed
 	default:
 		log.Panicf(
-			"unknown mode: %s. Available modes: write, counter_update, read, counter_read, scan",
+			"unknown mode: %s. Available modes: write, counter_update, read, counter_read, scan, mixed",
 			name,
 		)
 	}
@@ -344,7 +357,7 @@ func main() {
 		&mode,
 		"mode",
 		"",
-		"operating mode: write, read, counter_update, counter_read, scan",
+		"operating mode: write, read, counter_update, counter_read, scan, mixed",
 	)
 	flag.StringVar(&workload, "workload", "", "workload: sequential, uniform, timeseries")
 	flag.StringVar(&consistencyLevel, "consistency-level", "quorum", "consistency level")
