@@ -969,8 +969,8 @@ func createMixedReadTestFunc(table string, session *gocql.Session, workload work
 			}
 
 			requestEnd := time.Now()
-
-			if err := iter.Close(); err == nil {
+			err := iter.Close()
+			if err == nil {
 				rb.IncOps()
 				latency := requestEnd.Sub(requestStart)
 				// Record latency in read-specific histograms for mixed mode
@@ -979,17 +979,20 @@ func createMixedReadTestFunc(table string, session *gocql.Session, workload work
 				// Also record in general histograms for compatibility
 				rb.RecordRawLatency(latency)
 				return latency, nil
-			} else {
-				if retryHandler == "sb" {
-					if queryStr == "" {
-						queryStr = query.String()
-					}
-					err = handleSbRetryError(queryStr, err, currentAttempts)
-				}
-				if err != nil {
-					return time.Duration(0), err
-				}
 			}
+
+			if retryHandler == "sb" {
+				if queryStr == "" {
+					queryStr = query.String()
+				}
+
+				err = handleSbRetryError(queryStr, err, currentAttempts)
+			}
+
+			if err != nil {
+				return time.Duration(0), err
+			}
+
 			currentAttempts++
 		}
 	}
