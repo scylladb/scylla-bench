@@ -260,7 +260,7 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-replace github.com/gocql/gocql => github.com/scylladb/gocql v1.15.0
+replace github.com/gocql/gocql => github.com/scylladb/gocql v1.15.3
 
 tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
