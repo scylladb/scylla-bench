@@ -165,67 +165,74 @@ func TestNewHostSelectionPolicy(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		policy     string
-		datacenter string
-		rack       string
-		wantType   string
-		hosts      []string
-		wantErr    bool
+		name           string
+		policy         string
+		datacenter     string
+		rack           string
+		wantType       string
+		wantPolicyName string
+		hosts          []string
+		wantErr        bool
 	}{
 		{
-			name:       "round-robin policy",
-			policy:     "round-robin",
-			hosts:      []string{},
-			datacenter: "",
-			rack:       "",
-			wantType:   "*gocql.roundRobinHostPolicy",
-			wantErr:    false,
+			name:           "round-robin policy",
+			policy:         "round-robin",
+			hosts:          []string{},
+			datacenter:     "",
+			rack:           "",
+			wantType:       "*gocql.roundRobinHostPolicy",
+			wantPolicyName: "round-robin",
+			wantErr:        false,
 		},
 		{
-			name:       "host-pool policy",
-			policy:     "host-pool",
-			hosts:      []string{"host1", "host2", "host3"},
-			datacenter: "",
-			rack:       "",
-			wantType:   "*hostpolicy.hostPoolHostPolicy",
-			wantErr:    false,
+			name:           "host-pool policy",
+			policy:         "host-pool",
+			hosts:          []string{"host1", "host2", "host3"},
+			datacenter:     "",
+			rack:           "",
+			wantType:       "*hostpolicy.hostPoolHostPolicy",
+			wantPolicyName: "host-pool",
+			wantErr:        false,
 		},
 		{
-			name:       "token-aware with round-robin",
-			policy:     "token-aware",
-			hosts:      []string{},
-			datacenter: "",
-			rack:       "",
-			wantType:   "*gocql.tokenAwareHostPolicy",
-			wantErr:    false,
+			name:           "token-aware with round-robin",
+			policy:         "token-aware",
+			hosts:          []string{},
+			datacenter:     "",
+			rack:           "",
+			wantType:       "*gocql.tokenAwareHostPolicy",
+			wantPolicyName: "token-round-robin",
+			wantErr:        false,
 		},
 		{
-			name:       "token-aware with DC aware",
-			policy:     "token-aware",
-			hosts:      []string{},
-			datacenter: "dc1",
-			rack:       "",
-			wantType:   "*gocql.tokenAwareHostPolicy",
-			wantErr:    false,
+			name:           "token-aware with DC aware",
+			policy:         "token-aware",
+			hosts:          []string{},
+			datacenter:     "dc1",
+			rack:           "",
+			wantType:       "*gocql.tokenAwareHostPolicy",
+			wantPolicyName: "token-dc-aware",
+			wantErr:        false,
 		},
 		{
-			name:       "token-aware with rack aware",
-			policy:     "token-aware",
-			hosts:      []string{},
-			datacenter: "dc1",
-			rack:       "rack1",
-			wantType:   "*gocql.tokenAwareHostPolicy",
-			wantErr:    false,
+			name:           "token-aware with rack aware",
+			policy:         "token-aware",
+			hosts:          []string{},
+			datacenter:     "dc1",
+			rack:           "rack1",
+			wantType:       "*gocql.tokenAwareHostPolicy",
+			wantPolicyName: "token-rack-dc-aware",
+			wantErr:        false,
 		},
 		{
-			name:       "unknown policy",
-			policy:     "unknown-policy",
-			hosts:      []string{},
-			datacenter: "",
-			rack:       "",
-			wantType:   "",
-			wantErr:    true,
+			name:           "unknown policy",
+			policy:         "unknown-policy",
+			hosts:          []string{},
+			datacenter:     "",
+			rack:           "",
+			wantType:       "",
+			wantPolicyName: "",
+			wantErr:        true,
 		},
 	}
 
@@ -233,7 +240,7 @@ func TestNewHostSelectionPolicy(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := newHostSelectionPolicy(tt.policy, tt.hosts, tt.datacenter, tt.rack)
+			got, gotPolicyName, err := newHostSelectionPolicy(tt.policy, tt.hosts, tt.datacenter, tt.rack)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("newHostSelectionPolicy() error = %v, wantErr %v", err, tt.wantErr)
@@ -253,6 +260,14 @@ func TestNewHostSelectionPolicy(t *testing.T) {
 					"newHostSelectionPolicy() returned policy of type %v, want %v",
 					gotType,
 					tt.wantType,
+				)
+			}
+
+			if gotPolicyName != tt.wantPolicyName {
+				t.Errorf(
+					"newHostSelectionPolicy() returned policy name %v, want %v",
+					gotPolicyName,
+					tt.wantPolicyName,
 				)
 			}
 		})
