@@ -840,14 +840,31 @@ func DoMixed(
 		// Use global atomic counter to ensure true 50/50 distribution across all threads
 		opCount := globalMixedOperationCount.Add(1)
 
+		expectedStartTime := rateLimiter.Expected()
+		if expectedStartTime.IsZero() {
+			expectedStartTime = time.Now()
+		}
+
 		// Perform write on even operations, read on odd operations
 		// This gives us 50% reads and 50% writes globally across all threads
 		if opCount%2 == 0 {
 			// Perform write operation using existing write logic
-			return writeTestFunc(rb)
+			rawLatency, err := writeTestFunc(rb)
+			if err == nil {
+				// Record coordinated omission fixed latency for write operations
+				endTime := time.Now()
+				rb.RecordWriteCoFixedLatency(endTime.Sub(expectedStartTime))
+			}
+			return rawLatency, err
 		}
 		// Perform read operation using existing read logic
-		return readTestFunc(rb)
+		rawLatency, err := readTestFunc(rb)
+		if err == nil {
+			// Record coordinated omission fixed latency for read operations
+			endTime := time.Now()
+			rb.RecordReadCoFixedLatency(endTime.Sub(expectedStartTime))
+		}
+		return rawLatency, err
 	})
 }
 
