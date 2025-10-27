@@ -8,7 +8,7 @@ on:
       - .github/workflows/dockerhub-description.yml
 jobs:
   update-dockerhub-description:
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
     - uses: actions/checkout@v5
     - name: Update Docker Hub Description for scylladb/scylla-bench
