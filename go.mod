@@ -1,6 +1,6 @@
 module github.com/scylladb/scylla-bench
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2
@@ -71,10 +71,10 @@ require (
 	github.com/denis-tingaikin/go-header v1.0.0 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
-	github.com/docker/docker v28.4.0+incompatible // indirect
+	github.com/docker/docker v28.5.2+incompatible // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
-	github.com/ebitengine/purego v0.9.0 // indirect
+	github.com/ebitengine/purego v0.9.1 // indirect
 	github.com/ettle/strcase v0.2.0 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/fatih/structtag v1.2.0 // indirect
@@ -130,7 +130,7 @@ require (
 	github.com/karamaru-alpha/copyloopvar v1.2.1 // indirect
 	github.com/kisielk/errcheck v1.9.0 // indirect
 	github.com/kkHAIKE/contextcheck v1.1.6 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/compress v1.18.1 // indirect
 	github.com/kulti/thelper v0.6.3 // indirect
 	github.com/kunwardeep/paralleltest v1.0.14 // indirect
 	github.com/lasiar/canonicalheader v1.1.2 // indirect
@@ -141,7 +141,7 @@ require (
 	github.com/ldez/usetesting v0.5.0 // indirect
 	github.com/leonklingele/grouper v1.1.2 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
-	github.com/lufia/plan9stats v0.0.0-20250827001030-24949be3fa54 // indirect
+	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
 	github.com/macabu/inamedparam v0.2.0 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/manuelarte/embeddedstructfieldcheck v0.3.0 // indirect
@@ -195,7 +195,7 @@ require (
 	github.com/sashamelentyev/interfacebloat v1.1.0 // indirect
 	github.com/sashamelentyev/usestdlibvars v1.29.0 // indirect
 	github.com/securego/gosec/v2 v2.22.7 // indirect
-	github.com/shirou/gopsutil/v4 v4.25.8 // indirect
+	github.com/shirou/gopsutil/v4 v4.25.10 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/sivchari/containedctx v1.0.3 // indirect
 	github.com/sonatard/noctx v0.4.0 // indirect
@@ -243,13 +243,13 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
-	golang.org/x/crypto v0.42.0 // indirect
+	golang.org/x/crypto v0.43.0 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20251009144603-d2f985daa21b // indirect
 	golang.org/x/mod v0.28.0 // indirect
-	golang.org/x/net v0.44.0 // indirect
+	golang.org/x/net v0.46.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
-	golang.org/x/sys v0.36.0 // indirect
-	golang.org/x/text v0.29.0 // indirect
+	golang.org/x/sys v0.37.0 // indirect
+	golang.org/x/text v0.30.0 // indirect
 	golang.org/x/tools v0.37.0 // indirect
 	google.golang.org/protobuf v1.36.7 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
@@ -260,7 +260,7 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-replace github.com/gocql/gocql => github.com/scylladb/gocql v1.15.0
+replace github.com/gocql/gocql => github.com/scylladb/gocql v1.16.1
 
 tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint

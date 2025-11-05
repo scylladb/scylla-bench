@@ -137,7 +137,7 @@ After making changes, ALWAYS validate these scenarios:
 ### Go Module Replace Directive
 The project uses ScyllaDB's fork of the gocql driver:
 ```
-replace github.com/gocql/gocql => github.com/scylladb/gocql v1.15.0
+replace github.com/gocql/gocql => github.com/scylladb/gocql v1.16.1
 ```
 **NEVER** install via `go get` or `go install` directly - this bypasses the replace directive and breaks shard-awareness.
 **CRITICAL**: Direct installation will fail with error about replace directives in non-main modules.
@@ -465,7 +465,7 @@ After making changes, ALWAYS validate these scenarios:
 ### Go Module Replace Directive
 The project uses ScyllaDB's fork of the gocql driver:
 ```
-replace github.com/gocql/gocql => github.com/scylladb/gocql v1.15.0
+replace github.com/gocql/gocql => github.com/scylladb/gocql v1.16.1
 ```
 **NEVER** install via `go get` or `go install` directly - this bypasses the replace directive and breaks shard-awareness.
 **CRITICAL**: Direct installation will fail with error about replace directives in non-main modules.
