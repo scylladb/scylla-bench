@@ -60,6 +60,10 @@ func TestScyllaDBContainer(t *testing.T) {
 		t.Fatal("GetClusterConfig returned nil")
 	}
 
+	if len(cluster.Hosts) == 0 {
+		t.Fatal("GetClusterConfig returned no hosts")
+	}
+
 	// Verify the cluster config
 	if cluster.Hosts[0] != container.Host {
 		t.Errorf("Expected host %s, got %s", container.Host, cluster.Hosts[0])
