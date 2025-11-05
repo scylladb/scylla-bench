@@ -164,8 +164,8 @@ func (mr *MergedResult) getLatencyHistogram() *hdrhistogram.Histogram {
 }
 
 func (mr *MergedResult) SaveLatenciesToHdrHistogram(hdrLogWriter *hdrhistogram.HistogramLogWriter) {
-	startTimeMs := mr.HistogramStartTime / 1000000000
-	endTimeMs := time.Now().UnixNano() / 1000000000
+	startTimeMs := mr.HistogramStartTime / 1000000
+	endTimeMs := time.Now().UnixNano() / 1000000
 
 	// Save standard histograms
 	mr.CoFixedLatency.SetStartTimeMs(startTimeMs)
