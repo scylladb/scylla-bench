@@ -13,7 +13,6 @@ import (
 
 	"github.com/gocql/gocql"
 	"github.com/gocql/gocql/hostpolicy"
-	"github.com/gocql/gocql/scyllacloud"
 	"github.com/hailocab/go-hostpool"
 	"github.com/pkg/errors"
 
@@ -561,7 +560,7 @@ func main() {
 		"Number of errors in summary to appear before stopping the execution of a workflow. "+
 			"If it is set to '0' then no limit for number of errors is applied.")
 
-	flag.StringVar(&cloudConfigPath, "cloud-config-path", "", "set the cloud config bundle")
+	flag.StringVar(&cloudConfigPath, "cloud-config-path", "", "(deprecated): set the cloud config bundle")
 	flag.BoolVar(
 		&showVersion,
 		"version",
@@ -679,16 +678,10 @@ func main() {
 	var cluster *gocql.ClusterConfig
 	var err error
 
-	if cloudConfigPath == "" {
-		cluster = gocql.NewCluster(strings.Split(nodes, ",")...)
-	} else if !tlsEncryption && username == "" && password == "" {
-		cluster, err = scyllacloud.NewCloudCluster(cloudConfigPath)
-		if err != nil {
-			log.Panic(err)
-		}
-	} else {
-		log.Panic("can't use -tls/-username/-password and -cloud-config-path at the same time")
+	if cloudConfigPath != "" {
+		log.Panic("cloud config file has been deprecated")
 	}
+	cluster = gocql.NewCluster(strings.Split(nodes, ",")...)
 
 	retryPolicy = getRetryPolicy()
 	if retryHandler == "gocql" {
