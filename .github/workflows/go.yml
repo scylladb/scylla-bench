@@ -18,20 +18,25 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version-file: go.mod
+
       - name: Set up gotestfmt
         uses: GoTestTools/gotestfmt-action@v2
         with:
           repo: gotestfmt
           version: v2.5.0
+
       - name: Build
         run: make build
+
       - name: Unit Tests
         env:
           RUN_MEMORY_LEAK_TEST: true
         run: make test
-      - uses: golangci/golangci-lint-action@v9
-        name: Linting
+
+      - name: Linting
+        run: make check
