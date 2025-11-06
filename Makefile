@@ -1,8 +1,12 @@
+SHELL = bash
 GOCQL_REPO ?= github.com/scylladb/gocql
 DOCKER_IMAGE_TAG ?= scylla-bench
 GOOS ?= $(shell uname | tr '[:upper:]' '[:lower:]')
 GOARCH ?= $(shell go env GOARCH)
+MAKEFILE_PATH := $(abspath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
+BIN_DIR := "${MAKEFILE_PATH}/bin"
 
+GOLANGCI_VERSION = 2.6.0
 VERSION ?= $(shell git describe --tags 2>/dev/null || echo "dev")
 COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE ?= $(shell git log -1 --format=%cd --date=format:%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -57,16 +61,16 @@ else
 endif
 
 .PHONY: fmt
-fmt:
-	@go tool gofumpt -w -extra .
+fmt: .prepare-golangci
+	@$(BIN_DIR)/golangci-lint run --fix
 
 .PHONY: test
 test:
 	@go test -covermode=atomic -race -coverprofile=coverage.txt -timeout 5m -json -v ./... 2>&1 | go tool gotestfmt -showteststatus
 
 .PHONY: check
-check:
-	@go tool golangci-lint run
+check: .prepare-golangci
+	@$(BIN_DIR)/golangci-lint run
 
 .PHONY: fieldalign
 fieldalign:
@@ -88,3 +92,13 @@ clean-results:
 
 .PHONY: clean
 clean: clean-bin clean-results
+
+.prepare-bin:
+	@[[ -d "$(BIN_DIR)" ]] || mkdir "$(BIN_DIR)"
+
+.prepare-golangci: .prepare-bin
+	@if ! "${BIN_DIR}/golangci-lint" --version | grep '${GOLANGCI_VERSION}' >/dev/null 2>&1 ; then \
+		echo "Installing golangci-lint to '${BIN_DIR}'"; \
+		curl -L https://github.com/golangci/golangci-lint/releases/download/v${GOLANGCI_VERSION}/golangci-lint-${GOLANGCI_VERSION}-linux-amd64.tar.gz | tar -xzf - --strip-components=1 -C $(BIN_DIR) golangci-lint-${GOLANGCI_VERSION}-linux-amd64/golangci-lint; \
+		chmod +x $(BIN_DIR)/golangci-lint; \
+	fi
