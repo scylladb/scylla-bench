@@ -103,7 +103,7 @@ After making changes, ALWAYS validate these scenarios:
 5. **Container integration** (if modifying test utilities): `RUN_CONTAINER_TESTS=true go test -v ./pkg/testutil`
 
 ### Linting and Formatting
-- Format code: `make fmt` -- runs gofumpt, takes <1 second
+- Format code: `make fmt` -- runs golangci-lint, takes <1 second
 - ALWAYS run `make fmt` before committing
 - **KNOWN ISSUE**: `make check` (golangci-lint) currently fails due to dependency conflicts
   - Do NOT try to fix the linting setup unless specifically asked
@@ -317,7 +317,7 @@ Basic usage patterns:
 make build           # Build release binary
 make build-debug     # Build debug binary
 make test           # Run test suite
-make fmt            # Format code with gofumpt
+make fmt            # Format code
 make clean          # Clean build artifacts
 make fieldalign     # Fix struct field alignment
 make build-docker-image  # Build Docker container image
@@ -431,7 +431,7 @@ After making changes, ALWAYS validate these scenarios:
 5. **Container integration** (if modifying test utilities): `RUN_CONTAINER_TESTS=true go test -v ./pkg/testutil`
 
 ### Linting and Formatting
-- Format code: `make fmt` -- runs gofumpt, takes <1 second
+- Format code: `make fmt` -- runs golangci-lint, takes <1 second
 - ALWAYS run `make fmt` before committing
 - **KNOWN ISSUE**: `make check` (golangci-lint) currently fails due to dependency conflicts
   - Do NOT try to fix the linting setup unless specifically asked
@@ -565,7 +565,7 @@ Basic usage patterns:
 make build           # Build release binary
 make build-debug     # Build debug binary
 make test           # Run test suite
-make fmt            # Format code with gofumpt
+make fmt            # Format code
 make clean          # Clean build artifacts
 make fieldalign     # Fix struct field alignment
 make build-docker-image  # Build Docker container image
