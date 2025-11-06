@@ -308,7 +308,7 @@ func (r *LockedRandom) Int64N(maximum int64) (n int64) {
 	r.mu.Lock()
 	n = r.src.Int64N(maximum)
 	r.mu.Unlock()
-	return
+	return n
 }
 
 func (r *LockedRandom) Seed(seed int64) {
@@ -341,5 +341,5 @@ func (r *LockedRandomString) Read(b []byte) (n int, err error) {
 	r.mu.Lock()
 	n, err = r.rnd.Read(b)
 	defer r.mu.Unlock()
-	return
+	return n, err
 }
