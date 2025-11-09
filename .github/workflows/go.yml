@@ -33,5 +33,5 @@ jobs:
         env:
           RUN_MEMORY_LEAK_TEST: true
         run: make test
-      - uses: golangci/golangci-lint-action@v8
+      - uses: golangci/golangci-lint-action@v9
         name: Linting
