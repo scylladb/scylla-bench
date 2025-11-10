@@ -343,7 +343,7 @@ func getMainBuildInfo() (ver, sha, buildDate string) {
 			}
 		}
 	}
-	return
+	return ver, sha, buildDate
 }
 
 // GetVersionInfo returns the version info for scylla-bench and scylla-gocql-driver
