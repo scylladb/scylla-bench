@@ -16,10 +16,6 @@ builds:
       - amd64
       - arm64
     main: .
-    goamd64:
-      - v3 # v3 Enables AMD64 SIMD (SSE4.x,AVX2) optimizations
-    goarm64:
-      - v8.3 # ARM crypto extension for RANDOM Number generation
     ldflags:
       - -s -w
       - -X github.com/scylladb/scylla-bench/internal/version.version={{.Version}}
@@ -55,11 +51,10 @@ dockers:
   - image_templates:
       - scylladb/scylla-bench:{{ .Version }}-amd64
     goarch: amd64
-    goamd64: v3
     goos: linux
     id: scylla-bench-amd64
     build_flag_templates:
-      - '--platform=linux/amd64/v3'
+      - '--platform=linux/amd64'
       - '--target=goreleaser-production'
 
   - image_templates:
