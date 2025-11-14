@@ -4,6 +4,7 @@ scylla-bench
 coverage.txt
 dist/
 *.pprof
+buildkitd.toml
 
 # Codex - AI assistant metadata
 .codex/
