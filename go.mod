@@ -3,7 +3,7 @@ module github.com/scylladb/scylla-bench
 go 1.24.0
 
 require (
-	github.com/HdrHistogram/hdrhistogram-go v1.1.2
+	github.com/HdrHistogram/hdrhistogram-go v1.2.0
 	github.com/gocql/gocql v1.7.0
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed
 	github.com/pkg/errors v0.9.1
@@ -260,10 +260,7 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-replace (
-	github.com/gocql/gocql => github.com/scylladb/gocql v1.15.0
-	github.com/HdrHistogram/hdrhistogram-go => 	github.com/dkropachev/hdrhistogram-go v1.1.3
-)
+replace github.com/gocql/gocql => github.com/scylladb/gocql v1.15.0
 
 tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
