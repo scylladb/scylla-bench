@@ -15,7 +15,7 @@ permissions:
 jobs:
   build-lint-test:
     name: Build Lint and Test
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: Setup Go
