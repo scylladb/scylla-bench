@@ -306,6 +306,38 @@ Note that this option should be set for both write and read (counter_update and 
 * `password` - cql password for authentication
 * `tls` - use TLS encryption
 
+### Private Link / Client Routes
+
+scylla-bench supports connecting to ScyllaDB clusters via Private Link endpoints using the client routes feature. 
+This is useful when connecting to ScyllaDB Cloud clusters through AWS PrivateLink or similar private connectivity solutions when nodes are exposed via tcp proxy.
+
+#### Configuration Flags
+
+* `-client-routes-connection-ids` - comma-separated list of Private Link connection IDs to use for routing. When specified, scylla-bench will query the `system.client_routes` table to determine the appropriate endpoints for each node.
+* `-client-routes-table` - the table containing node IP/port mapping (default: `system.client_routes`), to be used only for testing purposes when you want to target regular table to emulate scenarios.
+
+#### Example Usage
+
+```bash
+# Connect using Private Link with a single connection ID
+./build/scylla-bench -workload uniform -mode read -nodes private-endpoint.example.com \
+  -client-routes-connection-ids "plcon-abc123" \
+  -duration 15m -concurrency 64
+
+# Connect using multiple Private Link connection IDs
+./build/scylla-bench -workload uniform -mode mixed -nodes private-endpoint.example.com \
+  -client-routes-connection-ids "plcon-abc123,plcon-def456" \
+  -duration 30m -concurrency 128
+
+# Use a custom client routes table
+./build/scylla-bench -workload uniform -mode read -nodes private-endpoint.example.com \
+  -client-routes-connection-ids "plcon-abc123" \
+  -client-routes-table "my_keyspace.custom_routes" \
+  -duration 15m
+```
+
+**Note:** The `-client-routes-connection-ids` flag cannot be used together with `-cloud-config-path`.
+
 ### Random value distributions
 
 scylla-bench supports random values for certain command line arguments. The list of these arguments is:
