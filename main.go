@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/gocql/gocql"
 	"github.com/gocql/gocql/hostpolicy"
@@ -28,6 +29,11 @@ type (
 		Query(string, ...interface{}) *gocql.Query
 	}
 )
+
+type privateLinkEndpoint struct {
+	connectionID   string
+	connectionAddr string
+}
 
 type ModeFunc func(session *gocql.Session, testResult *results.TestThreadResult, workload workloads.Generator, rateLimiter RateLimiter, validateData bool)
 
@@ -118,6 +124,9 @@ var (
 	hdrLatencySigFig         int
 	validateData             bool
 	truncateTable            bool
+
+	portMuxConnectionIDs string
+	portMuxTable         string
 )
 
 func Query(session Session, request string) {
@@ -274,6 +283,14 @@ func toInt(value bool) int {
 	}
 
 	return 0
+}
+
+func newPrivateLinkEndpoint(connectionID, connectionAddr string) gocql.ClientRoutesEndpoint {
+	// The gocql.PrivateLinkEndpoint fields are unexported, so we mirror the layout and populate it via unsafe.
+	return *(*gocql.ClientRoutesEndpoint)(unsafe.Pointer(&privateLinkEndpoint{
+		connectionID:   connectionID,
+		connectionAddr: connectionAddr,
+	}))
 }
 
 func getRetryPolicy() *gocql.ExponentialBackoffRetryPolicy {
@@ -539,6 +556,18 @@ func main() {
 		"",
 		"path to client key file, needed to enable client certificate authentication",
 	)
+	flag.StringVar(
+		&portMuxConnectionIDs,
+		"portmux-connection-ids",
+		"",
+		"comma-separated PrivateLink connection IDs to read from the port mux table",
+	)
+	flag.StringVar(
+		&portMuxTable,
+		"portmux-table",
+		"system.client_routes",
+		"table containing PrivateLink connection metadata",
+	)
 
 	flag.StringVar(
 		&hostSelectionPolicy,
@@ -688,6 +717,31 @@ func main() {
 		}
 	} else {
 		log.Panic("can't use -tls/-username/-password and -cloud-config-path at the same time")
+	}
+
+	if (portMuxConnectionIDs != "") && cloudConfigPath != "" {
+		log.Panic("can't use portmux together with -cloud-config-path")
+	}
+
+	if portMuxConnectionIDs != "" {
+		rawIDs := strings.Split(portMuxConnectionIDs, ",")
+		var endpoints []gocql.ClientRoutesEndpoint
+		for _, id := range rawIDs {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			endpoints = append(endpoints, newPrivateLinkEndpoint(id, ""))
+		}
+		if len(endpoints) == 0 {
+			log.Panic("portmux enabled but no PrivateLink connection IDs provided")
+		}
+		cluster = cluster.WithOptions(
+			gocql.WithClientRoutes(
+				gocql.WithTable(portMuxTable),
+				gocql.WithEndpoints(endpoints...),
+			),
+		)
 	}
 
 	retryPolicy = getRetryPolicy()
