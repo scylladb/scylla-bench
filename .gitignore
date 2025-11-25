@@ -6,6 +6,8 @@ dist/
 *.pprof
 buildkitd.toml
 
+bin/
+
 # Codex - AI assistant metadata
 .codex/
 .codex-cache/

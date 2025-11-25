@@ -118,6 +118,9 @@ var (
 	hdrLatencySigFig         int
 	validateData             bool
 	truncateTable            bool
+
+	clientRoutesConnectionIDs string
+	clientRoutesTable         string
 )
 
 func Query(session Session, request string) {
@@ -539,6 +542,18 @@ func main() {
 		"",
 		"path to client key file, needed to enable client certificate authentication",
 	)
+	flag.StringVar(
+		&clientRoutesConnectionIDs,
+		"client-routes-connection-ids",
+		"",
+		"comma-separated connection IDs to read from the system.client_routes table",
+	)
+	flag.StringVar(
+		&clientRoutesTable,
+		"client-routes-table",
+		"system.client_routes",
+		"table containing node ip/port mapping",
+	)
 
 	flag.StringVar(
 		&hostSelectionPolicy,
@@ -688,6 +703,31 @@ func main() {
 		}
 	} else {
 		log.Panic("can't use -tls/-username/-password and -cloud-config-path at the same time")
+	}
+
+	if (clientRoutesConnectionIDs != "") && cloudConfigPath != "" {
+		log.Panic("can't use -client-routes-connection-ids together with -cloud-config-path")
+	}
+
+	if clientRoutesConnectionIDs != "" {
+		rawIDs := strings.Split(clientRoutesConnectionIDs, ",")
+		var endpoints []gocql.ClientRoutesEndpoint
+		for _, id := range rawIDs {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			endpoints = append(endpoints, gocql.ClientRoutesEndpoint{ConnectionID: id})
+		}
+		if len(endpoints) == 0 {
+			log.Panic("-client-routes-connection-ids have empty list")
+		}
+		cluster = cluster.WithOptions(
+			gocql.WithClientRoutes(
+				gocql.WithTable(clientRoutesTable),
+				gocql.WithEndpoints(endpoints...),
+			),
+		)
 	}
 
 	retryPolicy = getRetryPolicy()
