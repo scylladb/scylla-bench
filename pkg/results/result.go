@@ -2,6 +2,7 @@ package results
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/HdrHistogram/hdrhistogram-go"
@@ -135,7 +136,7 @@ func init() {
 		measureLatency: false,
 		latencyHistogramConfiguration: histogramConfiguration{
 			minValue: 0,
-			maxValue: (1 << 63) - 1,
+			maxValue: math.MaxInt64,
 			sigFig:   3,
 		},
 		latencyTypeToPrint: LatencyTypeRaw,
