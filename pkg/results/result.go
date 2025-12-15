@@ -135,7 +135,7 @@ func init() {
 		measureLatency: false,
 		latencyHistogramConfiguration: histogramConfiguration{
 			minValue: 0,
-			maxValue: 2 ^ 63 - 1,
+			maxValue: (1 << 63) - 1,
 			sigFig:   3,
 		},
 		latencyTypeToPrint: LatencyTypeRaw,
