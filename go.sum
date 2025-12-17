@@ -142,6 +142,8 @@ github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0t
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/scylladb/gocql v1.15.0 h1:UZvfttXqNUm4m28KF1PzyJ7WAEJNYOP2sauUqYD2obg=
 github.com/scylladb/gocql v1.15.0/go.mod h1:+I2gRPugWIC/TmRxCRvyP47nB2yxAFuEJFsSSP4A10o=
+github.com/scylladb/gocql v1.17.0 h1:sSjNTgSoC90+1XYXOMeWsQ8+AZbFYQWcspuScmUT53E=
+github.com/scylladb/gocql v1.17.0/go.mod h1:0VgVuYnAPOoYN17KXkYdWDxhL2/rH3V3vOisPMngpAw=
 github.com/shirou/gopsutil/v4 v4.25.9 h1:JImNpf6gCVhKgZhtaAHJ0serfFGtlfIlSC08eaKdTrU=
 github.com/shirou/gopsutil/v4 v4.25.9/go.mod h1:gxIxoC+7nQRwUl/xNhutXlD8lq+jxTgpIkEf3rADHL8=
 github.com/sirupsen/logrus v1.9.3 h1:dueUQJ1C2q9oE3F7wvmSGAaVtTmUizReu6fjN8uqzbQ=
