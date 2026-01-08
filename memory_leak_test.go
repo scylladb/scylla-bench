@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gocql/gocql"
+	"github.com/scylladb/gocql"
 
 	"github.com/scylladb/scylla-bench/pkg/testutil"
 )

@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	gocqlPackage     = "github.com/gocql/gocql"
+	gocqlPackage     = "github.com/scylladb/gocql"
 	githubTimeout    = 5 * time.Second
 	userAgent        = "scylla-bench (github.com/scylladb/scylla-bench)"
 	githubAPIBaseURL = "https://api.github.com"
@@ -271,7 +271,8 @@ func getDriverVersionInfo() ComponentInfo {
 		if strings.HasPrefix(replacement.Version, "v") &&
 			!strings.Contains(replacement.Version, "-") {
 			info.Version = replacement.Version
-			if date, sha, err = github.getReleaseInfo("scylladb", "gocql", replacement.Version); err == nil {
+			repoOwner := extractRepoOwner(replacement.Path, "scylladb")
+			if date, sha, err = github.getReleaseInfo(repoOwner, "gocql", replacement.Version); err == nil {
 				info.CommitDate = date
 				info.CommitSHA = sha
 			}
@@ -296,9 +297,28 @@ func getDriverVersionInfo() ComponentInfo {
 		return info
 	}
 
-	// If no driver module replacement, this is the upstream gocql driver
-	info.Version = driverModule.Version
-	info.CommitSHA = "upstream release"
+	repoOwner := extractRepoOwner(driverModule.Path, "scylladb")
+	version = driverModule.Version
+	if strings.HasPrefix(version, "v") && !strings.Contains(version, "-") {
+		info.Version = version
+		if date, sha, err = github.getReleaseInfo(repoOwner, "gocql", version); err == nil {
+			info.CommitDate = date
+			info.CommitSHA = sha
+		}
+		return info
+	}
+
+	if sha = extractCommitSHA(version); sha != "" {
+		info.Version = sha
+		info.CommitSHA = sha
+		if date, err = github.getCommitInfo(repoOwner, "gocql", sha); err == nil {
+			info.CommitDate = date
+		}
+		return info
+	}
+
+	info.Version = version
+	info.CommitSHA = "unknown"
 	return info
 }
 

@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/HdrHistogram/hdrhistogram-go v1.2.0
-	github.com/gocql/gocql v1.7.0
+	github.com/scylladb/gocql v1.17.0
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed
 	github.com/pkg/errors v0.9.1
 	github.com/testcontainers/testcontainers-go v0.40.0
@@ -75,8 +75,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
-
-replace github.com/gocql/gocql => github.com/scylladb/gocql v1.17.0
 
 tool (
 	github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt

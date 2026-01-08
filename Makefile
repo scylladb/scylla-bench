@@ -22,7 +22,7 @@ _use-custom-gocql-version:
   	  exit 1;\
   	fi;\
   	echo "Using custom gocql commit \"${GOCQL_VERSION}\"";\
-	go mod edit -replace "github.com/gocql/gocql=${GOCQL_REPO}@${GOCQL_VERSION}";\
+	go mod edit -replace "github.com/scylladb/gocql=${GOCQL_REPO}@${GOCQL_VERSION}";\
 	go mod tidy \
 	}
 

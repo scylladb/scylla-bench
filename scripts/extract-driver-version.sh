@@ -2,8 +2,9 @@
 set -e
 
 echo "Looking for scylla-gocql driver version..." >&2
-DRIVER_VERSION=$(go list -m -json github.com/gocql/gocql | jq -r '.Replace.Version')
-DRIVER_REPO=$(go list -m -json github.com/gocql/gocql | jq -r '.Replace.Path')
+MODULE_JSON=$(go list -m -json github.com/scylladb/gocql)
+DRIVER_VERSION=$(echo "$MODULE_JSON" | jq -r '.Replace.Version // .Version')
+DRIVER_REPO=$(echo "$MODULE_JSON" | jq -r '.Replace.Path // .Path')
 REPO_OWNER=$(echo "$DRIVER_REPO" | cut -d'/' -f2)
 echo "Driver version: $DRIVER_VERSION" >&2
 echo "Driver repository: $DRIVER_REPO (owner: $REPO_OWNER)" >&2

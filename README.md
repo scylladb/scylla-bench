@@ -14,15 +14,7 @@ go build .
 ```
 
 __It is not recommended to download and install the tool directly using `go get` or `go install`__.
-If you do that, a scylla-bench binary will be built __without using ScyllaDB's fork of the gocql driver__, and the shard-awareness __won't work__.
-
-```bash
-# If you use those commands, shard-awareness won't work!
-# go get github.com/scylladb/scylla-bench
-# go install github.com/scylladb/scylla-bench
-```
-
-This is due to the `go` tool not honoring replace directives in the `go.mod` file: https://github.com/golang/go/issues/30354
+Build from source so your build uses ScyllaDB's gocql fork (`github.com/scylladb/gocql`), which is required for shard-awareness.
 
 ## Docker
 

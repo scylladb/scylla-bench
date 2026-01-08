@@ -11,9 +11,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gocql/gocql"
-	"github.com/gocql/gocql/hostpolicy"
-	"github.com/gocql/gocql/scyllacloud"
+	"github.com/scylladb/gocql"
+	"github.com/scylladb/gocql/hostpolicy"
+	"github.com/scylladb/gocql/scyllacloud"
 	"github.com/hailocab/go-hostpool"
 	"github.com/pkg/errors"
 

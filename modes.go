@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gocql/gocql"
+	"github.com/scylladb/gocql"
 	"github.com/pkg/errors"
 
 	"github.com/scylladb/scylla-bench/pkg/results"
