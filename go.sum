@@ -470,8 +470,8 @@ github.com/sashamelentyev/interfacebloat v1.1.0 h1:xdRdJp0irL086OyW1H/RTZTr1h/tM
 github.com/sashamelentyev/interfacebloat v1.1.0/go.mod h1:+Y9yU5YdTkrNvoX0xHc84dxiN1iBi9+G8zZIhPVoNjQ=
 github.com/sashamelentyev/usestdlibvars v1.29.0 h1:8J0MoRrw4/NAXtjQqTHrbW9NN+3iMf7Knkq057v4XOQ=
 github.com/sashamelentyev/usestdlibvars v1.29.0/go.mod h1:8PpnjHMk5VdeWlVb4wCdrB8PNbLqZ3wBZTZWkrpZZL8=
-github.com/scylladb/gocql v1.17.1-0.20260112143514-ff0d02c6b59f h1:vS1mVjLtj6eOlQj2uDDdTwYqLZf4o3xTRDfx8/Lnh4s=
-github.com/scylladb/gocql v1.17.1-0.20260112143514-ff0d02c6b59f/go.mod h1:+uR4khw6i7174qE4D5GNOdqu5r004PSJvNh/tU7pl8Y=
+github.com/scylladb/gocql v1.17.1-0.20260112144542-affbdd4339f5 h1:WPbae0a3X45/y3AVhTaczyGEa7q9F3s0yWt6zL+ZMow=
+github.com/scylladb/gocql v1.17.1-0.20260112144542-affbdd4339f5/go.mod h1:+uR4khw6i7174qE4D5GNOdqu5r004PSJvNh/tU7pl8Y=
 github.com/securego/gosec/v2 v2.22.7 h1:8/9P+oTYI4yIpAzccQKVsg1/90Po+JzGtAhqoHImDeM=
 github.com/securego/gosec/v2 v2.22.7/go.mod h1:510TFNDMrIPytokyHQAVLvPeDr41Yihn2ak8P+XQfNE=
 github.com/sergi/go-diff v1.2.0 h1:XU+rvMAioB0UC3q1MFrIQy4Vo5/4VsRDQQXHsEya6xQ=
