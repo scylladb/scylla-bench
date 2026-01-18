@@ -28,7 +28,7 @@ func (tr *TestResults) Init(concurrency int) {
 }
 
 func (tr *TestResults) SetStartTime() {
-	tr.startTime = time.Now()
+	tr.startTime = time.Now().UTC()
 }
 
 func (tr *TestResults) GetTestResult(idx int) *TestThreadResult {
@@ -72,7 +72,7 @@ func (tr *TestResults) GetTotalResults() {
 	//  before reducing it from start time, which is divided by 1000000000 before applied to histogram
 	//  giving small chance that rounded baseTime would be greater than histogram start time and negative
 	//  times in the histogram log
-	baseTime := (time.Now().UnixNano() / 1000000000) * 1000000000
+	baseTime := (time.Now().UTC().UnixNano() / 1000000000) * 1000000000
 
 	var hdrLogWriter *hdrhistogram.HistogramLogWriter
 	if globalResultConfiguration.hdrLatencyFile != "" {

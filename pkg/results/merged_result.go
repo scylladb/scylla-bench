@@ -31,7 +31,7 @@ type MergedResult struct {
 func NewMergedResult() *MergedResult {
 	result := &MergedResult{}
 	if globalResultConfiguration.measureLatency {
-		result.HistogramStartTime = time.Now().UnixNano()
+		result.HistogramStartTime = time.Now().UTC().UnixNano()
 		result.RawLatency = NewHistogram(
 			&globalResultConfiguration.latencyHistogramConfiguration,
 			"raw",
@@ -165,7 +165,7 @@ func (mr *MergedResult) getLatencyHistogram() *hdrhistogram.Histogram {
 
 func (mr *MergedResult) SaveLatenciesToHdrHistogram(hdrLogWriter *hdrhistogram.HistogramLogWriter) {
 	startTimeMs := mr.HistogramStartTime / 1000000
-	endTimeMs := time.Now().UnixNano() / 1000000
+	endTimeMs := time.Now().UTC().UnixNano() / 1000000
 
 	// Save standard histograms
 	mr.CoFixedLatency.SetStartTimeMs(startTimeMs)
