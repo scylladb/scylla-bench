@@ -31,10 +31,10 @@ func TestUTCTimezoneEnforcement(t *testing.T) {
 			t.Skip("Histogram not initialized in this configuration")
 		}
 		// Convert the UnixNano timestamp back to time to verify it would be UTC
-		startTime := time.Unix(0, result.HistogramStartTime)
+		histogramStartTime := time.Unix(0, result.HistogramStartTime)
 		// UTC times should be equal when converted
-		utcTime := startTime.UTC()
-		if !startTime.Equal(utcTime) {
+		utcTime := histogramStartTime.UTC()
+		if !histogramStartTime.Equal(utcTime) {
 			t.Errorf("Timestamp not using UTC timezone")
 		}
 	})
