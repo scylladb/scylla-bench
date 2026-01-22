@@ -12,7 +12,19 @@ import (
 	"github.com/scylladb/scylla-bench/pkg/results"
 	"github.com/scylladb/scylla-bench/pkg/testutil"
 	"github.com/scylladb/scylla-bench/pkg/workloads"
+	"github.com/scylladb/scylla-bench/random"
 )
+
+// initTestGlobals initializes the global variables needed by the benchmark functions
+func initTestGlobals() {
+	// Initialize global variables used by modes.go functions
+	keyspaceName = "scylla_bench"
+	tableName = "test"
+	counterTableName = "test_counters"
+
+	// Initialize clustering row size distribution (default is Fixed{Value: 4})
+	clusteringRowSizeDist = random.Fixed{Value: 4}
+}
 
 // TestIntegration runs integration tests against ScyllaDB
 // These tests validate that all workload types and modes execute successfully
@@ -24,6 +36,9 @@ func TestIntegration(t *testing.T) {
 	}
 
 	t.Parallel()
+
+	// Initialize global variables
+	initTestGlobals()
 
 	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
@@ -419,6 +434,9 @@ func TestIntegrationWithDataValidation(t *testing.T) {
 
 	t.Parallel()
 
+	// Initialize global variables
+	initTestGlobals()
+
 	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
@@ -511,6 +529,9 @@ func TestIntegrationQuickSmoke(t *testing.T) {
 	}
 
 	t.Parallel()
+
+	// Initialize global variables
+	initTestGlobals()
 
 	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
