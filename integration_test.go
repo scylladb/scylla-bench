@@ -24,6 +24,13 @@ func initTestGlobals() {
 
 	// Initialize clustering row size distribution (default is Fixed{Value: 4})
 	clusteringRowSizeDist = random.Fixed{Value: 4}
+
+	// Initialize read-related variables
+	rowsPerRequest = 1
+	provideUpperBound = false
+	inRestriction = false
+	noLowerBound = false
+	selectOrderByParsed = []string{""} // Default is "none" which maps to empty string
 }
 
 // TestIntegration runs integration tests against ScyllaDB
@@ -35,8 +42,7 @@ func TestIntegration(t *testing.T) {
 		t.Skip("Skipping integration tests. Set RUN_CONTAINER_TESTS=true to run")
 	}
 
-	t.Parallel()
-
+	// Note: Not using t.Parallel() because tests modify global state
 	// Initialize global variables
 	initTestGlobals()
 
@@ -432,8 +438,7 @@ func TestIntegrationWithDataValidation(t *testing.T) {
 		t.Skip("Skipping integration tests. Set RUN_CONTAINER_TESTS=true to run")
 	}
 
-	t.Parallel()
-
+	// Note: Not using t.Parallel() because tests modify global state
 	// Initialize global variables
 	initTestGlobals()
 
@@ -528,8 +533,7 @@ func TestIntegrationQuickSmoke(t *testing.T) {
 		t.Skip("Skipping integration tests. Set RUN_CONTAINER_TESTS=true to run")
 	}
 
-	t.Parallel()
-
+	// Note: Not using t.Parallel() because tests modify global state
 	// Initialize global variables
 	initTestGlobals()
 
