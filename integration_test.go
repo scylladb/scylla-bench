@@ -110,7 +110,7 @@ func TestIntegration(t *testing.T) {
 // testSequentialWorkload tests the sequential workload with write and read operations
 func testSequentialWorkload(t *testing.T, session *gocql.Session) {
 	t.Helper()
-	t.Parallel()
+	// Note: Not using t.Parallel() due to shared global state and result access patterns
 
 	// Test writes first
 	t.Run("Write", func(t *testing.T) {
@@ -132,6 +132,9 @@ func testSequentialWorkload(t *testing.T, session *gocql.Session) {
 		}
 
 		// Verify some operations were completed
+		// Allow goroutine to finish current operation
+		time.Sleep(100 * time.Millisecond)
+
 		if testResult.FullResult.Operations == 0 {
 			t.Error("Sequential write: no operations completed")
 		}
@@ -164,6 +167,9 @@ func testSequentialWorkload(t *testing.T, session *gocql.Session) {
 		}
 
 		// Verify some operations were completed
+		// Allow goroutine to finish current operation
+		time.Sleep(100 * time.Millisecond)
+
 		if testResult.FullResult.Operations == 0 {
 			t.Error("Sequential read: no operations completed")
 		}
@@ -180,7 +186,7 @@ func testSequentialWorkload(t *testing.T, session *gocql.Session) {
 // testUniformWorkload tests the uniform random workload
 func testUniformWorkload(t *testing.T, session *gocql.Session) {
 	t.Helper()
-	t.Parallel()
+	// Note: Not using t.Parallel() due to shared global state and result access patterns
 
 	// Test writes
 	t.Run("Write", func(t *testing.T) {
@@ -197,6 +203,9 @@ func testUniformWorkload(t *testing.T, session *gocql.Session) {
 		case <-time.After(5 * time.Second):
 		case <-done:
 		}
+
+		// Allow goroutine to finish current operation
+		time.Sleep(100 * time.Millisecond)
 
 		if testResult.FullResult.Operations == 0 {
 			t.Error("Uniform write: no operations completed")
@@ -226,6 +235,9 @@ func testUniformWorkload(t *testing.T, session *gocql.Session) {
 		case <-done:
 		}
 
+		// Allow goroutine to finish current operation
+		time.Sleep(100 * time.Millisecond)
+
 		if testResult.FullResult.Operations == 0 {
 			t.Error("Uniform read: no operations completed")
 		}
@@ -242,7 +254,7 @@ func testUniformWorkload(t *testing.T, session *gocql.Session) {
 // testTimeSeriesWorkload tests the timeseries workload
 func testTimeSeriesWorkload(t *testing.T, session *gocql.Session) {
 	t.Helper()
-	t.Parallel()
+	// Note: Not using t.Parallel() due to shared global state and result access patterns
 
 	// Test timeseries writes
 	t.Run("Write", func(t *testing.T) {
@@ -260,6 +272,9 @@ func testTimeSeriesWorkload(t *testing.T, session *gocql.Session) {
 		case <-time.After(5 * time.Second):
 		case <-done:
 		}
+
+		// Allow goroutine to finish current operation
+		time.Sleep(100 * time.Millisecond)
 
 		if testResult.FullResult.Operations == 0 {
 			t.Error("TimeSeries write: no operations completed")
@@ -290,6 +305,9 @@ func testTimeSeriesWorkload(t *testing.T, session *gocql.Session) {
 		case <-done:
 		}
 
+		// Allow goroutine to finish current operation
+		time.Sleep(100 * time.Millisecond)
+
 		if testResult.FullResult.Operations == 0 {
 			t.Error("TimeSeries read: no operations completed")
 		}
@@ -306,7 +324,7 @@ func testTimeSeriesWorkload(t *testing.T, session *gocql.Session) {
 // testCounterOperations tests counter update and read operations
 func testCounterOperations(t *testing.T, session *gocql.Session) {
 	t.Helper()
-	t.Parallel()
+	// Note: Not using t.Parallel() due to shared global state and result access patterns
 
 	// Test counter updates
 	t.Run("Update", func(t *testing.T) {
@@ -323,6 +341,9 @@ func testCounterOperations(t *testing.T, session *gocql.Session) {
 		case <-time.After(5 * time.Second):
 		case <-done:
 		}
+
+		// Allow goroutine to finish current operation
+		time.Sleep(100 * time.Millisecond)
 
 		if testResult.FullResult.Operations == 0 {
 			t.Error("Counter update: no operations completed")
@@ -352,6 +373,9 @@ func testCounterOperations(t *testing.T, session *gocql.Session) {
 		case <-done:
 		}
 
+		// Allow goroutine to finish current operation
+		time.Sleep(100 * time.Millisecond)
+
 		if testResult.FullResult.Operations == 0 {
 			t.Error("Counter read: no operations completed")
 		}
@@ -368,7 +392,7 @@ func testCounterOperations(t *testing.T, session *gocql.Session) {
 // testScanOperations tests table scanning
 func testScanOperations(t *testing.T, session *gocql.Session) {
 	t.Helper()
-	t.Parallel()
+	// Note: Not using t.Parallel() due to shared global state and result access patterns
 
 	workload := workloads.NewRangeScan(300, 0, 300)
 	testResult := results.NewTestThreadResult()
@@ -385,6 +409,9 @@ func testScanOperations(t *testing.T, session *gocql.Session) {
 	case <-done:
 	}
 
+	// Allow goroutine to finish current operation
+	time.Sleep(100 * time.Millisecond)
+
 	if testResult.FullResult.Operations == 0 {
 		t.Error("Scan: no operations completed")
 	}
@@ -400,7 +427,7 @@ func testScanOperations(t *testing.T, session *gocql.Session) {
 // testMixedMode tests the mixed read/write mode
 func testMixedMode(t *testing.T, session *gocql.Session) {
 	t.Helper()
-	t.Parallel()
+	// Note: Not using t.Parallel() due to shared global state and result access patterns
 
 	// Reset global counter for mixed mode
 	globalMixedOperationCount.Store(0)
@@ -418,6 +445,9 @@ func testMixedMode(t *testing.T, session *gocql.Session) {
 	case <-time.After(10 * time.Second):
 	case <-done:
 	}
+
+	// Allow goroutine to finish current operation
+	time.Sleep(100 * time.Millisecond)
 
 	if testResult.FullResult.Operations == 0 {
 		t.Error("Mixed mode: no operations completed")
@@ -487,6 +517,9 @@ func TestIntegrationWithDataValidation(t *testing.T) {
 		case <-done:
 		}
 
+		// Allow goroutine to finish current operation
+		time.Sleep(100 * time.Millisecond)
+
 		if writeResult.FullResult.Operations == 0 {
 			t.Fatal("Data validation write: no operations completed")
 		}
@@ -511,6 +544,9 @@ func TestIntegrationWithDataValidation(t *testing.T) {
 		case <-time.After(5 * time.Second):
 		case <-done:
 		}
+
+		// Allow goroutine to finish current operation
+		time.Sleep(100 * time.Millisecond)
 
 		if readResult.FullResult.Operations == 0 {
 			t.Error("Data validation read: no operations completed")
@@ -600,6 +636,9 @@ func TestIntegrationQuickSmoke(t *testing.T) {
 			case <-time.After(2 * time.Second):
 			case <-done:
 			}
+
+			// Allow goroutine to finish current operation
+			time.Sleep(100 * time.Millisecond)
 
 			if testResult.FullResult.Operations == 0 {
 				t.Errorf("%s: no operations completed", tc.name)
