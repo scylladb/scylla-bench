@@ -292,6 +292,7 @@ Note that if the effective write rate is lower than the specified one the reader
 * `-connection-count` sets the number of connections.
 * `-replication-factor` sets the replication factor of scylla-bench keyspace (default: 1).
 * `-timeout` sets client timeout (default: 5s).
+* `-metadata-schema-timeout` sets the timeout for schema and metadata queries (default: 60s). This can be helpful when running tests that involve schema changes (e.g., ALTER TABLE operations) on clusters that may experience temporary slowdowns.
 * `-client-compression` enables or disables client compression (default: enabled).
 
 * `-validate-data` defines data integrity verification. If set then some none-zero data will be written in such a way that it can be validated during read operation.
@@ -390,3 +391,4 @@ RUN_MEMORY_LEAK_TEST=true go test -v -run TestMemoryLeak
 6. Full table scan test: `scylla-bench -mode scan -timeout 5m -concurrency 1`
 7. Write to populate database with non-zero data: `scylla-bench -workload sequential -mode write -nodes 127.0.0.1 -clustering-row-size 16 -validate-data`
 8. Read with data verification: `scylla-bench -workload uniform -mode write -nodes 127.0.0.1 -clustering-row-size 16 -validate-data  -duration 10m`
+9. Test with increased schema timeout (for clusters with frequent ALTER TABLE operations): `scylla-bench -workload uniform -mode mixed -nodes 127.0.0.1 -duration 30m -metadata-schema-timeout 120s`
