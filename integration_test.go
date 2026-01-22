@@ -551,14 +551,14 @@ func TestIntegrationQuickSmoke(t *testing.T) {
 		mode     ModeFunc
 		name     string
 	}{
-		{"Sequential-Write", workloads.NewSequentialVisitAll(0, 100, 5), DoWrites},
-		{"Sequential-Read", workloads.NewSequentialVisitAll(0, 100, 5), DoReads},
-		{"Uniform-Write", workloads.NewRandomUniform(0, 100, 0, 5), DoWrites},
-		{"Uniform-Read", workloads.NewRandomUniform(0, 100, 0, 5), DoReads},
-		{"Counter-Update", workloads.NewRandomUniform(0, 100, 0, 5), DoCounterUpdates},
-		{"Counter-Read", workloads.NewRandomUniform(0, 100, 0, 5), DoCounterReads},
-		{"Scan", workloads.NewRangeScan(300, 0, 300), DoScanTable},
-		{"Mixed", workloads.NewRandomUniform(0, 100, 0, 5), DoMixed},
+		{name: "Sequential-Write", workload: workloads.NewSequentialVisitAll(0, 100, 5), mode: DoWrites},
+		{name: "Sequential-Read", workload: workloads.NewSequentialVisitAll(0, 100, 5), mode: DoReads},
+		{name: "Uniform-Write", workload: workloads.NewRandomUniform(0, 100, 0, 5), mode: DoWrites},
+		{name: "Uniform-Read", workload: workloads.NewRandomUniform(0, 100, 0, 5), mode: DoReads},
+		{name: "Counter-Update", workload: workloads.NewRandomUniform(0, 100, 0, 5), mode: DoCounterUpdates},
+		{name: "Counter-Read", workload: workloads.NewRandomUniform(0, 100, 0, 5), mode: DoCounterReads},
+		{name: "Scan", workload: workloads.NewRangeScan(300, 0, 300), mode: DoScanTable},
+		{name: "Mixed", workload: workloads.NewRandomUniform(0, 100, 0, 5), mode: DoMixed},
 	}
 
 	for _, tc := range testCases {
