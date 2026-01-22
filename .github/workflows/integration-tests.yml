@@ -1,0 +1,51 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
+jobs:
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Set up gotestfmt
+        uses: GoTestTools/gotestfmt-action@v2
+        with:
+          repo: gotestfmt
+          version: v2.5.0
+
+      - name: Build
+        run: make build
+
+      - name: Run Integration Tests
+        env:
+          RUN_CONTAINER_TESTS: true
+        run: |
+          set -euo pipefail
+          go test -v -race -timeout 25m -run "^TestIntegration" . 2>&1 | tee /tmp/gotest.log | gotestfmt
+
+      - name: Upload test log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-log
+          path: /tmp/gotest.log
+          if-no-files-found: warn

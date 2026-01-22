@@ -380,6 +380,45 @@ scylla-bench includes memory leak tests that use TestContainers to verify that r
 RUN_MEMORY_LEAK_TEST=true go test -v -run TestMemoryLeak
 ```
 
+### Integration Tests
+
+scylla-bench includes comprehensive integration tests that validate all workload types and modes against a real ScyllaDB instance. These tests ensure that no workload is critically broken and are automatically run on CI/CD.
+
+#### Running Integration Tests Locally
+
+To run the integration tests locally (requires Docker):
+
+```bash
+# Run all integration tests
+RUN_CONTAINER_TESTS=true go test -v -race -timeout 25m -run "^TestIntegration"
+
+# Run a specific integration test
+RUN_CONTAINER_TESTS=true go test -v -race -run TestIntegrationQuickSmoke
+
+# Run integration tests with data validation
+RUN_CONTAINER_TESTS=true go test -v -race -run TestIntegrationWithDataValidation
+```
+
+#### Integration Test Coverage
+
+The integration test suite covers:
+
+- **Workload types**: Sequential, Uniform, TimeSeries
+- **Operation modes**: Write, Read, Mixed (50/50 read/write), Counter Update/Read, Scan
+- **Data validation**: Write and read operations with checksum verification
+- **Quick smoke tests**: Fast validation of all modes (useful for development)
+
+Each test runs for a short duration (2-10 seconds) to provide fast feedback while ensuring the workload executes without critical errors.
+
+#### CI/CD Integration
+
+Integration tests are automatically run on:
+- Pull requests to the `master` branch
+- Pushes to the `master` branch
+- Manual workflow dispatch
+
+The tests use TestContainers with ScyllaDB 2025.2 and complete in approximately 8-10 minutes.
+
 ## Examples
 
 1. Sequential write to populate the database: `scylla-bench -workload sequential -mode write -nodes 127.0.0.1`
