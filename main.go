@@ -99,8 +99,9 @@ var (
 
 	rangeCount int
 
-	timeout    time.Duration
-	iterations uint
+	timeout                      time.Duration
+	metadataSchemaRequestTimeout time.Duration
+	iterations                   uint
 
 	retryNumber   int
 	retryInterval string
@@ -363,6 +364,12 @@ func main() {
 	flag.StringVar(&consistencyLevel, "consistency-level", "quorum", "consistency level")
 	flag.IntVar(&replicationFactor, "replication-factor", 1, "replication factor")
 	flag.DurationVar(&timeout, "timeout", 5*time.Second, "request timeout")
+	flag.DurationVar(
+		&metadataSchemaRequestTimeout,
+		"metadata-schema-timeout",
+		60*time.Second,
+		"timeout for schema and metadata queries (default 60s)",
+	)
 
 	flag.IntVar(&retryNumber, "retry-number", 10, "number of retries (default 10)")
 	flag.StringVar(
@@ -700,6 +707,7 @@ func main() {
 	cluster.NumConns = connectionCount
 	cluster.PageSize = pageSize
 	cluster.Timeout = timeout
+	cluster.MetadataSchemaRequestTimeout = metadataSchemaRequestTimeout
 
 	policy, policyName, err := newHostSelectionPolicy(
 		hostSelectionPolicy,
