@@ -50,7 +50,7 @@ type MaximumRateLimiter struct {
 func (mxrl *MaximumRateLimiter) Wait() {
 	mxrl.CompletedOperations++
 	nextRequest := mxrl.StartTime.Add(mxrl.Period * time.Duration(mxrl.CompletedOperations))
-	now := time.Now()
+	now := time.Now().UTC()
 	if now.Before(nextRequest) {
 		time.Sleep(nextRequest.Sub(now))
 	}
@@ -67,7 +67,7 @@ func NewRateLimiter(maximumRate int, _ time.Duration) RateLimiter {
 	period := time.Duration(int64(time.Second) / int64(maximumRate))
 	return &MaximumRateLimiter{
 		Period:              period,
-		StartTime:           time.Now(),
+		StartTime:           time.Now().UTC(),
 		CompletedOperations: 0,
 	}
 }
@@ -161,7 +161,7 @@ func RunTest(
 	rateLimiter RateLimiter,
 	test func(rb *results.TestThreadResult) (time.Duration, error),
 ) {
-	start := time.Now()
+	start := time.Now().UTC()
 	partialStart := start
 	iter := NewTestIterator(workload)
 	errorsAtRow := 0
@@ -170,11 +170,11 @@ func RunTest(
 
 		expectedStartTime := rateLimiter.Expected()
 		if expectedStartTime.IsZero() {
-			expectedStartTime = time.Now()
+			expectedStartTime = time.Now().UTC()
 		}
 
 		rawLatency, err := test(threadResult)
-		endTime := time.Now()
+		endTime := time.Now().UTC()
 		switch {
 		case err == nil:
 			errorsAtRow = 0
@@ -194,7 +194,7 @@ func RunTest(
 			}
 		}
 
-		now := time.Now()
+		now := time.Now().UTC()
 		if maxErrorsAtRow > 0 && errorsAtRow >= maxErrorsAtRow {
 			threadResult.SubmitCriticalError(fmt.Errorf(
 				"error limit (maxErrorsAtRow) of %d errors is reached", errorsAtRow))
@@ -216,7 +216,7 @@ func RunTest(
 			partialStart = partialStart.Add(reportInterval)
 		}
 	}
-	end := time.Now()
+	end := time.Now().UTC()
 
 	threadResult.FullResult.ElapsedTime = end.Sub(start)
 	threadResult.ResultChannel <- *threadResult.FullResult
@@ -417,9 +417,9 @@ func createWriteTestFunc(session *gocql.Session, workload workloads.Generator, v
 		queryStr := ""
 		currentAttempts := 0
 		for {
-			requestStart := time.Now()
+			requestStart := time.Now().UTC()
 			err = bound.Exec()
-			requestEnd := time.Now()
+			requestEnd := time.Now().UTC()
 
 			if err == nil {
 				rb.IncOps()
@@ -517,9 +517,9 @@ func DoBatchedWrites(
 			queryStr := ""
 			currentAttempts := 0
 			for {
-				requestStart := time.Now()
+				requestStart := time.Now().UTC()
 				err := session.ExecuteBatch(batch)
-				requestEnd := time.Now()
+				requestEnd := time.Now().UTC()
 
 				if err == nil {
 					rb.IncOps()
@@ -572,9 +572,9 @@ func DoCounterUpdates(
 			queryStr := ""
 			currentAttempts := 0
 			for {
-				requestStart := time.Now()
+				requestStart := time.Now().UTC()
 				err := query.Exec()
-				requestEnd := time.Now()
+				requestEnd := time.Now().UTC()
 
 				if err == nil {
 					rb.IncOps()
@@ -760,9 +760,9 @@ func createReadTestFunc(table string, session *gocql.Session, workload workloads
 		queryStr := query.String()
 
 		for currentAttempts := 0; ; currentAttempts++ {
-			requestStart := time.Now()
+			requestStart := time.Now().UTC()
 			err := executeReadsQuery(query, table, rb, validateData)
-			requestEnd := time.Now()
+			requestEnd := time.Now().UTC()
 
 			if err == nil {
 				rb.IncOps()
@@ -802,13 +802,13 @@ func DoScanTable(session *gocql.Session, threadResult *results.TestThreadResult,
 		queryStr := query.String()
 
 		for currentAttempts := 0; ; currentAttempts++ {
-			requestStart := time.Now()
+			requestStart := time.Now().UTC()
 			query.Bind(currentRange.Start, currentRange.End)
 			iter := query.Iter()
 			for iter.Scan(nil, nil, nil) {
 				rb.IncRows()
 			}
-			requestEnd := time.Now()
+			requestEnd := time.Now().UTC()
 			err := iter.Close()
 
 			if err == nil {
@@ -842,7 +842,7 @@ func DoMixed(
 
 		expectedStartTime := rateLimiter.Expected()
 		if expectedStartTime.IsZero() {
-			expectedStartTime = time.Now()
+			expectedStartTime = time.Now().UTC()
 		}
 
 		// Perform write on even operations, read on odd operations
@@ -852,7 +852,7 @@ func DoMixed(
 			rawLatency, err := writeTestFunc(rb)
 			if err == nil {
 				// Record coordinated omission fixed latency for write operations
-				endTime := time.Now()
+				endTime := time.Now().UTC()
 				rb.RecordWriteCoFixedLatency(endTime.Sub(expectedStartTime))
 			}
 			return rawLatency, err
@@ -861,7 +861,7 @@ func DoMixed(
 		rawLatency, err := readTestFunc(rb)
 		if err == nil {
 			// Record coordinated omission fixed latency for read operations
-			endTime := time.Now()
+			endTime := time.Now().UTC()
 			rb.RecordReadCoFixedLatency(endTime.Sub(expectedStartTime))
 		}
 		return rawLatency, err
@@ -889,9 +889,9 @@ func createMixedWriteTestFunc(session *gocql.Session, workload workloads.Generat
 		queryStr := ""
 		currentAttempts := 0
 		for {
-			requestStart := time.Now()
+			requestStart := time.Now().UTC()
 			err = bound.Exec()
-			requestEnd := time.Now()
+			requestEnd := time.Now().UTC()
 
 			if err == nil {
 				rb.IncOps()
@@ -956,7 +956,7 @@ func createMixedReadTestFunc(table string, session *gocql.Session, workload work
 		queryStr := ""
 		currentAttempts := 0
 		for {
-			requestStart := time.Now()
+			requestStart := time.Now().UTC()
 			iter := query.Iter()
 
 			var (
@@ -985,7 +985,7 @@ func createMixedReadTestFunc(table string, session *gocql.Session, workload work
 				}
 			}
 
-			requestEnd := time.Now()
+			requestEnd := time.Now().UTC()
 			err := iter.Close()
 			if err == nil {
 				rb.IncOps()

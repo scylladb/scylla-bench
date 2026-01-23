@@ -820,7 +820,7 @@ func main() {
 	if startTimestamp != 0 {
 		startTime = time.Unix(0, startTimestamp)
 	} else {
-		startTime = time.Now()
+		startTime = time.Now().UTC()
 	}
 
 	fmt.Println("Configuration")
