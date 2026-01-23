@@ -314,15 +314,14 @@ func ValidateData(pk, ck int64, data []byte, validateData bool) error {
 			return errors.Wrap(err, "failed to generate expected data for validation")
 		}
 
-		if err = buf.UnreadByte(); err != nil {
-			return err
-		}
-
-		if !bytes.Equal(buf.Bytes(), expectedBuf) {
+		// Compare the original data slice directly, not the buffer's remaining bytes.
+		// After reading the size field (either int8 or int64), the buffer position has advanced,
+		// and buf.Bytes() would return incomplete data. We need to compare the full original data.
+		if !bytes.Equal(data, expectedBuf) {
 			return errors.Errorf(
 				"actual value doesn't match expected value:\nexpected: %x\nactual: %x",
 				expectedBuf,
-				buf.Bytes(),
+				data,
 			)
 		}
 
