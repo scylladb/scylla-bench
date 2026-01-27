@@ -26,8 +26,8 @@ import (
 //
 // Expected Results:
 // The benchmarks show that data validation adds significant overhead:
-// - GenerateData with validation: ~9x slower (SHA256 + random payload generation)
-// - ValidateData during reads: ~58μs per operation (SHA256 verification)
+// - GenerateData with validation: ~10-12x slower (SHA256 + random payload generation)
+// - ValidateData during reads: ~60μs per operation (SHA256 verification)
 //
 // This test measures the actual throughput impact in a real ScyllaDB scenario.
 func TestValidateDataThroughputImpact(t *testing.T) {
@@ -137,10 +137,10 @@ func TestValidateDataThroughputImpact(t *testing.T) {
 			throughputDecrease, maxAcceptableDecrease)
 		t.Logf("This is consistent with the reported issue where throughput decreased from ~533 ops to ~50 ops")
 		t.Logf("\nRoot Cause Analysis:")
-		t.Logf("  1. GenerateData() with validation is ~9x slower (see BenchmarkGenerateDataWithValidation)")
+		t.Logf("  1. GenerateData() with validation is ~10-12x slower (see BenchmarkGenerateDataWithValidation)")
 		t.Logf("     - SHA256 checksum calculation: expensive cryptographic operation")
 		t.Logf("     - Random payload generation: adds overhead for each write")
-		t.Logf("  2. ValidateData() during reads adds ~58μs overhead per operation")
+		t.Logf("  2. ValidateData() during reads adds ~60μs overhead per operation")
 		t.Logf("     - SHA256 checksum verification on every read")
 		t.Logf("\nConclusion:")
 		t.Logf("  The performance impact is EXPECTED and BY DESIGN.")
@@ -283,8 +283,8 @@ func measureWriteThroughput(
 // 2. Random payload generation
 //
 // Expected Results:
-// - Without validation: ~11μs per operation (simple byte array allocation)
-// - With validation: ~107μs per operation (~9x slower)
+// - Without validation: ~9-11μs per operation (simple byte array allocation)
+// - With validation: ~100-110μs per operation (~10-12x slower)
 //
 // This overhead explains the throughput decrease observed in the issue.
 func BenchmarkGenerateDataWithValidation(b *testing.B) {
@@ -307,7 +307,7 @@ func BenchmarkGenerateDataWithValidation(b *testing.B) {
 // the overhead of data validation during reads.
 //
 // Expected Results:
-// - ValidateData adds ~58μs overhead per read operation
+// - ValidateData adds ~60μs overhead per read operation
 // - This includes SHA256 checksum verification
 //
 // This overhead accumulates with high read rates and contributes to

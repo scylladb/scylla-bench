@@ -43,9 +43,9 @@ RUN_CONTAINER_TESTS=true go test -v -timeout 15m -run TestValidateDataThroughput
 
 ### Benchmark Results
 
-- **GenerateData without validation**: ~10.7μs per operation, 57KB, 1 allocation
-- **GenerateData with validation**: ~107μs per operation, 172KB, 8 allocations (**~10x slower, 3x more memory**)
-- **ValidateData on reads**: ~62μs overhead per operation
+- **GenerateData without validation**: ~9-11μs per operation, 57KB, 1 allocation
+- **GenerateData with validation**: ~100-110μs per operation, 172KB, 8 allocations (**~10-12x slower, 3x more memory**)
+- **ValidateData on reads**: ~60μs overhead per operation
 
 ### Performance Impact Analysis
 
@@ -55,7 +55,7 @@ The throughput decrease is caused by:
    - SHA256 checksum calculation (cryptographically expensive)
    - Random payload generation  
    - Additional memory allocations (3x more memory, 8 allocations vs 1)
-   - More CPU time (10x slower)
+   - More CPU time (10-12x slower)
 
 2. **Read Operations**:
    - SHA256 checksum verification
