@@ -182,11 +182,10 @@ func measureWriteThroughput(
 	defer session.Close()
 
 	// Create workload generator (sequential workload like in the issue)
-	totalRowsInWorkload := partitionCount * clusteringRowCount
 	workload := workloads.NewSequentialVisitAll(
-		0,                   // rowOffset
-		totalRowsInWorkload, // rowCount
-		clusteringRowCount,  // clusteringRowCount
+		0,                                 // rowOffset
+		partitionCount*clusteringRowCount, // rowCount
+		clusteringRowCount,                // clusteringRowCount
 	)
 
 	// Create a done channel to signal when to stop
@@ -229,17 +228,16 @@ func measureWriteThroughput(
 					ck := workload.NextClusteringKey()
 
 					// Generate data with or without validation
-					value, genErr := GenerateData(pk, ck, clusteringRowSize, validateData)
-					if genErr != nil {
+					value, generateErr := GenerateData(pk, ck, clusteringRowSize, validateData)
+					if generateErr != nil {
 						// Log error but don't fail the test - just stop this goroutine
-						t.Logf("Thread %d: Failed to generate data: %v", threadID, genErr)
+						t.Logf("Thread %d: Failed to generate data: %v", threadID, generateErr)
 						stats[threadID].ops = ops
 						return
 					}
 
 					// Execute write
-					execErr := session.Query(request, pk, ck, value).Exec()
-					if execErr != nil {
+					if execErr := session.Query(request, pk, ck, value).Exec(); execErr != nil {
 						// Don't fail on errors, just continue
 						continue
 					}
