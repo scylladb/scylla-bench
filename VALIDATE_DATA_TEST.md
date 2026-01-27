@@ -2,7 +2,9 @@
 
 ## Purpose
 
-This test validates the performance impact of the `-validate-data` parameter as reported in issue [QATOOLS-48](https://scylladb.atlassian.net/browse/QATOOLS-48).
+This test validates the performance impact of the `-validate-data` parameter as reported in [QATOOLS-48](https://scylladb.atlassian.net/browse/QATOOLS-48).
+
+**Note**: The QATOOLS-48 link may require ScyllaDB internal access. The issue reported a ~90% throughput decrease (533 ops/sec → 50 ops/sec) when using `-validate-data` with sequential workload writes.
 
 ## Issue Background
 

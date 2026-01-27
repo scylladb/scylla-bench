@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -110,8 +111,8 @@ func TestValidateDataThroughputImpact(t *testing.T) {
 	)
 
 	// Calculate the performance impact
-	throughputRatio := float64(throughputWithValidation) / float64(throughputWithoutValidation)
-	throughputDecrease := (1.0 - throughputRatio) * 100.0
+	performanceRetention := throughputWithValidation / throughputWithoutValidation
+	throughputDecrease := (1.0 - performanceRetention) * 100.0
 
 	// Log results
 	t.Logf("\n=== Throughput Test Results ===")
@@ -124,7 +125,7 @@ func TestValidateDataThroughputImpact(t *testing.T) {
 	t.Logf("\nResults:")
 	t.Logf("  Without -validate-data: %.2f ops/sec", throughputWithoutValidation)
 	t.Logf("  With -validate-data:    %.2f ops/sec", throughputWithValidation)
-	t.Logf("  Throughput ratio:       %.2f%%", throughputRatio*100)
+	t.Logf("  Performance retention:  %.2f%% (%.2fx)", performanceRetention*100, performanceRetention)
 	t.Logf("  Throughput decrease:    %.2f%%", throughputDecrease)
 
 	// The issue reported ~90% decrease (533 ops -> 50 ops)
@@ -200,8 +201,14 @@ func measureWriteThroughput(
 	}
 	stats := make([]threadStats, testConcurrency)
 
+	// Use WaitGroup to ensure all goroutines finish properly
+	var wg sync.WaitGroup
+	wg.Add(testConcurrency)
+
 	for i := 0; i < testConcurrency; i++ {
 		go func(threadID int) {
+			defer wg.Done()
+
 			request := fmt.Sprintf(
 				"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)",
 				keyspace,
@@ -257,8 +264,8 @@ func measureWriteThroughput(
 	// Signal all goroutines to stop
 	close(done)
 
-	// Wait a bit for goroutines to finish
-	time.Sleep(500 * time.Millisecond)
+	// Wait for all goroutines to finish
+	wg.Wait()
 
 	// Calculate throughput
 	for i := 0; i < testConcurrency; i++ {
