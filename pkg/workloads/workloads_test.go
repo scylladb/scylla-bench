@@ -8,7 +8,7 @@ import (
 )
 
 func TestSequentialWorkload(t *testing.T) {
-	generator := rand.New(rand.NewSource(int64(time.Now().Nanosecond())))
+	generator := rand.New(rand.NewSource(int64(time.Now().UTC().Nanosecond())))
 	testCases := []struct {
 		rowOffset          int64
 		rowCount           int64
@@ -84,7 +84,7 @@ func TestSequentialWorkload(t *testing.T) {
 }
 
 func TestUniformWorkload(t *testing.T) {
-	generator := rand.New(rand.NewSource(int64(time.Now().Nanosecond())))
+	generator := rand.New(rand.NewSource(int64(time.Now().UTC().Nanosecond())))
 	testCases := []struct {
 		partitionCount     int64
 		partitionOffset    int64
