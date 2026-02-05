@@ -97,7 +97,7 @@ func NewRandomUniform(
 	i int,
 	partitionCount, partitionOffset, clusteringRowCount int64,
 ) *RandomUniform {
-	generator := rand.New(rand.NewSource(int64(time.Now().Nanosecond() * (i + 1))))
+	generator := rand.New(rand.NewSource(int64(time.Now().UTC().Nanosecond() * (i + 1))))
 	return &RandomUniform{
 		generator,
 		int64(partitionCount),
@@ -233,7 +233,7 @@ func NewTimeSeriesReader(
 	default:
 		log.Fatal("unknown distribution", distribution)
 	}
-	generator := rand.New(rand.NewSource(int64(time.Now().Nanosecond() * (threadID + 1))))
+	generator := rand.New(rand.NewSource(int64(time.Now().UTC().Nanosecond() * (threadID + 1))))
 	pkStride := int64(threadCount)
 	pkOffset := (int64(threadID) % pkCount) + basicPkOffset
 	period := time.Second.Nanoseconds() / writeRate
@@ -261,13 +261,13 @@ func (tsw *TimeSeriesRead) NextPartitionKey() int64 {
 	if tsw.PkPosition >= tsw.PkCount+tsw.PkOffset {
 		tsw.PkPosition = tsw.PkOffset
 	}
-	maxGeneration := (time.Now().UnixNano()-tsw.StartTimestamp)/(tsw.Period*tsw.CkCount) + 1
+	maxGeneration := (time.Now().UTC().UnixNano()-tsw.StartTimestamp)/(tsw.Period*tsw.CkCount) + 1
 	tsw.CurrentGeneration = RandomInt64(tsw.Generator, tsw.HalfNormalDist, maxGeneration)
 	return tsw.PkPosition<<32 | tsw.CurrentGeneration
 }
 
 func (tsw *TimeSeriesRead) NextClusteringKey() int64 {
-	maxRange := (time.Now().UnixNano()-tsw.StartTimestamp)/tsw.Period - tsw.CurrentGeneration*tsw.CkCount + 1
+	maxRange := (time.Now().UTC().UnixNano()-tsw.StartTimestamp)/tsw.Period - tsw.CurrentGeneration*tsw.CkCount + 1
 	maxRange = min(tsw.CkCount, maxRange)
 	timestampDelta := (tsw.CurrentGeneration*tsw.CkCount + RandomInt64(tsw.Generator, tsw.HalfNormalDist, maxRange)) * tsw.Period
 	return -(timestampDelta + tsw.StartTimestamp)

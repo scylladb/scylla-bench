@@ -608,7 +608,7 @@ func TestMixedModeWithWorkloads(t *testing.T) {
 	partitionCount = 10
 	clusteringRowCount = 5
 	maximumRate = 1000 // Set a non-zero rate for timeseries workload
-	startTime = time.Now()
+	startTime = time.Now().UTC()
 
 	workloads := []string{"sequential", "uniform", "timeseries"}
 
@@ -654,7 +654,7 @@ func TestTimeseriesWorkloadWithMixedMode(t *testing.T) {
 	partitionCount = 10
 	clusteringRowCount = 5
 	maximumRate = 1000
-	startTime = time.Now()
+	startTime = time.Now().UTC()
 
 	// Test that timeseries workload with mixed mode does not panic
 	defer func() {

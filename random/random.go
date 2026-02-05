@@ -30,7 +30,7 @@ var (
 )
 
 var (
-	globalSeed = uint64(time.Now().UnixNano() + int64(os.Getpid()))
+	globalSeed = uint64(time.Now().UTC().UnixNano() + int64(os.Getpid()))
 	// globalRand is a copy of the rand.globalRand (git.io/fA2Ls) for
 	// user mode package's use only.
 	globalRand    = NewLockedRandom(globalSeed)
