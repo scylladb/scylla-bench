@@ -217,7 +217,7 @@ func (r *TestThreadResult) RecordWriteCoFixedLatency(latency time.Duration) {
 }
 
 func (r *TestThreadResult) SubmitResult() {
-	now := time.Now()
+	now := time.Now().UTC()
 	if now.Sub(r.partialStart) > time.Second {
 		r.ResultChannel <- *r.PartialResult
 		r.ResetPartialResult()
