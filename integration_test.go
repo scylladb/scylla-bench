@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,649 +17,358 @@ import (
 	"github.com/scylladb/scylla-bench/random"
 )
 
-// initTestGlobals initializes the global variables needed by the benchmark functions
-func initTestGlobals() {
-	// Initialize global variables used by modes.go functions
-	keyspaceName = "scylla_bench"
-	tableName = "test"
-	counterTableName = "test_counters"
-
-	// Initialize clustering row size distribution (default is Fixed{Value: 4})
-	clusteringRowSizeDist = random.Fixed{Value: 4}
-
-	// Initialize read-related variables
-	rowsPerRequest = 1
-	provideUpperBound = false
-	inRestriction = false
-	noLowerBound = false
-	selectOrderByParsed = []string{""} // Default is "none" which maps to empty string
+type integrationHarness struct {
+	ctx              context.Context
+	container        *testutil.ScyllaDBContainer
+	session          *gocql.Session
+	keyspaceName     string
+	tableName        string
+	counterTableName string
+	config           ExecutionConfig
 }
 
-// TestIntegration runs integration tests against ScyllaDB
-// These tests validate that all workload types and modes execute successfully
-// Run with: RUN_CONTAINER_TESTS=true go test -v -run TestIntegration
-func TestIntegration(t *testing.T) {
-	// Skip if not explicitly enabled
+func requireContainerTests(t *testing.T) {
+	t.Helper()
 	if os.Getenv("RUN_CONTAINER_TESTS") != "true" {
 		t.Skip("Skipping integration tests. Set RUN_CONTAINER_TESTS=true to run")
 	}
+}
 
-	// Note: Not using t.Parallel() because tests modify global state
-	// Initialize global variables
-	initTestGlobals()
+func newIntegrationHarness(t *testing.T, withCounters bool) *integrationHarness {
+	t.Helper()
 
-	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-	defer cancel()
+	t.Cleanup(cancel)
 
-	// Start a ScyllaDB container
-	container, err := testutil.NewScyllaDBContainer(ctx)
-	if err != nil {
-		t.Fatalf("Failed to start ScyllaDB container: %v", err)
+	container := testutil.SharedScyllaDBContainer(t)
+
+	h := &integrationHarness{
+		ctx:              ctx,
+		container:        container,
+		session:          container.Session,
+		keyspaceName:     testutil.GenerateUniqueKeyspaceName(t),
+		tableName:        "test",
+		counterTableName: "test_counters",
 	}
-	defer func() {
-		if err = container.Close(ctx); err != nil {
-			t.Logf("Failed to close container: %v", err)
+
+	if createErr := container.CreateKeyspace(h.keyspaceName, 1); createErr != nil {
+		t.Fatalf("Failed to create keyspace: %v", createErr)
+	}
+	t.Cleanup(func() {
+		if dropErr := container.DropKeyspace(h.keyspaceName); dropErr != nil {
+			t.Logf("Failed to drop keyspace %s: %v", h.keyspaceName, dropErr)
 		}
+	})
+
+	if createErr := container.CreateTable(h.keyspaceName, h.tableName); createErr != nil {
+		t.Fatalf("Failed to create table: %v", createErr)
+	}
+
+	if withCounters {
+		if createErr := container.CreateCounterTable(h.keyspaceName, h.counterTableName); createErr != nil {
+			t.Fatalf("Failed to create counter table: %v", createErr)
+		}
+	}
+
+	h.config = ExecutionConfig{
+		KeyspaceName:          h.keyspaceName,
+		TableName:             h.tableName,
+		CounterTableName:      h.counterTableName,
+		ClusteringRowSizeDist: random.Fixed{Value: 4},
+		RowsPerRequest:        1,
+		SelectOrderByParsed:   []string{""},
+		Iterations:            1,
+		RetryHandler:          retryHandler,
+		RetryNumber:           retryNumber,
+		RetryPolicy:           retryPolicy,
+	}
+	return h
+}
+
+func (h *integrationHarness) childConfig() ExecutionConfig {
+	config := h.config
+	config.StopAll = &atomic.Uint32{}
+	config.CriticalErrorFlag = &atomic.Bool{}
+	config.MixedOperationCounter = &atomic.Uint64{}
+	config.TotalErrors = &atomic.Int32{}
+	config.TotalErrorsPrintOnce = &sync.Once{}
+	return config
+}
+
+func runModeForDuration(
+	t *testing.T,
+	config ExecutionConfig,
+	mode ModeFunc,
+	session *gocql.Session,
+	workload workloads.Generator,
+	validateData bool,
+	duration time.Duration,
+) *results.TestThreadResult {
+	t.Helper()
+
+	testResult := results.NewTestThreadResultWithCriticalErrorFlag(config.CriticalErrorFlag)
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		modeWithConfig(t, config, mode, session, testResult, workload, validateData)
 	}()
 
-	// Create test keyspace
-	err = container.CreateKeyspace("scylla_bench", 1)
-	if err != nil {
-		t.Fatalf("Failed to create keyspace: %v", err)
+	select {
+	case <-time.After(duration):
+		config.StopAll.Store(1)
+	case <-done:
 	}
 
-	// Create main table for write/read operations
-	err = container.CreateTable("scylla_bench", "test")
-	if err != nil {
-		t.Fatalf("Failed to create table: %v", err)
+	<-done
+	return testResult
+}
+
+func modeName(mode ModeFunc) string {
+	return getFuncName(mode)
+}
+
+func modeWithConfig(
+	t *testing.T,
+	config ExecutionConfig,
+	mode ModeFunc,
+	session *gocql.Session,
+	testResult *results.TestThreadResult,
+	workload workloads.Generator,
+	validateData bool,
+) {
+	t.Helper()
+
+	switch modeName(mode) {
+	case modeName(DoWrites):
+		DoWritesWithConfig(config, session, testResult, workload, &UnlimitedRateLimiter{}, validateData)
+	case modeName(DoBatchedWrites):
+		DoBatchedWritesWithConfig(config, session, testResult, workload, &UnlimitedRateLimiter{}, validateData)
+	case modeName(DoReads):
+		DoReadsFromTableWithConfig(config, config.TableName, session, testResult, workload, &UnlimitedRateLimiter{}, validateData)
+	case modeName(DoCounterReads):
+		DoReadsFromTableWithConfig(config, config.CounterTableName, session, testResult, workload, &UnlimitedRateLimiter{}, validateData)
+	case modeName(DoCounterUpdates):
+		DoCounterUpdatesWithConfig(config, session, testResult, workload, &UnlimitedRateLimiter{}, validateData)
+	case modeName(DoScanTable):
+		DoScanTableWithConfig(config, session, testResult, workload, &UnlimitedRateLimiter{}, validateData)
+	case modeName(DoMixed):
+		DoMixedWithConfig(config, session, testResult, workload, &UnlimitedRateLimiter{}, validateData)
+	default:
+		t.Fatalf("unsupported mode func")
+	}
+}
+
+func assertSuccessfulRun(t *testing.T, name string, result *results.TestThreadResult) {
+	t.Helper()
+	if result.FullResult.Operations == 0 {
+		t.Fatalf("%s: no operations completed", name)
+	}
+	if result.FullResult.Errors > 0 {
+		t.Fatalf("%s: encountered %d errors", name, result.FullResult.Errors)
+	}
+	if len(result.FullResult.CriticalErrors) > 0 {
+		t.Fatalf("%s: encountered critical errors: %v", name, result.FullResult.CriticalErrors)
+	}
+}
+
+func TestIntegration(t *testing.T) {
+	requireContainerTests(t)
+	t.Parallel()
+
+	h := newIntegrationHarness(t, true)
+
+	tests := []struct {
+		run  func(t *testing.T, h *integrationHarness)
+		name string
+	}{
+		{name: "SequentialWorkload", run: testSequentialWorkload},
+		{name: "UniformWorkload", run: testUniformWorkload},
+		{name: "TimeSeriesWorkload", run: testTimeSeriesWorkload},
+		{name: "CounterOperations", run: testCounterOperations},
+		{name: "ScanOperations", run: testScanOperations},
+		{name: "MixedMode", run: testMixedMode},
 	}
 
-	// Create counter table for counter operations
-	err = container.CreateCounterTable("scylla_bench", "test_counters")
-	if err != nil {
-		t.Fatalf("Failed to create counter table: %v", err)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tc.run(t, h)
+		})
 	}
-
-	session := container.Session
-
-	// Run sub-tests for each workload and mode combination
-	t.Run("SequentialWorkload", func(t *testing.T) {
-		testSequentialWorkload(t, session)
-	})
-
-	t.Run("UniformWorkload", func(t *testing.T) {
-		testUniformWorkload(t, session)
-	})
-
-	t.Run("TimeSeriesWorkload", func(t *testing.T) {
-		testTimeSeriesWorkload(t, session)
-	})
-
-	t.Run("CounterOperations", func(t *testing.T) {
-		testCounterOperations(t, session)
-	})
-
-	t.Run("ScanOperations", func(t *testing.T) {
-		testScanOperations(t, session)
-	})
-
-	t.Run("MixedMode", func(t *testing.T) {
-		testMixedMode(t, session)
-	})
-
-	// Wait for any lingering goroutines to finish before closing container
-	time.Sleep(2 * time.Second)
 }
 
-// testSequentialWorkload tests the sequential workload with write and read operations
-func testSequentialWorkload(t *testing.T, session *gocql.Session) {
+func testSequentialWorkload(t *testing.T, h *integrationHarness) {
 	t.Helper()
-	// Note: Not using t.Parallel() due to shared global state and result access patterns
-
-	// Test writes first
 	t.Run("Write", func(t *testing.T) {
-		workload := workloads.NewSequentialVisitAll(0, 1000, 10)
-		testResult := results.NewTestThreadResult()
-
-		// Run writes for 5 seconds
-		done := make(chan bool)
-		go func() {
-			DoWrites(session, testResult, workload, &UnlimitedRateLimiter{}, false)
-			done <- true
-		}()
-
-		select {
-		case <-time.After(5 * time.Second):
-			// Time's up, stop the test
-		case <-done:
-			// Completed early
-		}
-
-		// Verify some operations were completed
-		// Allow goroutine to finish current operation
-		time.Sleep(500 * time.Millisecond)
-
-		if testResult.FullResult.Operations == 0 {
-			t.Error("Sequential write: no operations completed")
-		}
-
-		if testResult.FullResult.Errors > 0 {
-			t.Errorf("Sequential write: encountered %d errors", testResult.FullResult.Errors)
-		}
-
-		t.Logf("Sequential write: completed %d operations with %d errors",
-			testResult.FullResult.Operations, testResult.FullResult.Errors)
+		t.Parallel()
+		config := h.childConfig()
+		result := runModeForDuration(t, config, DoWrites, h.session, workloads.NewSequentialVisitAll(0, 1000, 10), false, 2*time.Second)
+		assertSuccessfulRun(t, "Sequential write", result)
 	})
 
-	// Test reads
 	t.Run("Read", func(t *testing.T) {
-		workload := workloads.NewSequentialVisitAll(0, 1000, 10)
-		testResult := results.NewTestThreadResult()
-
-		// Run reads for 5 seconds
-		done := make(chan bool)
-		go func() {
-			DoReads(session, testResult, workload, &UnlimitedRateLimiter{}, false)
-			done <- true
-		}()
-
-		select {
-		case <-time.After(5 * time.Second):
-			// Time's up
-		case <-done:
-			// Completed early
-		}
-
-		// Verify some operations were completed
-		// Allow goroutine to finish current operation
-		time.Sleep(500 * time.Millisecond)
-
-		if testResult.FullResult.Operations == 0 {
-			t.Error("Sequential read: no operations completed")
-		}
-
-		if testResult.FullResult.Errors > 0 {
-			t.Errorf("Sequential read: encountered %d errors", testResult.FullResult.Errors)
-		}
-
-		t.Logf("Sequential read: completed %d operations with %d errors",
-			testResult.FullResult.Operations, testResult.FullResult.Errors)
+		t.Parallel()
+		config := h.childConfig()
+		writeResult := runModeForDuration(t, config, DoWrites, h.session, workloads.NewSequentialVisitAll(0, 1000, 10), false, 2*time.Second)
+		assertSuccessfulRun(t, "Sequential read setup", writeResult)
+		config = h.childConfig()
+		result := runModeForDuration(t, config, DoReads, h.session, workloads.NewSequentialVisitAll(0, 1000, 10), false, 2*time.Second)
+		assertSuccessfulRun(t, "Sequential read", result)
 	})
 }
 
-// testUniformWorkload tests the uniform random workload
-func testUniformWorkload(t *testing.T, session *gocql.Session) {
+func testUniformWorkload(t *testing.T, h *integrationHarness) {
 	t.Helper()
-	// Note: Not using t.Parallel() due to shared global state and result access patterns
-
-	// Test writes
 	t.Run("Write", func(t *testing.T) {
-		workload := workloads.NewRandomUniform(0, 1000, 0, 10)
-		testResult := results.NewTestThreadResult()
-
-		done := make(chan bool)
-		go func() {
-			DoWrites(session, testResult, workload, &UnlimitedRateLimiter{}, false)
-			done <- true
-		}()
-
-		select {
-		case <-time.After(5 * time.Second):
-		case <-done:
-		}
-
-		// Allow goroutine to finish current operation
-		time.Sleep(500 * time.Millisecond)
-
-		if testResult.FullResult.Operations == 0 {
-			t.Error("Uniform write: no operations completed")
-		}
-
-		if testResult.FullResult.Errors > 0 {
-			t.Errorf("Uniform write: encountered %d errors", testResult.FullResult.Errors)
-		}
-
-		t.Logf("Uniform write: completed %d operations with %d errors",
-			testResult.FullResult.Operations, testResult.FullResult.Errors)
+		t.Parallel()
+		config := h.childConfig()
+		result := runModeForDuration(t, config, DoWrites, h.session, workloads.NewRandomUniform(0, 1000, 0, 10), false, 2*time.Second)
+		assertSuccessfulRun(t, "Uniform write", result)
 	})
 
-	// Test reads
 	t.Run("Read", func(t *testing.T) {
-		workload := workloads.NewRandomUniform(0, 1000, 0, 10)
-		testResult := results.NewTestThreadResult()
-
-		done := make(chan bool)
-		go func() {
-			DoReads(session, testResult, workload, &UnlimitedRateLimiter{}, false)
-			done <- true
-		}()
-
-		select {
-		case <-time.After(5 * time.Second):
-		case <-done:
-		}
-
-		// Allow goroutine to finish current operation
-		time.Sleep(500 * time.Millisecond)
-
-		if testResult.FullResult.Operations == 0 {
-			t.Error("Uniform read: no operations completed")
-		}
-
-		if testResult.FullResult.Errors > 0 {
-			t.Errorf("Uniform read: encountered %d errors", testResult.FullResult.Errors)
-		}
-
-		t.Logf("Uniform read: completed %d operations with %d errors",
-			testResult.FullResult.Operations, testResult.FullResult.Errors)
+		t.Parallel()
+		config := h.childConfig()
+		writeResult := runModeForDuration(t, config, DoWrites, h.session, workloads.NewRandomUniform(0, 1000, 0, 10), false, 2*time.Second)
+		assertSuccessfulRun(t, "Uniform read setup", writeResult)
+		config = h.childConfig()
+		result := runModeForDuration(t, config, DoReads, h.session, workloads.NewRandomUniform(0, 1000, 0, 10), false, 2*time.Second)
+		assertSuccessfulRun(t, "Uniform read", result)
 	})
 }
 
-// testTimeSeriesWorkload tests the timeseries workload
-func testTimeSeriesWorkload(t *testing.T, session *gocql.Session) {
+func testTimeSeriesWorkload(t *testing.T, h *integrationHarness) {
 	t.Helper()
-	// Note: Not using t.Parallel() due to shared global state and result access patterns
-
-	// Test timeseries writes
 	t.Run("Write", func(t *testing.T) {
-		writeStartTime := time.Now()
-		workload := workloads.NewTimeSeriesWriter(0, 1, 1000, 0, 100, writeStartTime, 1000)
-		testResult := results.NewTestThreadResult()
-
-		done := make(chan bool)
-		go func() {
-			DoWrites(session, testResult, workload, &UnlimitedRateLimiter{}, false)
-			done <- true
-		}()
-
-		select {
-		case <-time.After(5 * time.Second):
-		case <-done:
-		}
-
-		// Allow goroutine to finish current operation
-		time.Sleep(500 * time.Millisecond)
-
-		if testResult.FullResult.Operations == 0 {
-			t.Error("TimeSeries write: no operations completed")
-		}
-
-		if testResult.FullResult.Errors > 0 {
-			t.Errorf("TimeSeries write: encountered %d errors", testResult.FullResult.Errors)
-		}
-
-		t.Logf("TimeSeries write: completed %d operations with %d errors",
-			testResult.FullResult.Operations, testResult.FullResult.Errors)
+		t.Parallel()
+		config := h.childConfig()
+		result := runModeForDuration(t, config, DoWrites, h.session, workloads.NewTimeSeriesWriter(0, 1, 1000, 0, 100, time.Now(), 1000), false, 2*time.Second)
+		assertSuccessfulRun(t, "TimeSeries write", result)
 	})
 
-	// Test timeseries reads
 	t.Run("Read", func(t *testing.T) {
-		readStartTime := time.Now()
-		workload := workloads.NewTimeSeriesReader(0, 1, 1000, 0, 100, 1000, "uniform", readStartTime)
-		testResult := results.NewTestThreadResult()
-
-		done := make(chan bool)
-		go func() {
-			DoReads(session, testResult, workload, &UnlimitedRateLimiter{}, false)
-			done <- true
-		}()
-
-		select {
-		case <-time.After(5 * time.Second):
-		case <-done:
-		}
-
-		// Allow goroutine to finish current operation
-		time.Sleep(500 * time.Millisecond)
-
-		if testResult.FullResult.Operations == 0 {
-			t.Error("TimeSeries read: no operations completed")
-		}
-
-		if testResult.FullResult.Errors > 0 {
-			t.Errorf("TimeSeries read: encountered %d errors", testResult.FullResult.Errors)
-		}
-
-		t.Logf("TimeSeries read: completed %d operations with %d errors",
-			testResult.FullResult.Operations, testResult.FullResult.Errors)
+		t.Parallel()
+		start := time.Now()
+		config := h.childConfig()
+		writeResult := runModeForDuration(t, config, DoWrites, h.session, workloads.NewTimeSeriesWriter(0, 1, 1000, 0, 100, start, 1000), false, 2*time.Second)
+		assertSuccessfulRun(t, "TimeSeries read setup", writeResult)
+		config = h.childConfig()
+		result := runModeForDuration(t, config, DoReads, h.session, workloads.NewTimeSeriesReader(0, 1, 1000, 0, 100, 1000, "uniform", start), false, 2*time.Second)
+		assertSuccessfulRun(t, "TimeSeries read", result)
 	})
 }
 
-// testCounterOperations tests counter update and read operations
-func testCounterOperations(t *testing.T, session *gocql.Session) {
+func testCounterOperations(t *testing.T, h *integrationHarness) {
 	t.Helper()
-	// Note: Not using t.Parallel() due to shared global state and result access patterns
-
-	// Test counter updates
 	t.Run("Update", func(t *testing.T) {
-		workload := workloads.NewRandomUniform(0, 1000, 0, 10)
-		testResult := results.NewTestThreadResult()
-
-		done := make(chan bool)
-		go func() {
-			DoCounterUpdates(session, testResult, workload, &UnlimitedRateLimiter{}, false)
-			done <- true
-		}()
-
-		select {
-		case <-time.After(5 * time.Second):
-		case <-done:
-		}
-
-		// Allow goroutine to finish current operation
-		time.Sleep(500 * time.Millisecond)
-
-		if testResult.FullResult.Operations == 0 {
-			t.Error("Counter update: no operations completed")
-		}
-
-		if testResult.FullResult.Errors > 0 {
-			t.Errorf("Counter update: encountered %d errors", testResult.FullResult.Errors)
-		}
-
-		t.Logf("Counter update: completed %d operations with %d errors",
-			testResult.FullResult.Operations, testResult.FullResult.Errors)
+		t.Parallel()
+		config := h.childConfig()
+		result := runModeForDuration(t, config, DoCounterUpdates, h.session, workloads.NewRandomUniform(0, 1000, 0, 10), false, 2*time.Second)
+		assertSuccessfulRun(t, "Counter update", result)
 	})
 
-	// Test counter reads
 	t.Run("Read", func(t *testing.T) {
-		workload := workloads.NewRandomUniform(0, 1000, 0, 10)
-		testResult := results.NewTestThreadResult()
-
-		done := make(chan bool)
-		go func() {
-			DoCounterReads(session, testResult, workload, &UnlimitedRateLimiter{}, false)
-			done <- true
-		}()
-
-		select {
-		case <-time.After(5 * time.Second):
-		case <-done:
-		}
-
-		// Allow goroutine to finish current operation
-		time.Sleep(500 * time.Millisecond)
-
-		if testResult.FullResult.Operations == 0 {
-			t.Error("Counter read: no operations completed")
-		}
-
-		if testResult.FullResult.Errors > 0 {
-			t.Errorf("Counter read: encountered %d errors", testResult.FullResult.Errors)
-		}
-
-		t.Logf("Counter read: completed %d operations with %d errors",
-			testResult.FullResult.Operations, testResult.FullResult.Errors)
+		t.Parallel()
+		config := h.childConfig()
+		updateResult := runModeForDuration(t, config, DoCounterUpdates, h.session, workloads.NewRandomUniform(0, 1000, 0, 10), false, 2*time.Second)
+		assertSuccessfulRun(t, "Counter read setup", updateResult)
+		config = h.childConfig()
+		result := runModeForDuration(t, config, DoCounterReads, h.session, workloads.NewRandomUniform(0, 1000, 0, 10), false, 2*time.Second)
+		assertSuccessfulRun(t, "Counter read", result)
 	})
 }
 
-// testScanOperations tests table scanning
-func testScanOperations(t *testing.T, session *gocql.Session) {
+func testScanOperations(t *testing.T, h *integrationHarness) {
 	t.Helper()
-	// Note: Not using t.Parallel() due to shared global state and result access patterns
-
-	workload := workloads.NewRangeScan(300, 0, 300)
-	testResult := results.NewTestThreadResult()
-
-	done := make(chan bool)
-	go func() {
-		DoScanTable(session, testResult, workload, &UnlimitedRateLimiter{}, false)
-		done <- true
-	}()
-
-	select {
-	case <-time.After(10 * time.Second):
-		// Allow more time for scan operations
-	case <-done:
-	}
-
-	// Allow goroutine to finish current operation
-	time.Sleep(500 * time.Millisecond)
-
-	if testResult.FullResult.Operations == 0 {
-		t.Error("Scan: no operations completed")
-	}
-
-	if testResult.FullResult.Errors > 0 {
-		t.Errorf("Scan: encountered %d errors", testResult.FullResult.Errors)
-	}
-
-	t.Logf("Scan: completed %d operations with %d errors",
-		testResult.FullResult.Operations, testResult.FullResult.Errors)
+	config := h.childConfig()
+	writeResult := runModeForDuration(t, config, DoWrites, h.session, workloads.NewSequentialVisitAll(0, 1200, 4), false, 2*time.Second)
+	assertSuccessfulRun(t, "Scan setup", writeResult)
+	config = h.childConfig()
+	result := runModeForDuration(t, config, DoScanTable, h.session, workloads.NewRangeScan(300, 0, 300), false, 3*time.Second)
+	assertSuccessfulRun(t, "Scan", result)
 }
 
-// testMixedMode tests the mixed read/write mode
-func testMixedMode(t *testing.T, session *gocql.Session) {
+func testMixedMode(t *testing.T, h *integrationHarness) {
 	t.Helper()
-	// Note: Not using t.Parallel() due to shared global state and result access patterns
-
-	// Reset global counter for mixed mode
-	globalMixedOperationCount.Store(0)
-
-	workload := workloads.NewRandomUniform(0, 1000, 0, 10)
-	testResult := results.NewTestThreadResult()
-
-	done := make(chan bool)
-	go func() {
-		DoMixed(session, testResult, workload, &UnlimitedRateLimiter{}, false)
-		done <- true
-	}()
-
-	select {
-	case <-time.After(10 * time.Second):
-	case <-done:
-	}
-
-	// Allow goroutine to finish current operation
-	time.Sleep(500 * time.Millisecond)
-
-	if testResult.FullResult.Operations == 0 {
-		t.Error("Mixed mode: no operations completed")
-	}
-
-	if testResult.FullResult.Errors > 0 {
-		t.Errorf("Mixed mode: encountered %d errors", testResult.FullResult.Errors)
-	}
-
-	t.Logf("Mixed mode: completed %d operations with %d errors",
-		testResult.FullResult.Operations, testResult.FullResult.Errors)
+	config := h.childConfig()
+	result := runModeForDuration(t, config, DoMixed, h.session, workloads.NewRandomUniform(0, 1000, 0, 10), false, 3*time.Second)
+	assertSuccessfulRun(t, "Mixed mode", result)
 }
 
-// TestIntegrationWithDataValidation tests data validation functionality
 func TestIntegrationWithDataValidation(t *testing.T) {
-	// Skip if not explicitly enabled
-	if os.Getenv("RUN_CONTAINER_TESTS") != "true" {
-		t.Skip("Skipping integration tests. Set RUN_CONTAINER_TESTS=true to run")
-	}
+	requireContainerTests(t)
+	t.Parallel()
 
-	// Note: Not using t.Parallel() because tests modify global state
-	// Initialize global variables
-	initTestGlobals()
+	h := newIntegrationHarness(t, false)
+	config := h.childConfig()
+	writeResult := runModeForDuration(t, config, DoWrites, h.session, workloads.NewSequentialVisitAll(0, 100, 5), true, 2*time.Second)
+	assertSuccessfulRun(t, "Data validation write", writeResult)
 
-	// Create a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-
-	// Start a ScyllaDB container
-	container, err := testutil.NewScyllaDBContainer(ctx)
-	if err != nil {
-		t.Fatalf("Failed to start ScyllaDB container: %v", err)
-	}
-	defer func() {
-		if err = container.Close(ctx); err != nil {
-			t.Logf("Failed to close container: %v", err)
-		}
-	}()
-
-	// Create test keyspace and table
-	err = container.CreateKeyspace("scylla_bench", 1)
-	if err != nil {
-		t.Fatalf("Failed to create keyspace: %v", err)
-	}
-
-	err = container.CreateTable("scylla_bench", "test")
-	if err != nil {
-		t.Fatalf("Failed to create table: %v", err)
-	}
-
-	session := container.Session
-
-	// Test data validation with sequential workload
-	t.Run("DataValidation", func(t *testing.T) {
-		workload := workloads.NewSequentialVisitAll(0, 100, 5)
-		writeResult := results.NewTestThreadResult()
-
-		// First, write data with validation enabled
-		done := make(chan bool)
-		go func() {
-			DoWrites(session, writeResult, workload, &UnlimitedRateLimiter{}, true)
-			done <- true
-		}()
-
-		select {
-		case <-time.After(5 * time.Second):
-		case <-done:
-		}
-
-		// Allow goroutine to finish current operation
-		time.Sleep(500 * time.Millisecond)
-
-		if writeResult.FullResult.Operations == 0 {
-			t.Fatal("Data validation write: no operations completed")
-		}
-
-		if writeResult.FullResult.Errors > 0 {
-			t.Fatalf("Data validation write: encountered %d errors", writeResult.FullResult.Errors)
-		}
-
-		t.Logf("Data validation write: completed %d operations", writeResult.FullResult.Operations)
-
-		// Now read the data back with validation enabled
-		readWorkload := workloads.NewSequentialVisitAll(0, 100, 5)
-		readResult := results.NewTestThreadResult()
-
-		done = make(chan bool)
-		go func() {
-			DoReads(session, readResult, readWorkload, &UnlimitedRateLimiter{}, true)
-			done <- true
-		}()
-
-		select {
-		case <-time.After(5 * time.Second):
-		case <-done:
-		}
-
-		// Allow goroutine to finish current operation
-		time.Sleep(500 * time.Millisecond)
-
-		if readResult.FullResult.Operations == 0 {
-			t.Error("Data validation read: no operations completed")
-		}
-
-		if readResult.FullResult.Errors > 0 {
-			t.Errorf("Data validation read: encountered %d errors (validation may have detected corruption)", readResult.FullResult.Errors)
-		}
-
-		t.Logf("Data validation read: completed %d operations with %d errors",
-			readResult.FullResult.Operations, readResult.FullResult.Errors)
-	})
-
-	// Wait for any lingering goroutines to finish before closing container
-	time.Sleep(2 * time.Second)
+	config = h.childConfig()
+	readResult := runModeForDuration(t, config, DoReads, h.session, workloads.NewSequentialVisitAll(0, 100, 5), true, 2*time.Second)
+	assertSuccessfulRun(t, "Data validation read", readResult)
 }
 
-// TestIntegrationQuickSmoke is a fast smoke test that runs all modes quickly
-// This can be used for quick validation during development
 func TestIntegrationQuickSmoke(t *testing.T) {
-	// Skip if not explicitly enabled
-	if os.Getenv("RUN_CONTAINER_TESTS") != "true" {
-		t.Skip("Skipping integration tests. Set RUN_CONTAINER_TESTS=true to run")
-	}
+	requireContainerTests(t)
+	t.Parallel()
 
-	// Note: Not using t.Parallel() because tests modify global state
-	// Initialize global variables
-	initTestGlobals()
-
-	// Create a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-
-	// Start a ScyllaDB container
-	container, err := testutil.NewScyllaDBContainer(ctx)
-	if err != nil {
-		t.Fatalf("Failed to start ScyllaDB container: %v", err)
-	}
-	defer func() {
-		if err = container.Close(ctx); err != nil {
-			t.Logf("Failed to close container: %v", err)
-		}
-	}()
-
-	// Create test keyspace
-	err = container.CreateKeyspace("scylla_bench", 1)
-	if err != nil {
-		t.Fatalf("Failed to create keyspace: %v", err)
-	}
-
-	err = container.CreateTable("scylla_bench", "test")
-	if err != nil {
-		t.Fatalf("Failed to create table: %v", err)
-	}
-
-	err = container.CreateCounterTable("scylla_bench", "test_counters")
-	if err != nil {
-		t.Fatalf("Failed to create counter table: %v", err)
-	}
-
-	session := container.Session
-
-	// Quick test of each mode (2 seconds each)
+	h := newIntegrationHarness(t, true)
 	testCases := []struct {
+		prepare  func(t *testing.T)
 		workload workloads.Generator
 		mode     ModeFunc
 		name     string
 	}{
 		{name: "Sequential-Write", workload: workloads.NewSequentialVisitAll(0, 100, 5), mode: DoWrites},
-		{name: "Sequential-Read", workload: workloads.NewSequentialVisitAll(0, 100, 5), mode: DoReads},
+		{name: "Sequential-Read", workload: workloads.NewSequentialVisitAll(0, 100, 5), mode: DoReads, prepare: func(t *testing.T) {
+			t.Helper()
+			assertSuccessfulRun(
+				t,
+				"Quick smoke sequential read setup",
+				runModeForDuration(t, h.childConfig(), DoWrites, h.session, workloads.NewSequentialVisitAll(0, 100, 5), false, time.Second),
+			)
+		}},
 		{name: "Uniform-Write", workload: workloads.NewRandomUniform(0, 100, 0, 5), mode: DoWrites},
-		{name: "Uniform-Read", workload: workloads.NewRandomUniform(0, 100, 0, 5), mode: DoReads},
+		{name: "Uniform-Read", workload: workloads.NewRandomUniform(0, 100, 0, 5), mode: DoReads, prepare: func(t *testing.T) {
+			t.Helper()
+			assertSuccessfulRun(
+				t,
+				"Quick smoke uniform read setup",
+				runModeForDuration(t, h.childConfig(), DoWrites, h.session, workloads.NewRandomUniform(0, 100, 0, 5), false, time.Second),
+			)
+		}},
 		{name: "Counter-Update", workload: workloads.NewRandomUniform(0, 100, 0, 5), mode: DoCounterUpdates},
-		{name: "Counter-Read", workload: workloads.NewRandomUniform(0, 100, 0, 5), mode: DoCounterReads},
-		{name: "Scan", workload: workloads.NewRangeScan(300, 0, 300), mode: DoScanTable},
+		{name: "Counter-Read", workload: workloads.NewRandomUniform(0, 100, 0, 5), mode: DoCounterReads, prepare: func(t *testing.T) {
+			t.Helper()
+			assertSuccessfulRun(
+				t,
+				"Quick smoke counter read setup",
+				runModeForDuration(t, h.childConfig(), DoCounterUpdates, h.session, workloads.NewRandomUniform(0, 100, 0, 5), false, time.Second),
+			)
+		}},
+		{name: "Scan", workload: workloads.NewRangeScan(300, 0, 300), mode: DoScanTable, prepare: func(t *testing.T) {
+			t.Helper()
+			assertSuccessfulRun(
+				t,
+				"Quick smoke scan setup",
+				runModeForDuration(t, h.childConfig(), DoWrites, h.session, workloads.NewSequentialVisitAll(0, 200, 5), false, time.Second),
+			)
+		}},
 		{name: "Mixed", workload: workloads.NewRandomUniform(0, 100, 0, 5), mode: DoMixed},
 	}
 
 	for _, tc := range testCases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			testResult := results.NewTestThreadResult()
-
-			done := make(chan bool)
-			go func() {
-				tc.mode(session, testResult, tc.workload, &UnlimitedRateLimiter{}, false)
-				done <- true
-			}()
-
-			select {
-			case <-time.After(2 * time.Second):
-			case <-done:
+			t.Parallel()
+			if tc.prepare != nil {
+				tc.prepare(t)
 			}
-
-			// Allow goroutine to finish current operation
-			time.Sleep(500 * time.Millisecond)
-
-			if testResult.FullResult.Operations == 0 {
-				t.Errorf("%s: no operations completed", tc.name)
-			}
-
-			if testResult.FullResult.Errors > 0 {
-				t.Errorf("%s: encountered %d errors", tc.name, testResult.FullResult.Errors)
-			}
-
-			fmt.Printf("%s: %d ops, %d errors\n", tc.name, testResult.FullResult.Operations, testResult.FullResult.Errors)
+			result := runModeForDuration(t, h.childConfig(), tc.mode, h.session, tc.workload, false, time.Second)
+			assertSuccessfulRun(t, tc.name, result)
+			fmt.Printf("%s: %d ops, %d errors\n", tc.name, result.FullResult.Operations, result.FullResult.Errors)
 		})
 	}
-
-	// Wait for any lingering goroutines to finish before closing container
-	time.Sleep(2 * time.Second)
 }

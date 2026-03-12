@@ -112,7 +112,7 @@ var (
 	// to be considered as timeout error and recorded to histogram as such
 	errorToTimeoutCutoffTime time.Duration
 	startTime                time.Time
-	stopAll                  uint32
+	stopAll                  atomic.Uint32
 	measureLatency           bool
 	hdrLatencyFile           string
 	hdrLatencyUnits          string
@@ -843,7 +843,7 @@ func main() {
 	go func() {
 		<-interrupted
 		fmt.Println("\ninterrupted")
-		atomic.StoreUint32(&stopAll, 1)
+		stopAll.Store(1)
 
 		<-interrupted
 		fmt.Println("\nkilled")
@@ -853,7 +853,7 @@ func main() {
 	if testDuration > 0 {
 		go func() {
 			time.Sleep(testDuration)
-			atomic.StoreUint32(&stopAll, 1)
+			stopAll.Store(1)
 		}()
 	}
 

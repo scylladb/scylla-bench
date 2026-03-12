@@ -431,18 +431,6 @@ func TestGetRetryPolicy(t *testing.T) {
 
 // TestGetRetryPolicyParseValues tests specific value parsing logic
 func TestGetRetryPolicyParseValues(t *testing.T) {
-	t.Parallel()
-
-	// Save original values to restore after test
-	originalRetryInterval := retryInterval
-	originalRetryNumber := retryNumber
-
-	// Restore original values after test
-	t.Cleanup(func() {
-		retryInterval = originalRetryInterval
-		retryNumber = originalRetryNumber
-	})
-
 	testCases := []struct {
 		input    string
 		expected string // Expected parsed millisecond value
@@ -456,13 +444,6 @@ func TestGetRetryPolicyParseValues(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run("Parse "+tc.input, func(t *testing.T) {
-			retryInterval = tc.input
-			retryNumber = 3
-
-			defer func() {
-				_ = recover()
-			}()
-
 			values := []string{tc.input}
 			for i := range values {
 				if _, err := strconv.Atoi(values[i]); err == nil {
