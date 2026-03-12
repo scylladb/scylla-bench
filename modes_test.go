@@ -21,82 +21,61 @@ func GenerateTestData(pk, ck, size int64) []byte {
 }
 
 func TestBuildReadQuery(t *testing.T) {
-	t.Parallel()
-
-	keyspaceName = "test"
-	tableName = "test_table"
 	// Define test cases
 	testCases := []struct {
 		name           string
 		table          string
 		orderBy        string
-		setupVars      func()
 		expectedResult string
+		config         ExecutionConfig
 	}{
 		{
-			name:    "normal table with default settings",
-			table:   "test_table",
-			orderBy: "",
-			setupVars: func() {
-				inRestriction = false
-				provideUpperBound = false
-				noLowerBound = false
-				bypassCache = false
-			},
+			name:           "normal table with default settings",
+			table:          "test_table",
+			orderBy:        "",
+			config:         ExecutionConfig{KeyspaceName: "test", TableName: "test_table", RowsPerRequest: 1},
 			expectedResult: "SELECT pk, ck, v FROM",
 		},
 		{
-			name:    "counter table with ORDER BY",
-			table:   "counter_table",
-			orderBy: "ORDER BY ck ASC",
-			setupVars: func() {
-				inRestriction = false
-				provideUpperBound = false
-				noLowerBound = false
-				bypassCache = false
-			},
+			name:           "counter table with ORDER BY",
+			table:          "counter_table",
+			orderBy:        "ORDER BY ck ASC",
+			config:         ExecutionConfig{KeyspaceName: "test", TableName: "test_table", RowsPerRequest: 1},
 			expectedResult: "SELECT pk, ck, c1, c2, c3, c4, c5 FROM",
 		},
 		{
 			name:           "with inRestriction",
 			table:          "test_table",
 			orderBy:        "",
-			setupVars:      func() { inRestriction = true; provideUpperBound = false; noLowerBound = false; bypassCache = false },
+			config:         ExecutionConfig{KeyspaceName: "test", TableName: "test_table", RowsPerRequest: 1, InRestriction: true},
 			expectedResult: "SELECT pk, ck, v FROM",
 		},
 		{
-			name:    "with inRestriction and rows per request",
-			table:   "test_table",
-			orderBy: "",
-			setupVars: func() {
-				inRestriction = true
-				provideUpperBound = false
-				noLowerBound = false
-				bypassCache = false
-
-				rowsPerRequest = 3
-			},
+			name:           "with inRestriction and rows per request",
+			table:          "test_table",
+			orderBy:        "",
+			config:         ExecutionConfig{KeyspaceName: "test", TableName: "test_table", RowsPerRequest: 3, InRestriction: true},
 			expectedResult: "SELECT pk, ck, v FROM",
 		},
 		{
 			name:           "with provideUpperBound",
 			table:          "test_table",
 			orderBy:        "",
-			setupVars:      func() { inRestriction = false; provideUpperBound = true; noLowerBound = false; bypassCache = false },
+			config:         ExecutionConfig{KeyspaceName: "test", TableName: "test_table", RowsPerRequest: 1, ProvideUpperBound: true},
 			expectedResult: "SELECT pk, ck, v FROM",
 		},
 		{
 			name:           "with noLowerBound",
 			table:          "test_table",
 			orderBy:        "",
-			setupVars:      func() { inRestriction = false; provideUpperBound = false; noLowerBound = true; bypassCache = false },
+			config:         ExecutionConfig{KeyspaceName: "test", TableName: "test_table", RowsPerRequest: 1, NoLowerBound: true},
 			expectedResult: "SELECT pk, ck, v FROM",
 		},
 		{
 			name:           "with bypassCache",
 			table:          "test_table",
 			orderBy:        "",
-			setupVars:      func() { inRestriction = false; provideUpperBound = false; noLowerBound = false; bypassCache = true },
+			config:         ExecutionConfig{KeyspaceName: "test", TableName: "test_table", RowsPerRequest: 1, BypassCache: true},
 			expectedResult: "SELECT pk, ck, v FROM",
 		},
 	}
@@ -104,11 +83,8 @@ func TestBuildReadQuery(t *testing.T) {
 	// Run test cases
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Setup variables
-			tc.setupVars()
-
 			// Call the function
-			query := BuildReadQueryString(tc.table, tc.orderBy)
+			query := BuildReadQueryStringWithConfig(tc.config, tc.table, tc.orderBy)
 
 			// Check result
 			if !strings.HasPrefix(query, tc.expectedResult) {
@@ -116,23 +92,19 @@ func TestBuildReadQuery(t *testing.T) {
 			}
 
 			// More specific assertions based on the query type
-			if tc.setupVars == nil {
-				return
-			}
-
 			switch {
-			case inRestriction:
+			case tc.config.InRestriction:
 				if !strings.Contains(query, "IN (") {
 					t.Errorf("Expected IN clause in query for inRestriction=true, got: %s", query)
 				}
-			case provideUpperBound:
+			case tc.config.ProvideUpperBound:
 				if !strings.Contains(query, "ck < ?") {
 					t.Errorf(
 						"Expected upper bound in query for provideUpperBound=true, got: %s",
 						query,
 					)
 				}
-			case noLowerBound:
+			case tc.config.NoLowerBound:
 				if strings.Contains(query, "ck >=") {
 					t.Errorf(
 						"Expected no lower bound in query for noLowerBound=true, got: %s",
@@ -142,7 +114,7 @@ func TestBuildReadQuery(t *testing.T) {
 			}
 
 			// Check for BYPASS CACHE
-			if bypassCache && !strings.Contains(query, "BYPASS CACHE") {
+			if tc.config.BypassCache && !strings.Contains(query, "BYPASS CACHE") {
 				t.Errorf("Expected BYPASS CACHE in query for bypassCache=true, got: %s", query)
 			}
 

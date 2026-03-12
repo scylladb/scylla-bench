@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"runtime"
@@ -33,16 +32,9 @@ func TestMemoryLeakWithRetries(t *testing.T) {
 		t.Skip("Skipping memory leak test. Set RUN_MEMORY_LEAK_TEST=true to run")
 	}
 
-	// Create a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-
-	// Start a ScyllaDB container
-	container, err := testutil.NewScyllaDBContainer(ctx)
-	if err != nil {
-		t.Fatalf("Failed to start ScyllaDB container: %v", err)
-	}
-	defer container.Close(ctx)
+	// Use the shared ScyllaDB container
+	container := testutil.SharedScyllaDBContainer(t)
+	var err error
 
 	// Use the container's session
 	session := container.Session
@@ -181,16 +173,9 @@ func TestMemoryLeakWithHighConcurrency(t *testing.T) {
 		t.Skip("Skipping memory leak test. Set RUN_MEMORY_LEAK_TEST=true to run")
 	}
 
-	// Create a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-
-	// Start a ScyllaDB container
-	container, err := testutil.NewScyllaDBContainer(ctx)
-	if err != nil {
-		t.Fatalf("Failed to start ScyllaDB container: %v", err)
-	}
-	defer container.Close(ctx)
+	// Use the shared ScyllaDB container
+	container := testutil.SharedScyllaDBContainer(t)
+	var err error
 
 	// Use the container's session
 	session := container.Session

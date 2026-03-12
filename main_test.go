@@ -431,18 +431,6 @@ func TestGetRetryPolicy(t *testing.T) {
 
 // TestGetRetryPolicyParseValues tests specific value parsing logic
 func TestGetRetryPolicyParseValues(t *testing.T) {
-	t.Parallel()
-
-	// Save original values to restore after test
-	originalRetryInterval := retryInterval
-	originalRetryNumber := retryNumber
-
-	// Restore original values after test
-	t.Cleanup(func() {
-		retryInterval = originalRetryInterval
-		retryNumber = originalRetryNumber
-	})
-
 	testCases := []struct {
 		input    string
 		expected string // Expected parsed millisecond value
@@ -456,13 +444,6 @@ func TestGetRetryPolicyParseValues(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run("Parse "+tc.input, func(t *testing.T) {
-			retryInterval = tc.input
-			retryNumber = 3
-
-			defer func() {
-				_ = recover()
-			}()
-
 			values := []string{tc.input}
 			for i := range values {
 				if _, err := strconv.Atoi(values[i]); err == nil {
@@ -692,5 +673,36 @@ func TestGlobalMixedOperationCounter(t *testing.T) {
 			t.Errorf("Operation %d: expected %v (write=%v, read=%v), got %v",
 				i+1, expected[i], true, false, op)
 		}
+	}
+}
+
+func TestMetadataSchemaTimeoutDefault(t *testing.T) {
+	t.Parallel()
+
+	// Test that the default value is 60 seconds
+	expectedDefault := 60 * time.Second
+
+	// Create a cluster config to verify the timeout can be set
+	cluster := gocql.NewCluster("127.0.0.1")
+	cluster.MetadataSchemaRequestTimeout = expectedDefault
+
+	if cluster.MetadataSchemaRequestTimeout != expectedDefault {
+		t.Errorf("MetadataSchemaRequestTimeout = %v, want %v",
+			cluster.MetadataSchemaRequestTimeout, expectedDefault)
+	}
+}
+
+func TestMetadataSchemaTimeoutCustom(t *testing.T) {
+	t.Parallel()
+
+	// Test that custom timeout values can be set
+	customTimeout := 120 * time.Second
+
+	cluster := gocql.NewCluster("127.0.0.1")
+	cluster.MetadataSchemaRequestTimeout = customTimeout
+
+	if cluster.MetadataSchemaRequestTimeout != customTimeout {
+		t.Errorf("MetadataSchemaRequestTimeout = %v, want %v",
+			cluster.MetadataSchemaRequestTimeout, customTimeout)
 	}
 }

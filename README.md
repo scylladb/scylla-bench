@@ -292,6 +292,7 @@ Note that if the effective write rate is lower than the specified one the reader
 * `-connection-count` sets the number of connections.
 * `-replication-factor` sets the replication factor of scylla-bench keyspace (default: 1).
 * `-timeout` sets client timeout (default: 5s).
+* `-metadata-schema-timeout` sets the timeout for schema and metadata queries (default: 60s). This can be helpful when running tests that involve schema changes (e.g., ALTER TABLE operations) on clusters that may experience temporary slowdowns.
 * `-client-compression` enables or disables client compression (default: enabled).
 
 * `-validate-data` defines data integrity verification. If set then some none-zero data will be written in such a way that it can be validated during read operation.
@@ -304,6 +305,38 @@ Note that this option should be set for both write and read (counter_update and 
 * `username` - cql username for authentication
 * `password` - cql password for authentication
 * `tls` - use TLS encryption
+
+### Private Link / Client Routes
+
+scylla-bench supports connecting to ScyllaDB clusters via Private Link endpoints using the client routes feature. 
+This is useful when connecting to ScyllaDB Cloud clusters through AWS PrivateLink or similar private connectivity solutions when nodes are exposed via tcp proxy.
+
+#### Configuration Flags
+
+* `-client-routes-connection-ids` - comma-separated list of Private Link connection IDs to use for routing. When specified, scylla-bench will query the `system.client_routes` table to determine the appropriate endpoints for each node.
+* `-client-routes-table` - the table containing node IP/port mapping (default: `system.client_routes`), to be used only for testing purposes when you want to target regular table to emulate scenarios.
+
+#### Example Usage
+
+```bash
+# Connect using Private Link with a single connection ID
+./build/scylla-bench -workload uniform -mode read -nodes private-endpoint.example.com \
+  -client-routes-connection-ids "plcon-abc123" \
+  -duration 15m -concurrency 64
+
+# Connect using multiple Private Link connection IDs
+./build/scylla-bench -workload uniform -mode mixed -nodes private-endpoint.example.com \
+  -client-routes-connection-ids "plcon-abc123,plcon-def456" \
+  -duration 30m -concurrency 128
+
+# Use a custom client routes table
+./build/scylla-bench -workload uniform -mode read -nodes private-endpoint.example.com \
+  -client-routes-connection-ids "plcon-abc123" \
+  -client-routes-table "my_keyspace.custom_routes" \
+  -duration 15m
+```
+
+**Note:** The `-client-routes-connection-ids` flag cannot be used together with `-cloud-config-path`.
 
 ### Random value distributions
 
@@ -380,6 +413,45 @@ scylla-bench includes memory leak tests that use TestContainers to verify that r
 RUN_MEMORY_LEAK_TEST=true go test -v -run TestMemoryLeak
 ```
 
+### Integration Tests
+
+scylla-bench includes comprehensive integration tests that validate all workload types and modes against a real ScyllaDB instance. These tests ensure that no workload is critically broken and are automatically run on CI/CD.
+
+#### Running Integration Tests Locally
+
+To run the integration tests locally (requires Docker):
+
+```bash
+# Run all integration tests
+RUN_CONTAINER_TESTS=true go test -v -race -timeout 25m -run "^TestIntegration"
+
+# Run a specific integration test
+RUN_CONTAINER_TESTS=true go test -v -race -run TestIntegrationQuickSmoke
+
+# Run integration tests with data validation
+RUN_CONTAINER_TESTS=true go test -v -race -run TestIntegrationWithDataValidation
+```
+
+#### Integration Test Coverage
+
+The integration test suite covers:
+
+- **Workload types**: Sequential, Uniform, TimeSeries
+- **Operation modes**: Write, Read, Mixed (50/50 read/write), Counter Update/Read, Scan
+- **Data validation**: Write and read operations with checksum verification
+- **Quick smoke tests**: Fast validation of all modes (useful for development)
+
+Each test runs for a short duration (2-10 seconds) to provide fast feedback while ensuring the workload executes without critical errors.
+
+#### CI/CD Integration
+
+Integration tests are automatically run on:
+- Pull requests to the `master` branch
+- Pushes to the `master` branch
+- Manual workflow dispatch
+
+The tests use TestContainers with ScyllaDB 2025.2 and complete in approximately 8-10 minutes.
+
 ## Examples
 
 1. Sequential write to populate the database: `scylla-bench -workload sequential -mode write -nodes 127.0.0.1`
@@ -390,3 +462,4 @@ RUN_MEMORY_LEAK_TEST=true go test -v -run TestMemoryLeak
 6. Full table scan test: `scylla-bench -mode scan -timeout 5m -concurrency 1`
 7. Write to populate database with non-zero data: `scylla-bench -workload sequential -mode write -nodes 127.0.0.1 -clustering-row-size 16 -validate-data`
 8. Read with data verification: `scylla-bench -workload uniform -mode write -nodes 127.0.0.1 -clustering-row-size 16 -validate-data  -duration 10m`
+9. Test with increased schema timeout (for clusters with frequent ALTER TABLE operations): `scylla-bench -workload uniform -mode mixed -nodes 127.0.0.1 -duration 30m -metadata-schema-timeout 120s`

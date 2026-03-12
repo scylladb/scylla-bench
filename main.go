@@ -99,8 +99,9 @@ var (
 
 	rangeCount int
 
-	timeout    time.Duration
-	iterations uint
+	timeout                      time.Duration
+	metadataSchemaRequestTimeout time.Duration
+	iterations                   uint
 
 	retryNumber   int
 	retryInterval string
@@ -111,13 +112,16 @@ var (
 	// to be considered as timeout error and recorded to histogram as such
 	errorToTimeoutCutoffTime time.Duration
 	startTime                time.Time
-	stopAll                  uint32
+	stopAll                  atomic.Uint32
 	measureLatency           bool
 	hdrLatencyFile           string
 	hdrLatencyUnits          string
 	hdrLatencySigFig         int
 	validateData             bool
 	truncateTable            bool
+
+	clientRoutesConnectionIDs string
+	clientRoutesTable         string
 )
 
 func Query(session Session, request string) {
@@ -363,6 +367,12 @@ func main() {
 	flag.StringVar(&consistencyLevel, "consistency-level", "quorum", "consistency level")
 	flag.IntVar(&replicationFactor, "replication-factor", 1, "replication factor")
 	flag.DurationVar(&timeout, "timeout", 5*time.Second, "request timeout")
+	flag.DurationVar(
+		&metadataSchemaRequestTimeout,
+		"metadata-schema-timeout",
+		60*time.Second,
+		"timeout for schema and metadata queries (default 60s)",
+	)
 
 	flag.IntVar(&retryNumber, "retry-number", 10, "number of retries (default 10)")
 	flag.StringVar(
@@ -539,6 +549,18 @@ func main() {
 		"",
 		"path to client key file, needed to enable client certificate authentication",
 	)
+	flag.StringVar(
+		&clientRoutesConnectionIDs,
+		"client-routes-connection-ids",
+		"",
+		"comma-separated connection IDs to read from the system.client_routes table",
+	)
+	flag.StringVar(
+		&clientRoutesTable,
+		"client-routes-table",
+		"system.client_routes",
+		"table containing node ip/port mapping",
+	)
 
 	flag.StringVar(
 		&hostSelectionPolicy,
@@ -690,6 +712,31 @@ func main() {
 		log.Panic("can't use -tls/-username/-password and -cloud-config-path at the same time")
 	}
 
+	if (clientRoutesConnectionIDs != "") && cloudConfigPath != "" {
+		log.Panic("can't use -client-routes-connection-ids together with -cloud-config-path")
+	}
+
+	if clientRoutesConnectionIDs != "" {
+		rawIDs := strings.Split(clientRoutesConnectionIDs, ",")
+		var endpoints []gocql.ClientRoutesEndpoint
+		for _, id := range rawIDs {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			endpoints = append(endpoints, gocql.ClientRoutesEndpoint{ConnectionID: id})
+		}
+		if len(endpoints) == 0 {
+			log.Panic("-client-routes-connection-ids have empty list")
+		}
+		cluster = cluster.WithOptions(
+			gocql.WithClientRoutes(
+				gocql.WithTable(clientRoutesTable),
+				gocql.WithEndpoints(endpoints...),
+			),
+		)
+	}
+
 	retryPolicy = getRetryPolicy()
 	if retryHandler == "gocql" {
 		cluster.RetryPolicy = retryPolicy
@@ -700,6 +747,7 @@ func main() {
 	cluster.NumConns = connectionCount
 	cluster.PageSize = pageSize
 	cluster.Timeout = timeout
+	cluster.MetadataSchemaRequestTimeout = metadataSchemaRequestTimeout
 
 	policy, policyName, err := newHostSelectionPolicy(
 		hostSelectionPolicy,
@@ -795,7 +843,7 @@ func main() {
 	go func() {
 		<-interrupted
 		fmt.Println("\ninterrupted")
-		atomic.StoreUint32(&stopAll, 1)
+		stopAll.Store(1)
 
 		<-interrupted
 		fmt.Println("\nkilled")
@@ -805,7 +853,7 @@ func main() {
 	if testDuration > 0 {
 		go func() {
 			time.Sleep(testDuration)
-			atomic.StoreUint32(&stopAll, 1)
+			stopAll.Store(1)
 		}()
 	}
 

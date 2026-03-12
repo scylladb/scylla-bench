@@ -66,7 +66,7 @@ fmt: .prepare-golangci
 
 .PHONY: test
 test:
-	@go test -covermode=atomic -race -coverprofile=coverage.txt -timeout 5m -json -v ./... 2>&1 | go tool gotestfmt -showteststatus
+	@go test -covermode=atomic -race -coverprofile=coverage.txt -timeout 5m -json -v ./... 2>&1 | jq -c 'select(.ImportPath == null or .ImportPath == "")' | go tool gotestfmt -showteststatus
 
 .PHONY: check
 check: .prepare-golangci

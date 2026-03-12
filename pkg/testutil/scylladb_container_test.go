@@ -1,10 +1,8 @@
 package testutil
 
 import (
-	"context"
 	"os"
 	"testing"
-	"time"
 )
 
 // TestScyllaDBContainer tests the ScyllaDB container helper
@@ -15,20 +13,9 @@ func TestScyllaDBContainer(t *testing.T) {
 		t.Skip("Skipping container test. Set RUN_CONTAINER_TESTS=true to run")
 	}
 
-	// Create a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	// Create a ScyllaDB container
-	container, err := NewScyllaDBContainer(ctx)
-	if err != nil {
-		t.Fatalf("Failed to create ScyllaDB container: %v", err)
-	}
-	defer func() {
-		if err = container.Close(ctx); err != nil {
-			t.Logf("Failed to close container: %v", err)
-		}
-	}()
+	// Use the shared ScyllaDB container
+	container := SharedScyllaDBContainer(t)
+	var err error
 
 	// Test creating a keyspace
 	err = container.CreateKeyspace("test_keyspace", 1)
@@ -58,9 +45,13 @@ func TestScyllaDBContainer(t *testing.T) {
 	cluster := container.GetClusterConfig()
 	if cluster == nil {
 		t.Fatal("GetClusterConfig returned nil")
+		return
 	}
 
 	// Verify the cluster config
+	if len(cluster.Hosts) == 0 {
+		t.Fatal("GetClusterConfig returned no hosts")
+	}
 	if cluster.Hosts[0] != container.Host {
 		t.Errorf("Expected host %s, got %s", container.Host, cluster.Hosts[0])
 	}

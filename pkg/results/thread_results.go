@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	withLatencyLineFmt    = "\n%5v %7v %7v %6v %-6v %-6v %-6v %-6v %-6v %-6v %-6v %v"
-	withoutLatencyLineFmt = "\n%5v %7v %7v %6v"
+	withLatencyLineFmt    = "\n%8v %7v %7v %6v %-6v %-6v %-6v %-6v %-6v %-6v %-6v %v"
+	withoutLatencyLineFmt = "\n%8v %7v %7v %6v"
 )
 
 type TestResults struct {

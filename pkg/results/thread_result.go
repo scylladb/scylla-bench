@@ -1,23 +1,30 @@
 package results
 
 import (
+	"sync/atomic"
 	"time"
 )
 
 type TestThreadResult struct {
-	FullResult    *Result
-	PartialResult *Result
-	ResultChannel chan Result
-	partialStart  time.Time
+	FullResult        *Result
+	PartialResult     *Result
+	ResultChannel     chan Result
+	criticalErrorFlag *atomic.Bool
+	partialStart      time.Time
 }
 
-var GlobalErrorFlag = false
+var globalCriticalErrorFlag atomic.Bool
 
 func NewTestThreadResult() *TestThreadResult {
+	return NewTestThreadResultWithCriticalErrorFlag(&globalCriticalErrorFlag)
+}
+
+func NewTestThreadResultWithCriticalErrorFlag(flag *atomic.Bool) *TestThreadResult {
 	r := &TestThreadResult{}
 	r.FullResult = &Result{}
 	r.PartialResult = &Result{}
 	r.FullResult.Final = true
+	r.criticalErrorFlag = flag
 	if globalResultConfiguration.measureLatency {
 		r.FullResult.RawLatency = NewHistogram(
 			&globalResultConfiguration.latencyHistogramConfiguration,
@@ -74,6 +81,14 @@ func NewTestThreadResult() *TestThreadResult {
 	return r
 }
 
+func ResetGlobalCriticalErrorFlag() {
+	globalCriticalErrorFlag.Store(false)
+}
+
+func (r *TestThreadResult) HasCriticalError() bool {
+	return r.criticalErrorFlag != nil && r.criticalErrorFlag.Load()
+}
+
 func (r *TestThreadResult) IncOps() {
 	r.FullResult.Operations++
 	r.PartialResult.Operations++
@@ -100,7 +115,9 @@ func (r *TestThreadResult) SubmitCriticalError(err error) {
 	} else {
 		r.FullResult.CriticalErrors = append(r.FullResult.CriticalErrors, err)
 	}
-	GlobalErrorFlag = true
+	if r.criticalErrorFlag != nil {
+		r.criticalErrorFlag.Store(true)
+	}
 }
 
 func (r *TestThreadResult) ResetPartialResult() {
