@@ -3,6 +3,9 @@ package testutil
 import (
 	"context"
 	"fmt"
+	"strings"
+	"sync"
+	"testing"
 	"time"
 
 	"github.com/gocql/gocql"
@@ -19,14 +22,25 @@ type ScyllaDBContainer struct {
 	Port      int
 }
 
+var sharedScyllaContainer struct {
+	err       error
+	container *ScyllaDBContainer
+	ready     chan struct{}
+	refs      int
+	mu        sync.Mutex
+	starting  bool
+}
+
 // NewScyllaDBContainer creates and starts a new ScyllaDB container
 func NewScyllaDBContainer(ctx context.Context) (*ScyllaDBContainer, error) {
 	// Configure the ScyllaDB container
 	container, err := scylladb.Run(ctx,
 		"scylladb/scylla:2025.2",
 		testcontainers.WithWaitStrategy(
-			wait.ForLog("Scylla version").
-				WithStartupTimeout(2*time.Minute)),
+			wait.ForAll(
+				wait.ForListeningPort("9042/tcp"),
+				wait.ForLog("Scylla version"),
+			).WithDeadline(2*time.Minute)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start ScyllaDB container: %w", err)
@@ -61,15 +75,25 @@ func NewScyllaDBContainer(ctx context.Context) (*ScyllaDBContainer, error) {
 	var session *gocql.Session
 	var sessionErr error
 
-	// Retry connection a few times with increasing delay
+	// Retry connection a few times with bounded backoff and context awareness.
 	for i := 0; i < 10; i++ {
 		session, sessionErr = cluster.CreateSession()
 		if sessionErr == nil {
 			break
 		}
 		fmt.Printf("Connection attempt %d failed: %v\n", i+1, sessionErr)
-		// Exponential backoff
-		time.Sleep(time.Duration(2<<uint(i)) * time.Second)
+
+		if i == 9 {
+			break
+		}
+
+		delay := time.Duration(i+1) * 2 * time.Second
+		select {
+		case <-ctx.Done():
+			_ = container.Terminate(ctx)
+			return nil, fmt.Errorf("context canceled while waiting for ScyllaDB session: %w", ctx.Err())
+		case <-time.After(delay):
+		}
 	}
 
 	if sessionErr != nil {
@@ -84,6 +108,79 @@ func NewScyllaDBContainer(ctx context.Context) (*ScyllaDBContainer, error) {
 		Port:      port,
 		Session:   session,
 	}, nil
+}
+
+// SharedScyllaDBContainer returns a process-wide ScyllaDB container shared by tests.
+// Each caller gets automatic cleanup registration; the container is terminated when
+// the last test using it completes.
+func SharedScyllaDBContainer(tb testing.TB) *ScyllaDBContainer {
+	tb.Helper()
+
+	sharedScyllaContainer.mu.Lock()
+	for sharedScyllaContainer.starting {
+		ready := sharedScyllaContainer.ready
+		sharedScyllaContainer.mu.Unlock()
+		<-ready
+		sharedScyllaContainer.mu.Lock()
+	}
+
+	if sharedScyllaContainer.container != nil {
+		sharedScyllaContainer.refs++
+		container := sharedScyllaContainer.container
+		sharedScyllaContainer.mu.Unlock()
+		registerSharedContainerCleanup(tb)
+		return container
+	}
+
+	sharedScyllaContainer.starting = true
+	sharedScyllaContainer.ready = make(chan struct{})
+	sharedScyllaContainer.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	container, err := NewScyllaDBContainer(ctx)
+	cancel()
+
+	sharedScyllaContainer.mu.Lock()
+	sharedScyllaContainer.starting = false
+	sharedScyllaContainer.err = err
+	if err == nil {
+		sharedScyllaContainer.container = container
+		sharedScyllaContainer.refs = 1
+	}
+	close(sharedScyllaContainer.ready)
+	sharedScyllaContainer.mu.Unlock()
+
+	if err != nil {
+		tb.Fatalf("Failed to start shared ScyllaDB container: %v", err)
+	}
+
+	registerSharedContainerCleanup(tb)
+	return container
+}
+
+func registerSharedContainerCleanup(tb testing.TB) {
+	tb.Helper()
+	tb.Cleanup(func() {
+		sharedScyllaContainer.mu.Lock()
+		if sharedScyllaContainer.refs > 0 {
+			sharedScyllaContainer.refs--
+		}
+		if sharedScyllaContainer.refs != 0 || sharedScyllaContainer.container == nil {
+			sharedScyllaContainer.mu.Unlock()
+			return
+		}
+
+		container := sharedScyllaContainer.container
+		sharedScyllaContainer.container = nil
+		sharedScyllaContainer.err = nil
+		sharedScyllaContainer.mu.Unlock()
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := container.Close(ctx); err != nil {
+			tb.Logf("Failed to close shared ScyllaDB container: %v", err)
+		}
+	})
 }
 
 // CreateKeyspace creates a keyspace with the given name and replication factor
@@ -119,6 +216,11 @@ func (c *ScyllaDBContainer) TruncateTable(keyspaceName, tableName string) error 
 	return c.Session.Query(query).Exec()
 }
 
+func (c *ScyllaDBContainer) DropKeyspace(keyspaceName string) error {
+	query := fmt.Sprintf("DROP KEYSPACE IF EXISTS %s", keyspaceName)
+	return c.Session.Query(query).Exec()
+}
+
 // Close closes the session and terminates the container
 func (c *ScyllaDBContainer) Close(ctx context.Context) error {
 	if c.Session != nil {
@@ -138,5 +240,20 @@ func (c *ScyllaDBContainer) GetClusterConfig() *gocql.ClusterConfig {
 	cluster.Port = c.Port
 	cluster.Consistency = gocql.Quorum
 	cluster.Timeout = 10 * time.Second
+	cluster.ConnectTimeout = 30 * time.Second
+	cluster.NumConns = 1
+	cluster.DisableInitialHostLookup = true
 	return cluster
+}
+
+func GenerateUniqueKeyspaceName(tb testing.TB) string {
+	tb.Helper()
+
+	name := strings.ToLower(tb.Name())
+	replacer := strings.NewReplacer("/", "_", " ", "_", "-", "_")
+	name = replacer.Replace(name)
+	if len(name) > 36 {
+		name = name[:36]
+	}
+	return "ks_" + name
 }
