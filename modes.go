@@ -18,6 +18,7 @@ import (
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
 
+	"github.com/scylladb/scylla-bench/internal/clock"
 	"github.com/scylladb/scylla-bench/pkg/results"
 	"github.com/scylladb/scylla-bench/pkg/workloads"
 	"github.com/scylladb/scylla-bench/random"
@@ -25,7 +26,12 @@ import (
 
 var reportInterval = 1 * time.Second
 
+// globalClock is the process-wide real clock, initialized at package load time.
+// It is used as the default for DefaultExecutionConfig() and normalized().
+var globalClock clock.Clock = clock.New()
+
 type ExecutionConfig struct {
+	Clock                 clock.Clock
 	ClusteringRowSizeDist random.Distribution
 	RetryPolicy           *gocql.ExponentialBackoffRetryPolicy
 	StopAll               *atomic.Uint32
@@ -51,6 +57,7 @@ type ExecutionConfig struct {
 
 func DefaultExecutionConfig() ExecutionConfig {
 	return ExecutionConfig{
+		Clock:                 globalClock,
 		KeyspaceName:          keyspaceName,
 		TableName:             tableName,
 		CounterTableName:      counterTableName,
@@ -76,6 +83,9 @@ func DefaultExecutionConfig() ExecutionConfig {
 }
 
 func (cfg ExecutionConfig) normalized() ExecutionConfig {
+	if cfg.Clock == nil {
+		cfg.Clock = globalClock
+	}
 	if cfg.KeyspaceName == "" {
 		cfg.KeyspaceName = keyspaceName
 	}
@@ -148,6 +158,7 @@ func (*UnlimitedRateLimiter) Expected() time.Time {
 }
 
 type MaximumRateLimiter struct {
+	clk                 clock.Clock
 	StartTime           time.Time
 	Period              time.Duration
 	CompletedOperations int64
@@ -156,9 +167,9 @@ type MaximumRateLimiter struct {
 func (mxrl *MaximumRateLimiter) Wait() {
 	mxrl.CompletedOperations++
 	nextRequest := mxrl.StartTime.Add(mxrl.Period * time.Duration(mxrl.CompletedOperations))
-	now := time.Now()
+	now := mxrl.clk.Now()
 	if now.Before(nextRequest) {
-		time.Sleep(nextRequest.Sub(now))
+		mxrl.clk.Sleep(nextRequest.Sub(now))
 	}
 }
 
@@ -166,19 +177,21 @@ func (mxrl *MaximumRateLimiter) Expected() time.Time {
 	return mxrl.StartTime.Add(mxrl.Period * time.Duration(mxrl.CompletedOperations))
 }
 
-func NewRateLimiter(maximumRate int, _ time.Duration) RateLimiter {
+func NewRateLimiter(clk clock.Clock, maximumRate int, _ time.Duration) RateLimiter {
 	if maximumRate == 0 {
 		return &UnlimitedRateLimiter{}
 	}
 	period := time.Duration(int64(time.Second) / int64(maximumRate))
 	return &MaximumRateLimiter{
+		clk:                 clk,
 		Period:              period,
-		StartTime:           time.Now(),
+		StartTime:           clk.Now(),
 		CompletedOperations: 0,
 	}
 }
 
 func RunConcurrently(
+	clk clock.Clock,
 	maximumRate int,
 	workload func(id int, testResult *results.TestThreadResult, rateLimiter RateLimiter),
 ) *results.TestResults {
@@ -191,15 +204,14 @@ func RunConcurrently(
 	}
 
 	totalResults := results.TestResults{}
-	totalResults.Init(concurrency)
-	totalResults.SetStartTime()
+	totalResults.Init(concurrency, clk)
 	totalResults.PrintResultsHeader()
 
 	for i := 0; i < concurrency; i++ {
 		testResult := totalResults.GetTestResult(i)
 		go func(i int) {
 			timeOffset := time.Duration(timeOffsetUnit * int64(i))
-			workload(i, testResult, NewRateLimiter(maximumRate, timeOffset))
+			workload(i, testResult, NewRateLimiter(clk, maximumRate, timeOffset))
 		}(i)
 	}
 
@@ -256,8 +268,6 @@ func getExponentialTime(minimum, maximum time.Duration, attempts int) time.Durat
 
 var errDoNotRegister = errors.New("do not register this test results")
 
-//
-//nolint:lll
 func RunTest(
 	config ExecutionConfig,
 	threadResult *results.TestThreadResult,
@@ -266,7 +276,7 @@ func RunTest(
 	test func(rb *results.TestThreadResult) (time.Duration, error),
 ) {
 	config = config.normalized()
-	start := time.Now()
+	start := config.Clock.Now()
 	partialStart := start
 	iter := NewTestIterator(workload, config)
 	errorsAtRow := 0
@@ -275,11 +285,11 @@ func RunTest(
 
 		expectedStartTime := rateLimiter.Expected()
 		if expectedStartTime.IsZero() {
-			expectedStartTime = time.Now()
+			expectedStartTime = config.Clock.Now()
 		}
 
 		rawLatency, err := test(threadResult)
-		endTime := time.Now()
+		endTime := config.Clock.Now()
 		switch {
 		case err == nil:
 			errorsAtRow = 0
@@ -299,7 +309,7 @@ func RunTest(
 			}
 		}
 
-		now := time.Now()
+		now := config.Clock.Now()
 		if config.MaxErrorsAtRow > 0 && errorsAtRow >= config.MaxErrorsAtRow {
 			threadResult.SubmitCriticalError(fmt.Errorf(
 				"error limit (maxErrorsAtRow) of %d errors is reached", errorsAtRow))
@@ -321,7 +331,7 @@ func RunTest(
 			partialStart = partialStart.Add(reportInterval)
 		}
 	}
-	end := time.Now()
+	end := config.Clock.Now()
 
 	threadResult.FullResult.ElapsedTime = end.Sub(start)
 	threadResult.ResultChannel <- *threadResult.FullResult
@@ -496,7 +506,7 @@ func handleSbRetryErrorWithConfig(config ExecutionConfig, queryStr string, err e
 
 	sleepTime := getExponentialTime(config.RetryPolicy.Min, config.RetryPolicy.Max, currentAttempts)
 	log.Printf("%s || retry: attempt №%d, sleep for %s", queryStr, currentAttempts, sleepTime)
-	time.Sleep(sleepTime)
+	config.Clock.Sleep(sleepTime)
 	return nil
 }
 
@@ -527,9 +537,9 @@ func createWriteTestFuncWithConfig(
 		queryStr := ""
 		currentAttempts := 0
 		for {
-			requestStart := time.Now()
+			requestStart := config.Clock.Now()
 			err = bound.Exec()
-			requestEnd := time.Now()
+			requestEnd := config.Clock.Now()
 
 			if err == nil {
 				rb.IncOps()
@@ -648,9 +658,9 @@ func DoBatchedWritesWithConfig(
 			queryStr := ""
 			currentAttempts := 0
 			for {
-				requestStart := time.Now()
+				requestStart := config.Clock.Now()
 				err := session.ExecuteBatch(batch)
-				requestEnd := time.Now()
+				requestEnd := config.Clock.Now()
 
 				if err == nil {
 					rb.IncOps()
@@ -726,9 +736,9 @@ func DoCounterUpdatesWithConfig(
 			queryStr := ""
 			currentAttempts := 0
 			for {
-				requestStart := time.Now()
+				requestStart := config.Clock.Now()
 				err := query.Exec()
-				requestEnd := time.Now()
+				requestEnd := config.Clock.Now()
 
 				if err == nil {
 					rb.IncOps()
@@ -935,9 +945,9 @@ func createReadTestFuncWithConfig(
 		queryStr := query.String()
 
 		for currentAttempts := 0; ; currentAttempts++ {
-			requestStart := time.Now()
+			requestStart := config.Clock.Now()
 			err := executeReadsQuery(config, query, table, rb, validateData)
-			requestEnd := time.Now()
+			requestEnd := config.Clock.Now()
 
 			if err == nil {
 				rb.IncOps()
@@ -990,13 +1000,13 @@ func DoScanTableWithConfig(config ExecutionConfig, session *gocql.Session, threa
 		queryStr := query.String()
 
 		for currentAttempts := 0; ; currentAttempts++ {
-			requestStart := time.Now()
+			requestStart := config.Clock.Now()
 			query.Bind(currentRange.Start, currentRange.End)
 			iter := query.Iter()
 			for iter.Scan(nil, nil, nil) {
 				rb.IncRows()
 			}
-			requestEnd := time.Now()
+			requestEnd := config.Clock.Now()
 			err := iter.Close()
 
 			if err == nil {
@@ -1036,7 +1046,7 @@ func DoMixedWithConfig(
 
 		expectedStartTime := rateLimiter.Expected()
 		if expectedStartTime.IsZero() {
-			expectedStartTime = time.Now()
+			expectedStartTime = config.Clock.Now()
 		}
 
 		// Perform write on even operations, read on odd operations
@@ -1046,7 +1056,7 @@ func DoMixedWithConfig(
 			rawLatency, err := writeTestFunc(rb)
 			if err == nil {
 				// Record coordinated omission fixed latency for write operations
-				endTime := time.Now()
+				endTime := config.Clock.Now()
 				rb.RecordWriteCoFixedLatency(endTime.Sub(expectedStartTime))
 			}
 			return rawLatency, err
@@ -1055,7 +1065,7 @@ func DoMixedWithConfig(
 		rawLatency, err := readTestFunc(rb)
 		if err == nil {
 			// Record coordinated omission fixed latency for read operations
-			endTime := time.Now()
+			endTime := config.Clock.Now()
 			rb.RecordReadCoFixedLatency(endTime.Sub(expectedStartTime))
 		}
 		return rawLatency, err
@@ -1099,9 +1109,9 @@ func createMixedWriteTestFuncWithConfig(
 		queryStr := ""
 		currentAttempts := 0
 		for {
-			requestStart := time.Now()
+			requestStart := config.Clock.Now()
 			err = bound.Exec()
-			requestEnd := time.Now()
+			requestEnd := config.Clock.Now()
 
 			if err == nil {
 				rb.IncOps()
@@ -1180,7 +1190,7 @@ func createMixedReadTestFuncWithConfig(
 		queryStr := ""
 		currentAttempts := 0
 		for {
-			requestStart := time.Now()
+			requestStart := config.Clock.Now()
 			iter := query.Iter()
 
 			var (
@@ -1209,7 +1219,7 @@ func createMixedReadTestFuncWithConfig(
 				}
 			}
 
-			requestEnd := time.Now()
+			requestEnd := config.Clock.Now()
 			err := iter.Close()
 			if err == nil {
 				rb.IncOps()

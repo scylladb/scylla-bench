@@ -3,24 +3,46 @@ package results
 import (
 	"sync/atomic"
 	"time"
+
+	"github.com/scylladb/scylla-bench/internal/clock"
 )
 
 type TestThreadResult struct {
 	FullResult        *Result
 	PartialResult     *Result
 	ResultChannel     chan Result
+	clk               clock.Clock
 	criticalErrorFlag *atomic.Bool
 	partialStart      time.Time
 }
 
 var globalCriticalErrorFlag atomic.Bool
 
+// globalResultClock is the default clock for result-reporting code. It is used
+// when NewTestThreadResult() is called without an explicit clock. Call
+// SetGlobalResultClock to override (e.g. from main, to share a single clock
+// instance with the rest of the program).
+var globalResultClock clock.Clock = clock.New()
+
+// SetGlobalResultClock replaces the package-level default clock. Call this
+// once from main() before creating any TestThreadResult instances.
+func SetGlobalResultClock(clk clock.Clock) {
+	globalResultClock = clk
+}
+
 func NewTestThreadResult() *TestThreadResult {
 	return NewTestThreadResultWithCriticalErrorFlag(&globalCriticalErrorFlag)
 }
 
 func NewTestThreadResultWithCriticalErrorFlag(flag *atomic.Bool) *TestThreadResult {
-	r := &TestThreadResult{}
+	return NewTestThreadResultWithClockAndFlag(globalResultClock, flag)
+}
+
+func NewTestThreadResultWithClockAndFlag(clk clock.Clock, flag *atomic.Bool) *TestThreadResult {
+	if clk == nil {
+		panic("results: clock must not be nil; use clock.New() for production or clock.NewManual() for tests")
+	}
+	r := &TestThreadResult{clk: clk}
 	r.FullResult = &Result{}
 	r.PartialResult = &Result{}
 	r.FullResult.Final = true
@@ -234,7 +256,7 @@ func (r *TestThreadResult) RecordWriteCoFixedLatency(latency time.Duration) {
 }
 
 func (r *TestThreadResult) SubmitResult() {
-	now := time.Now()
+	now := r.clk.Now()
 	if now.Sub(r.partialStart) > time.Second {
 		r.ResultChannel <- *r.PartialResult
 		r.ResetPartialResult()

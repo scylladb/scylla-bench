@@ -186,7 +186,11 @@ func GetWorkload(
 			currentRemainderPartialOffset = currentThreadID
 		}
 		rowOffset := partitionOffset*clusteringRowCount + currentThreadID*rowCount + currentRemainderPartialOffset
-		return workloads.NewSequentialVisitAll(rowOffset, rowCount+additionalRows, clusteringRowCount)
+		wrkld, err := workloads.NewSequentialVisitAll(rowOffset, rowCount+additionalRows, clusteringRowCount)
+		if err != nil {
+			log.Panic(err)
+		}
+		return wrkld
 	case "uniform":
 		return workloads.NewRandomUniform(threadID, partitionCount, partitionOffset, clusteringRowCount)
 	case "timeseries":
@@ -201,6 +205,7 @@ func GetWorkload(
 				writeRate,
 				distribution,
 				startTime,
+				globalClock,
 			)
 		case "write":
 			return workloads.NewTimeSeriesWriter(
@@ -852,7 +857,7 @@ func main() {
 
 	if testDuration > 0 {
 		go func() {
-			time.Sleep(testDuration)
+			globalClock.Sleep(testDuration)
 			stopAll.Store(1)
 		}()
 	}
@@ -860,7 +865,7 @@ func main() {
 	if startTimestamp != 0 {
 		startTime = time.Unix(0, startTimestamp)
 	} else {
-		startTime = time.Now()
+		startTime = globalClock.Now()
 	}
 
 	fmt.Println("Configuration")
@@ -921,11 +926,13 @@ func main() {
 		fmt.Println("Start timestamp:\t", startTime.UnixNano())
 		fmt.Println("Write rate:\t\t", int64(maximumRate)/partitionCount)
 	}
+	results.SetGlobalResultClock(globalClock)
 	setResultsConfiguration()
 
 	fmt.Println("Hdr memory consumption:\t", results.GetHdrMemoryConsumption(concurrency), "bytes")
 
 	testResult := RunConcurrently(
+		globalClock,
 		maximumRate,
 		func(i int, testResult *results.TestThreadResult, rateLimiter RateLimiter) {
 			GetMode(

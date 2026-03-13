@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/HdrHistogram/hdrhistogram-go"
+
+	"github.com/scylladb/scylla-bench/internal/clock"
 )
 
 const (
@@ -14,21 +16,23 @@ const (
 
 type TestResults struct {
 	startTime       time.Time
+	clk             clock.Clock
 	totalResult     *MergedResult
 	threadResults   []*TestThreadResult
 	numberOfThreads int
 }
 
-func (tr *TestResults) Init(concurrency int) {
+func (tr *TestResults) Init(concurrency int, clk clock.Clock) {
+	if clk == nil {
+		panic("results: clock must not be nil")
+	}
+	tr.clk = clk
+	tr.startTime = clk.Now()
 	tr.threadResults = make([]*TestThreadResult, concurrency)
 	tr.numberOfThreads = concurrency
 	for i := range tr.threadResults {
-		tr.threadResults[i] = NewTestThreadResult()
+		tr.threadResults[i] = NewTestThreadResultWithClockAndFlag(clk, &globalCriticalErrorFlag)
 	}
-}
-
-func (tr *TestResults) SetStartTime() {
-	tr.startTime = time.Now()
 }
 
 func (tr *TestResults) GetTestResult(idx int) *TestThreadResult {
@@ -40,7 +44,7 @@ func (tr *TestResults) GetTestResults() []*TestThreadResult {
 }
 
 func (tr *TestResults) GetResultsFromThreadsAndMerge() (bool, *MergedResult) {
-	result := NewMergedResult()
+	result := NewMergedResult(tr.clk)
 	final := false
 	for i, ch := range tr.threadResults {
 		res := <-ch.ResultChannel
@@ -68,11 +72,13 @@ func (tr *TestResults) GetTotalResults() {
 	var final bool
 	var result *MergedResult
 
+	clk := tr.clk
+
 	// We need this rounding since hdr histogram round up baseTime dividing by 1000
 	//  before reducing it from start time, which is divided by 1000000000 before applied to histogram
 	//  giving small chance that rounded baseTime would be greater than histogram start time and negative
 	//  times in the histogram log
-	baseTime := (time.Now().UnixNano() / 1000000000) * 1000000000
+	baseTime := (clk.NowUnixNano() / 1000000000) * 1000000000
 
 	var hdrLogWriter *hdrhistogram.HistogramLogWriter
 	if globalResultConfiguration.hdrLatencyFile != "" {
@@ -84,7 +90,7 @@ func (tr *TestResults) GetTotalResults() {
 		if final {
 			break
 		}
-		result.Time = time.Since(tr.startTime)
+		result.Time = clk.Since(tr.startTime)
 		result.PrintPartialResult()
 		if hdrLogWriter != nil {
 			result.SaveLatenciesToHdrHistogram(hdrLogWriter)

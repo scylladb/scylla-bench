@@ -1,10 +1,13 @@
 package workloads
 
 import (
+	"fmt"
 	"log"
 	"math"
 	"math/rand"
 	"time"
+
+	"github.com/scylladb/scylla-bench/internal/clock"
 )
 
 const (
@@ -37,7 +40,10 @@ type SequentialVisitAll struct {
 	ProcessedRowCount  int64
 }
 
-func NewSequentialVisitAll(rowOffset, rowCount, clusteringRowCount int64) *SequentialVisitAll {
+func NewSequentialVisitAll(rowOffset, rowCount, clusteringRowCount int64) (*SequentialVisitAll, error) {
+	if clusteringRowCount <= 0 {
+		return nil, fmt.Errorf("workloads: clusteringRowCount must be greater than 0, got %d", clusteringRowCount)
+	}
 	currentPartition := rowOffset / clusteringRowCount
 	currentClusteringRow := rowOffset % clusteringRowCount
 	return &SequentialVisitAll{
@@ -48,7 +54,7 @@ func NewSequentialVisitAll(rowOffset, rowCount, clusteringRowCount int64) *Seque
 		currentClusteringRow,
 		currentClusteringRow,
 		0,
-	}
+	}, nil
 }
 
 func (sva *SequentialVisitAll) NextTokenRange() TokenRange {
@@ -207,6 +213,7 @@ func (*TimeSeriesWrite) Restart() {
 
 type TimeSeriesRead struct {
 	Generator         *rand.Rand
+	clk               clock.Clock
 	HalfNormalDist    bool
 	PkStride          int64
 	PkOffset          int64
@@ -223,6 +230,7 @@ func NewTimeSeriesReader(
 	pkCount, basicPkOffset, ckCount, writeRate int64,
 	distribution string,
 	startTime time.Time,
+	clk clock.Clock,
 ) *TimeSeriesRead {
 	var halfNormalDist bool
 	switch distribution {
@@ -233,13 +241,25 @@ func NewTimeSeriesReader(
 	default:
 		log.Fatal("unknown distribution", distribution)
 	}
-	generator := rand.New(rand.NewSource(int64(time.Now().Nanosecond() * (threadID + 1))))
+	if clk == nil {
+		panic("workloads: clock must not be nil; use clock.New() for production or clock.NewManual() for tests")
+	}
+	generator := rand.New(rand.NewSource(clk.NowUnixNano() + int64(threadID)))
 	pkStride := int64(threadCount)
 	pkOffset := (int64(threadID) % pkCount) + basicPkOffset
 	period := time.Second.Nanoseconds() / writeRate
 	return &TimeSeriesRead{
-		generator, halfNormalDist, pkStride, pkOffset, pkCount, pkOffset - pkStride,
-		startTime.UnixNano(), ckCount, 0, period,
+		Generator:         generator,
+		clk:               clk,
+		HalfNormalDist:    halfNormalDist,
+		PkStride:          pkStride,
+		PkOffset:          pkOffset,
+		PkCount:           pkCount,
+		PkPosition:        pkOffset - pkStride,
+		StartTimestamp:    startTime.UnixNano(),
+		CkCount:           ckCount,
+		CurrentGeneration: 0,
+		Period:            period,
 	}
 }
 
@@ -261,13 +281,13 @@ func (tsw *TimeSeriesRead) NextPartitionKey() int64 {
 	if tsw.PkPosition >= tsw.PkCount+tsw.PkOffset {
 		tsw.PkPosition = tsw.PkOffset
 	}
-	maxGeneration := (time.Now().UnixNano()-tsw.StartTimestamp)/(tsw.Period*tsw.CkCount) + 1
+	maxGeneration := (tsw.clk.NowUnixNano()-tsw.StartTimestamp)/(tsw.Period*tsw.CkCount) + 1
 	tsw.CurrentGeneration = RandomInt64(tsw.Generator, tsw.HalfNormalDist, maxGeneration)
 	return tsw.PkPosition<<32 | tsw.CurrentGeneration
 }
 
 func (tsw *TimeSeriesRead) NextClusteringKey() int64 {
-	maxRange := (time.Now().UnixNano()-tsw.StartTimestamp)/tsw.Period - tsw.CurrentGeneration*tsw.CkCount + 1
+	maxRange := (tsw.clk.NowUnixNano()-tsw.StartTimestamp)/tsw.Period - tsw.CurrentGeneration*tsw.CkCount + 1
 	maxRange = min(tsw.CkCount, maxRange)
 	timestampDelta := (tsw.CurrentGeneration*tsw.CkCount + RandomInt64(tsw.Generator, tsw.HalfNormalDist, maxRange)) * tsw.Period
 	return -(timestampDelta + tsw.StartTimestamp)

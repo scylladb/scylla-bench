@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/scylladb/scylla-bench/internal/clock"
 )
 
 func Must[T any](v T, err error) T {
@@ -414,15 +416,15 @@ func TestMixedModeCoFixedLatencyRecording(t *testing.T) {
 
 	// Mock rate limiter that returns a known expected time
 	mockRateLimiter := &MaximumRateLimiter{
-		StartTime: time.Now().Add(-time.Second), // 1 second ago
-		Period:    time.Millisecond * 10,        // 10ms between operations
+		StartTime: clock.New().Now().Add(-time.Second), // 1 second ago
+		Period:    time.Millisecond * 10,               // 10ms between operations
 	}
 
 	// Test that the DoMixed function structure correctly handles expectedStartTime
 	// by checking that rateLimiter.Expected() is called within the test function
 
 	// Create a test that verifies the logic without database operations
-	testStartTime := time.Now()
+	testStartTime := clock.New().Now()
 	expectedStartTime := mockRateLimiter.Expected()
 	if expectedStartTime.IsZero() {
 		expectedStartTime = testStartTime
