@@ -1,7 +1,7 @@
 // Package clock provides time utilities that enforce UTC throughout the codebase.
 //
 // All time operations in scylla-bench must go through a Clock instead of
-// calling time.Now(), time.Since(), or time.Sleep() directly. This ensures:
+// calling time.Now() or time.Sleep() directly. This ensures:
 //   - All timestamps are timezone-neutral (UTC), unaffected by DST transitions.
 //   - Tests can inject a [Manual] clock to control and inspect time without sleeping.
 //
@@ -19,12 +19,13 @@ type Clock interface {
 	// Now returns the current time. Implementations must always return a UTC time.
 	Now() time.Time
 
-	// Since returns the elapsed time since t, equivalent to Now().Sub(t).
+	// Since returns the elapsed time since t. The [UTC] implementation
+	// delegates to time.Since to preserve the monotonic clock reading.
 	Since(t time.Time) time.Duration
 
 	// NowUnixNano returns the current time as nanoseconds since the Unix epoch.
-	// Prefer this over Now().UnixNano() on hot paths (time-series key generation,
-	// HDR histogram timestamps) to make the intent explicit.
+	// Use this when only a Unix nanosecond timestamp is needed, to make the
+	// intent explicit and avoid an intermediate time.Time allocation.
 	NowUnixNano() int64
 
 	// Sleep pauses the current goroutine for at least d. On a [Manual] clock this
@@ -33,12 +34,12 @@ type Clock interface {
 	Sleep(d time.Duration)
 }
 
-// UTC is the real-clock implementation. It always returns UTC times and
-// delegates Sleep to the standard library. Construct it once in main and
-// pass it everywhere through dependency injection.
+// UTC is the real-clock implementation. It is stateless, so multiple
+// instances are equivalent, but prefer injecting a single instance for
+// consistency.
 type UTC struct{}
 
-// New returns the production Clock. Call this once in main().
+// New returns the production Clock.
 func New() Clock {
 	return UTC{}
 }
@@ -48,7 +49,7 @@ func (UTC) Now() time.Time {
 }
 
 func (UTC) Since(t time.Time) time.Duration {
-	return time.Now().UTC().Sub(t)
+	return time.Since(t)
 }
 
 func (UTC) NowUnixNano() int64 {

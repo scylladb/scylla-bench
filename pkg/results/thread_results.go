@@ -22,20 +22,17 @@ type TestResults struct {
 	numberOfThreads int
 }
 
-func (tr *TestResults) Init(concurrency int) {
-	tr.threadResults = make([]*TestThreadResult, concurrency)
-	tr.numberOfThreads = concurrency
-	for i := range tr.threadResults {
-		tr.threadResults[i] = NewTestThreadResult()
-	}
-}
-
-func (tr *TestResults) SetStartTime(clk clock.Clock) {
+func (tr *TestResults) Init(concurrency int, clk clock.Clock) {
 	if clk == nil {
-		clk = globalResultClock
+		panic("results: clock must not be nil")
 	}
 	tr.clk = clk
 	tr.startTime = clk.Now()
+	tr.threadResults = make([]*TestThreadResult, concurrency)
+	tr.numberOfThreads = concurrency
+	for i := range tr.threadResults {
+		tr.threadResults[i] = NewTestThreadResultWithClockAndFlag(clk, &globalCriticalErrorFlag)
+	}
 }
 
 func (tr *TestResults) GetTestResult(idx int) *TestThreadResult {
@@ -47,7 +44,7 @@ func (tr *TestResults) GetTestResults() []*TestThreadResult {
 }
 
 func (tr *TestResults) GetResultsFromThreadsAndMerge() (bool, *MergedResult) {
-	result := NewMergedResult()
+	result := NewMergedResult(tr.clk)
 	final := false
 	for i, ch := range tr.threadResults {
 		res := <-ch.ResultChannel
@@ -76,9 +73,6 @@ func (tr *TestResults) GetTotalResults() {
 	var result *MergedResult
 
 	clk := tr.clk
-	if clk == nil {
-		clk = globalResultClock
-	}
 
 	// We need this rounding since hdr histogram round up baseTime dividing by 1000
 	//  before reducing it from start time, which is divided by 1000000000 before applied to histogram

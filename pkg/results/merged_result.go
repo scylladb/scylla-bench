@@ -8,9 +8,12 @@ import (
 	"time"
 
 	"github.com/HdrHistogram/hdrhistogram-go"
+
+	"github.com/scylladb/scylla-bench/internal/clock"
 )
 
 type MergedResult struct {
+	clk            clock.Clock
 	RawLatency     *hdrhistogram.Histogram
 	CoFixedLatency *hdrhistogram.Histogram
 	// Separate histograms for mixed mode read/write operations
@@ -28,10 +31,10 @@ type MergedResult struct {
 	HistogramStartTime      int64
 }
 
-func NewMergedResult() *MergedResult {
-	result := &MergedResult{}
+func NewMergedResult(clk clock.Clock) *MergedResult {
+	result := &MergedResult{clk: clk}
 	if globalResultConfiguration.measureLatency {
-		result.HistogramStartTime = globalResultClock.NowUnixNano()
+		result.HistogramStartTime = clk.NowUnixNano()
 		result.RawLatency = NewHistogram(
 			&globalResultConfiguration.latencyHistogramConfiguration,
 			"raw",
@@ -165,7 +168,7 @@ func (mr *MergedResult) getLatencyHistogram() *hdrhistogram.Histogram {
 
 func (mr *MergedResult) SaveLatenciesToHdrHistogram(hdrLogWriter *hdrhistogram.HistogramLogWriter) {
 	startTimeMs := mr.HistogramStartTime / 1000000
-	endTimeMs := globalResultClock.NowUnixNano() / 1000000
+	endTimeMs := mr.clk.NowUnixNano() / 1000000
 
 	// Save standard histograms
 	mr.CoFixedLatency.SetStartTimeMs(startTimeMs)

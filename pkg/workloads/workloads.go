@@ -209,7 +209,7 @@ func (*TimeSeriesWrite) Restart() {
 
 type TimeSeriesRead struct {
 	Generator         *rand.Rand
-	Clock             clock.Clock
+	clk               clock.Clock
 	HalfNormalDist    bool
 	PkStride          int64
 	PkOffset          int64
@@ -238,15 +238,15 @@ func NewTimeSeriesReader(
 		log.Fatal("unknown distribution", distribution)
 	}
 	if clk == nil {
-		clk = clock.New()
+		panic("workloads: clock must not be nil; use clock.New() for production or clock.NewManual() for tests")
 	}
-	generator := rand.New(rand.NewSource(int64(time.Now().Nanosecond() * (threadID + 1))))
+	generator := rand.New(rand.NewSource(clk.NowUnixNano() + int64(threadID)))
 	pkStride := int64(threadCount)
 	pkOffset := (int64(threadID) % pkCount) + basicPkOffset
 	period := time.Second.Nanoseconds() / writeRate
 	return &TimeSeriesRead{
 		Generator:         generator,
-		Clock:             clk,
+		clk:               clk,
 		HalfNormalDist:    halfNormalDist,
 		PkStride:          pkStride,
 		PkOffset:          pkOffset,
@@ -277,13 +277,13 @@ func (tsw *TimeSeriesRead) NextPartitionKey() int64 {
 	if tsw.PkPosition >= tsw.PkCount+tsw.PkOffset {
 		tsw.PkPosition = tsw.PkOffset
 	}
-	maxGeneration := (tsw.Clock.NowUnixNano()-tsw.StartTimestamp)/(tsw.Period*tsw.CkCount) + 1
+	maxGeneration := (tsw.clk.NowUnixNano()-tsw.StartTimestamp)/(tsw.Period*tsw.CkCount) + 1
 	tsw.CurrentGeneration = RandomInt64(tsw.Generator, tsw.HalfNormalDist, maxGeneration)
 	return tsw.PkPosition<<32 | tsw.CurrentGeneration
 }
 
 func (tsw *TimeSeriesRead) NextClusteringKey() int64 {
-	maxRange := (tsw.Clock.NowUnixNano()-tsw.StartTimestamp)/tsw.Period - tsw.CurrentGeneration*tsw.CkCount + 1
+	maxRange := (tsw.clk.NowUnixNano()-tsw.StartTimestamp)/tsw.Period - tsw.CurrentGeneration*tsw.CkCount + 1
 	maxRange = min(tsw.CkCount, maxRange)
 	timestampDelta := (tsw.CurrentGeneration*tsw.CkCount + RandomInt64(tsw.Generator, tsw.HalfNormalDist, maxRange)) * tsw.Period
 	return -(timestampDelta + tsw.StartTimestamp)

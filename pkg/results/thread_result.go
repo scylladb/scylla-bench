@@ -18,8 +18,17 @@ type TestThreadResult struct {
 
 var globalCriticalErrorFlag atomic.Bool
 
-// globalResultClock is used as a fallback when no clock is injected.
+// globalResultClock is the default clock for result-reporting code. It is used
+// when NewTestThreadResult() is called without an explicit clock. Call
+// SetGlobalResultClock to override (e.g. from main, to share a single clock
+// instance with the rest of the program).
 var globalResultClock clock.Clock = clock.New()
+
+// SetGlobalResultClock replaces the package-level default clock. Call this
+// once from main() before creating any TestThreadResult instances.
+func SetGlobalResultClock(clk clock.Clock) {
+	globalResultClock = clk
+}
 
 func NewTestThreadResult() *TestThreadResult {
 	return NewTestThreadResultWithCriticalErrorFlag(&globalCriticalErrorFlag)
@@ -31,7 +40,7 @@ func NewTestThreadResultWithCriticalErrorFlag(flag *atomic.Bool) *TestThreadResu
 
 func NewTestThreadResultWithClockAndFlag(clk clock.Clock, flag *atomic.Bool) *TestThreadResult {
 	if clk == nil {
-		clk = globalResultClock
+		panic("results: clock must not be nil; use clock.New() for production or clock.NewManual() for tests")
 	}
 	r := &TestThreadResult{clk: clk}
 	r.FullResult = &Result{}

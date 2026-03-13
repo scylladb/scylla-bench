@@ -26,8 +26,8 @@ import (
 
 var reportInterval = 1 * time.Second
 
-// globalClock is set once in main() before any test runs.
-// All code that uses DefaultExecutionConfig() or normalized() picks it up.
+// globalClock is the process-wide real clock, initialized at package load time.
+// It is used as the default for DefaultExecutionConfig() and normalized().
 var globalClock clock.Clock = clock.New()
 
 type ExecutionConfig struct {
@@ -204,8 +204,7 @@ func RunConcurrently(
 	}
 
 	totalResults := results.TestResults{}
-	totalResults.Init(concurrency)
-	totalResults.SetStartTime(clk)
+	totalResults.Init(concurrency, clk)
 	totalResults.PrintResultsHeader()
 
 	for i := 0; i < concurrency; i++ {
@@ -276,6 +275,7 @@ func RunTest(
 	rateLimiter RateLimiter,
 	test func(rb *results.TestThreadResult) (time.Duration, error),
 ) {
+	config = config.normalized()
 	start := config.Clock.Now()
 	partialStart := start
 	iter := NewTestIterator(workload, config)
@@ -310,7 +310,7 @@ func RunTest(
 		}
 
 		now := config.Clock.Now()
-		if maxErrorsAtRow > 0 && errorsAtRow >= maxErrorsAtRow {
+		if config.MaxErrorsAtRow > 0 && errorsAtRow >= config.MaxErrorsAtRow {
 			threadResult.SubmitCriticalError(fmt.Errorf(
 				"error limit (maxErrorsAtRow) of %d errors is reached", errorsAtRow))
 		}

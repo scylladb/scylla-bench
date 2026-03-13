@@ -24,8 +24,12 @@ func NewManual(t time.Time) *Manual {
 	return &Manual{current: t.UTC()}
 }
 
-// Advance moves the clock forward by d.
+// Advance moves the clock forward by d. Panics if d is negative;
+// use [Manual.Set] to move the clock to an arbitrary point.
 func (m *Manual) Advance(d time.Duration) {
+	if d < 0 {
+		panic("clock.Manual.Advance: negative duration; use Set to move clock backward")
+	}
 	m.mu.Lock()
 	m.current = m.current.Add(d)
 	m.mu.Unlock()

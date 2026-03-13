@@ -853,7 +853,7 @@ func main() {
 
 	if testDuration > 0 {
 		go func() {
-			time.Sleep(testDuration)
+			globalClock.Sleep(testDuration)
 			stopAll.Store(1)
 		}()
 	}
@@ -922,6 +922,7 @@ func main() {
 		fmt.Println("Start timestamp:\t", startTime.UnixNano())
 		fmt.Println("Write rate:\t\t", int64(maximumRate)/partitionCount)
 	}
+	results.SetGlobalResultClock(globalClock)
 	setResultsConfiguration()
 
 	fmt.Println("Hdr memory consumption:\t", results.GetHdrMemoryConsumption(concurrency), "bytes")
