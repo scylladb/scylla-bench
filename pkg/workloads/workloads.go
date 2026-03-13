@@ -1,6 +1,7 @@
 package workloads
 
 import (
+	"fmt"
 	"log"
 	"math"
 	"math/rand"
@@ -39,7 +40,10 @@ type SequentialVisitAll struct {
 	ProcessedRowCount  int64
 }
 
-func NewSequentialVisitAll(rowOffset, rowCount, clusteringRowCount int64) *SequentialVisitAll {
+func NewSequentialVisitAll(rowOffset, rowCount, clusteringRowCount int64) (*SequentialVisitAll, error) {
+	if clusteringRowCount <= 0 {
+		return nil, fmt.Errorf("workloads: clusteringRowCount must be greater than 0, got %d", clusteringRowCount)
+	}
 	currentPartition := rowOffset / clusteringRowCount
 	currentClusteringRow := rowOffset % clusteringRowCount
 	return &SequentialVisitAll{
@@ -50,7 +54,7 @@ func NewSequentialVisitAll(rowOffset, rowCount, clusteringRowCount int64) *Seque
 		currentClusteringRow,
 		currentClusteringRow,
 		0,
-	}
+	}, nil
 }
 
 func (sva *SequentialVisitAll) NextTokenRange() TokenRange {

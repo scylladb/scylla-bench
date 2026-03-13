@@ -198,22 +198,31 @@ func TestIntegration(t *testing.T) {
 	}
 }
 
+func mustNewSequentialVisitAll(t *testing.T, rowOffset, rowCount, clusteringRowCount int64) *workloads.SequentialVisitAll {
+	t.Helper()
+	w, err := workloads.NewSequentialVisitAll(rowOffset, rowCount, clusteringRowCount)
+	if err != nil {
+		t.Fatalf("NewSequentialVisitAll(%d, %d, %d): %v", rowOffset, rowCount, clusteringRowCount, err)
+	}
+	return w
+}
+
 func testSequentialWorkload(t *testing.T, h *integrationHarness) {
 	t.Helper()
 	t.Run("Write", func(t *testing.T) {
 		t.Parallel()
 		config := h.childConfig()
-		result := runModeForDuration(t, config, DoWrites, h.session, workloads.NewSequentialVisitAll(0, 1000, 10), false, 2*time.Second)
+		result := runModeForDuration(t, config, DoWrites, h.session, mustNewSequentialVisitAll(t, 0, 1000, 10), false, 2*time.Second)
 		assertSuccessfulRun(t, "Sequential write", result)
 	})
 
 	t.Run("Read", func(t *testing.T) {
 		t.Parallel()
 		config := h.childConfig()
-		writeResult := runModeForDuration(t, config, DoWrites, h.session, workloads.NewSequentialVisitAll(0, 1000, 10), false, 2*time.Second)
+		writeResult := runModeForDuration(t, config, DoWrites, h.session, mustNewSequentialVisitAll(t, 0, 1000, 10), false, 2*time.Second)
 		assertSuccessfulRun(t, "Sequential read setup", writeResult)
 		config = h.childConfig()
-		result := runModeForDuration(t, config, DoReads, h.session, workloads.NewSequentialVisitAll(0, 1000, 10), false, 2*time.Second)
+		result := runModeForDuration(t, config, DoReads, h.session, mustNewSequentialVisitAll(t, 0, 1000, 10), false, 2*time.Second)
 		assertSuccessfulRun(t, "Sequential read", result)
 	})
 }
@@ -282,7 +291,7 @@ func testCounterOperations(t *testing.T, h *integrationHarness) {
 func testScanOperations(t *testing.T, h *integrationHarness) {
 	t.Helper()
 	config := h.childConfig()
-	writeResult := runModeForDuration(t, config, DoWrites, h.session, workloads.NewSequentialVisitAll(0, 1200, 4), false, 2*time.Second)
+	writeResult := runModeForDuration(t, config, DoWrites, h.session, mustNewSequentialVisitAll(t, 0, 1200, 4), false, 2*time.Second)
 	assertSuccessfulRun(t, "Scan setup", writeResult)
 	config = h.childConfig()
 	result := runModeForDuration(t, config, DoScanTable, h.session, workloads.NewRangeScan(300, 0, 300), false, 3*time.Second)
@@ -302,11 +311,11 @@ func TestIntegrationWithDataValidation(t *testing.T) {
 
 	h := newIntegrationHarness(t, false)
 	config := h.childConfig()
-	writeResult := runModeForDuration(t, config, DoWrites, h.session, workloads.NewSequentialVisitAll(0, 100, 5), true, 2*time.Second)
+	writeResult := runModeForDuration(t, config, DoWrites, h.session, mustNewSequentialVisitAll(t, 0, 100, 5), true, 2*time.Second)
 	assertSuccessfulRun(t, "Data validation write", writeResult)
 
 	config = h.childConfig()
-	readResult := runModeForDuration(t, config, DoReads, h.session, workloads.NewSequentialVisitAll(0, 100, 5), true, 2*time.Second)
+	readResult := runModeForDuration(t, config, DoReads, h.session, mustNewSequentialVisitAll(t, 0, 100, 5), true, 2*time.Second)
 	assertSuccessfulRun(t, "Data validation read", readResult)
 }
 
@@ -321,13 +330,13 @@ func TestIntegrationQuickSmoke(t *testing.T) {
 		mode     ModeFunc
 		name     string
 	}{
-		{name: "Sequential-Write", workload: workloads.NewSequentialVisitAll(0, 100, 5), mode: DoWrites},
-		{name: "Sequential-Read", workload: workloads.NewSequentialVisitAll(0, 100, 5), mode: DoReads, prepare: func(t *testing.T) {
+		{name: "Sequential-Write", workload: mustNewSequentialVisitAll(t, 0, 100, 5), mode: DoWrites},
+		{name: "Sequential-Read", workload: mustNewSequentialVisitAll(t, 0, 100, 5), mode: DoReads, prepare: func(t *testing.T) {
 			t.Helper()
 			assertSuccessfulRun(
 				t,
 				"Quick smoke sequential read setup",
-				runModeForDuration(t, h.childConfig(), DoWrites, h.session, workloads.NewSequentialVisitAll(0, 100, 5), false, time.Second),
+				runModeForDuration(t, h.childConfig(), DoWrites, h.session, mustNewSequentialVisitAll(t, 0, 100, 5), false, time.Second),
 			)
 		}},
 		{name: "Uniform-Write", workload: workloads.NewRandomUniform(0, 100, 0, 5), mode: DoWrites},
@@ -353,7 +362,7 @@ func TestIntegrationQuickSmoke(t *testing.T) {
 			assertSuccessfulRun(
 				t,
 				"Quick smoke scan setup",
-				runModeForDuration(t, h.childConfig(), DoWrites, h.session, workloads.NewSequentialVisitAll(0, 200, 5), false, time.Second),
+				runModeForDuration(t, h.childConfig(), DoWrites, h.session, mustNewSequentialVisitAll(t, 0, 200, 5), false, time.Second),
 			)
 		}},
 		{name: "Mixed", workload: workloads.NewRandomUniform(0, 100, 0, 5), mode: DoMixed},

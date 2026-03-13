@@ -186,7 +186,11 @@ func GetWorkload(
 			currentRemainderPartialOffset = currentThreadID
 		}
 		rowOffset := partitionOffset*clusteringRowCount + currentThreadID*rowCount + currentRemainderPartialOffset
-		return workloads.NewSequentialVisitAll(rowOffset, rowCount+additionalRows, clusteringRowCount)
+		wrkld, err := workloads.NewSequentialVisitAll(rowOffset, rowCount+additionalRows, clusteringRowCount)
+		if err != nil {
+			log.Panic(err)
+		}
+		return wrkld
 	case "uniform":
 		return workloads.NewRandomUniform(threadID, partitionCount, partitionOffset, clusteringRowCount)
 	case "timeseries":

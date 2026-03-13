@@ -25,7 +25,7 @@ func TestSequentialWorkload(t *testing.T) {
 		{10, 20, 30},
 		{0, 1, 1},
 		{generator.Int63n(100), generator.Int63n(100) + 100, generator.Int63n(99) + 1},
-		{generator.Int63n(100), generator.Int63n(100), generator.Int63n(100)},
+		{generator.Int63n(100), generator.Int63n(100), generator.Int63n(99) + 1},
 		{generator.Int63n(100), generator.Int63n(100) + 100, 1},
 		{0, generator.Int63n(100) + 100, generator.Int63n(99) + 1},
 		{0, generator.Int63n(100) + 100, generator.Int63n(99) + 1},
@@ -33,7 +33,10 @@ func TestSequentialWorkload(t *testing.T) {
 
 	for i, tc := range testCases {
 		t.Run(fmt.Sprintf("rand%d", i), func(t *testing.T) {
-			wrkld := NewSequentialVisitAll(tc.rowOffset, tc.rowCount, tc.clusteringRowCount)
+			wrkld, err := NewSequentialVisitAll(tc.rowOffset, tc.rowCount, tc.clusteringRowCount)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 			currentPk := tc.rowOffset / tc.clusteringRowCount
 			currentCk := tc.rowOffset % tc.clusteringRowCount
 			lastPk := (tc.rowOffset + tc.rowCount) / tc.clusteringRowCount
@@ -80,6 +83,13 @@ func TestSequentialWorkload(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSequentialVisitAllZeroClusteringRowCount(t *testing.T) {
+	_, err := NewSequentialVisitAll(0, 100, 0)
+	if err == nil {
+		t.Fatal("expected error for clusteringRowCount=0, got nil")
 	}
 }
 
