@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/HdrHistogram/hdrhistogram-go"
+
+	"github.com/scylladb/scylla-bench/internal/clock"
 )
 
 const (
@@ -14,6 +16,7 @@ const (
 
 type TestResults struct {
 	startTime       time.Time
+	clk             clock.Clock
 	totalResult     *MergedResult
 	threadResults   []*TestThreadResult
 	numberOfThreads int
@@ -27,8 +30,12 @@ func (tr *TestResults) Init(concurrency int) {
 	}
 }
 
-func (tr *TestResults) SetStartTime() {
-	tr.startTime = time.Now().UTC()
+func (tr *TestResults) SetStartTime(clk clock.Clock) {
+	if clk == nil {
+		clk = globalResultClock
+	}
+	tr.clk = clk
+	tr.startTime = clk.Now()
 }
 
 func (tr *TestResults) GetTestResult(idx int) *TestThreadResult {
@@ -68,11 +75,16 @@ func (tr *TestResults) GetTotalResults() {
 	var final bool
 	var result *MergedResult
 
+	clk := tr.clk
+	if clk == nil {
+		clk = globalResultClock
+	}
+
 	// We need this rounding since hdr histogram round up baseTime dividing by 1000
 	//  before reducing it from start time, which is divided by 1000000000 before applied to histogram
 	//  giving small chance that rounded baseTime would be greater than histogram start time and negative
 	//  times in the histogram log
-	baseTime := (time.Now().UTC().UnixNano() / 1000000000) * 1000000000
+	baseTime := (clk.NowUnixNano() / 1000000000) * 1000000000
 
 	var hdrLogWriter *hdrhistogram.HistogramLogWriter
 	if globalResultConfiguration.hdrLatencyFile != "" {
@@ -84,7 +96,7 @@ func (tr *TestResults) GetTotalResults() {
 		if final {
 			break
 		}
-		result.Time = time.Since(tr.startTime)
+		result.Time = clk.Since(tr.startTime)
 		result.PrintPartialResult()
 		if hdrLogWriter != nil {
 			result.SaveLatenciesToHdrHistogram(hdrLogWriter)

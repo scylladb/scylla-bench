@@ -201,6 +201,7 @@ func GetWorkload(
 				writeRate,
 				distribution,
 				startTime,
+				globalClock,
 			)
 		case "write":
 			return workloads.NewTimeSeriesWriter(
@@ -860,7 +861,7 @@ func main() {
 	if startTimestamp != 0 {
 		startTime = time.Unix(0, startTimestamp)
 	} else {
-		startTime = time.Now().UTC()
+		startTime = globalClock.Now()
 	}
 
 	fmt.Println("Configuration")
@@ -926,6 +927,7 @@ func main() {
 	fmt.Println("Hdr memory consumption:\t", results.GetHdrMemoryConsumption(concurrency), "bytes")
 
 	testResult := RunConcurrently(
+		globalClock,
 		maximumRate,
 		func(i int, testResult *results.TestThreadResult, rateLimiter RateLimiter) {
 			GetMode(

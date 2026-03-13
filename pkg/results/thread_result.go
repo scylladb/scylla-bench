@@ -3,24 +3,37 @@ package results
 import (
 	"sync/atomic"
 	"time"
+
+	"github.com/scylladb/scylla-bench/internal/clock"
 )
 
 type TestThreadResult struct {
 	FullResult        *Result
 	PartialResult     *Result
 	ResultChannel     chan Result
+	clk               clock.Clock
 	criticalErrorFlag *atomic.Bool
 	partialStart      time.Time
 }
 
 var globalCriticalErrorFlag atomic.Bool
 
+// globalResultClock is used as a fallback when no clock is injected.
+var globalResultClock clock.Clock = clock.New()
+
 func NewTestThreadResult() *TestThreadResult {
 	return NewTestThreadResultWithCriticalErrorFlag(&globalCriticalErrorFlag)
 }
 
 func NewTestThreadResultWithCriticalErrorFlag(flag *atomic.Bool) *TestThreadResult {
-	r := &TestThreadResult{}
+	return NewTestThreadResultWithClockAndFlag(globalResultClock, flag)
+}
+
+func NewTestThreadResultWithClockAndFlag(clk clock.Clock, flag *atomic.Bool) *TestThreadResult {
+	if clk == nil {
+		clk = globalResultClock
+	}
+	r := &TestThreadResult{clk: clk}
 	r.FullResult = &Result{}
 	r.PartialResult = &Result{}
 	r.FullResult.Final = true
@@ -234,7 +247,7 @@ func (r *TestThreadResult) RecordWriteCoFixedLatency(latency time.Duration) {
 }
 
 func (r *TestThreadResult) SubmitResult() {
-	now := time.Now().UTC()
+	now := r.clk.Now()
 	if now.Sub(r.partialStart) > time.Second {
 		r.ResultChannel <- *r.PartialResult
 		r.ResetPartialResult()

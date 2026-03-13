@@ -243,18 +243,18 @@ func testTimeSeriesWorkload(t *testing.T, h *integrationHarness) {
 	t.Run("Write", func(t *testing.T) {
 		t.Parallel()
 		config := h.childConfig()
-		result := runModeForDuration(t, config, DoWrites, h.session, workloads.NewTimeSeriesWriter(0, 1, 1000, 0, 100, time.Now(), 1000), false, 2*time.Second)
+		result := runModeForDuration(t, config, DoWrites, h.session, workloads.NewTimeSeriesWriter(0, 1, 1000, 0, 100, globalClock.Now(), 1000), false, 2*time.Second)
 		assertSuccessfulRun(t, "TimeSeries write", result)
 	})
 
 	t.Run("Read", func(t *testing.T) {
 		t.Parallel()
-		start := time.Now()
+		start := globalClock.Now()
 		config := h.childConfig()
 		writeResult := runModeForDuration(t, config, DoWrites, h.session, workloads.NewTimeSeriesWriter(0, 1, 1000, 0, 100, start, 1000), false, 2*time.Second)
 		assertSuccessfulRun(t, "TimeSeries read setup", writeResult)
 		config = h.childConfig()
-		result := runModeForDuration(t, config, DoReads, h.session, workloads.NewTimeSeriesReader(0, 1, 1000, 0, 100, 1000, "uniform", start), false, 2*time.Second)
+		result := runModeForDuration(t, config, DoReads, h.session, workloads.NewTimeSeriesReader(0, 1, 1000, 0, 100, 1000, "uniform", start, globalClock), false, 2*time.Second)
 		assertSuccessfulRun(t, "TimeSeries read", result)
 	})
 }
