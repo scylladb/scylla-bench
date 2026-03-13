@@ -10,9 +10,9 @@ import (
 // duration and advances the clock instead of blocking, so tests that exercise
 // rate-limiter or retry logic complete instantly.
 type Manual struct {
-	mu      sync.Mutex
 	current time.Time
 	slept   time.Duration // total duration passed to Sleep across all calls
+	mu      sync.Mutex
 }
 
 // NewManual returns a Manual clock set to t. If t is zero, it is set to the
