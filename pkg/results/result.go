@@ -124,6 +124,13 @@ func NewHistogram(config *histogramConfiguration, name string) *hdrhistogram.His
 	return histogram
 }
 
+func ensureHistogram(h **hdrhistogram.Histogram, name string) *hdrhistogram.Histogram {
+	if *h == nil {
+		*h = NewHistogram(&globalResultConfiguration.latencyHistogramConfiguration, name)
+	}
+	return *h
+}
+
 var globalResultConfiguration Configuration
 
 func GetHdrMemoryConsumption(concurrency int) int {
