@@ -11,6 +11,7 @@ import (
 
 	"github.com/gocql/gocql"
 
+	"github.com/scylladb/scylla-bench/pkg/rate_limiter"
 	"github.com/scylladb/scylla-bench/pkg/results"
 	"github.com/scylladb/scylla-bench/pkg/testutil"
 	"github.com/scylladb/scylla-bench/pkg/workloads"
@@ -141,19 +142,19 @@ func modeWithConfig(
 
 	switch modeName(mode) {
 	case modeName(DoWrites):
-		DoWritesWithConfig(config, session, testResult, workload, &UnlimitedRateLimiter{}, validateData)
+		DoWritesWithConfig(config, session, testResult, workload, &rate_limiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoBatchedWrites):
-		DoBatchedWritesWithConfig(config, session, testResult, workload, &UnlimitedRateLimiter{}, validateData)
+		DoBatchedWritesWithConfig(config, session, testResult, workload, &rate_limiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoReads):
-		DoReadsFromTableWithConfig(config, config.TableName, session, testResult, workload, &UnlimitedRateLimiter{}, validateData)
+		DoReadsFromTableWithConfig(config, config.TableName, session, testResult, workload, &rate_limiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoCounterReads):
-		DoReadsFromTableWithConfig(config, config.CounterTableName, session, testResult, workload, &UnlimitedRateLimiter{}, validateData)
+		DoReadsFromTableWithConfig(config, config.CounterTableName, session, testResult, workload, &rate_limiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoCounterUpdates):
-		DoCounterUpdatesWithConfig(config, session, testResult, workload, &UnlimitedRateLimiter{}, validateData)
+		DoCounterUpdatesWithConfig(config, session, testResult, workload, &rate_limiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoScanTable):
-		DoScanTableWithConfig(config, session, testResult, workload, &UnlimitedRateLimiter{}, validateData)
+		DoScanTableWithConfig(config, session, testResult, workload, &rate_limiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoMixed):
-		DoMixedWithConfig(config, session, testResult, workload, &UnlimitedRateLimiter{}, validateData)
+		DoMixedWithConfig(config, session, testResult, workload, &rate_limiter.UnlimitedRateLimiter{}, validateData)
 	default:
 		t.Fatalf("unsupported mode func")
 	}
