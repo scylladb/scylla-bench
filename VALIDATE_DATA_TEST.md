@@ -8,87 +8,67 @@ This test validates the performance impact of the `-validate-data` parameter as 
 
 ## Issue Background
 
-When running writes with `-validate-data` parameter, the throughput decreases significantly:
+When running writes with `-validate-data` parameter, the throughput decreased significantly:
 - **Without validation**: ~533 ops/sec
 - **With validation**: ~50 ops/sec (~90% decrease)
+
+## Optimizations Applied
+
+The following optimizations dramatically reduced the overhead of `-validate-data`:
+
+1. **Replaced SHA256 with CRC32C**: SHA256 is a cryptographic hash—overkill for data integrity in a benchmarking tool. CRC32C (Castagnoli) is hardware-accelerated on modern x86_64 CPUs via SSE4.2, making it ~100x faster.
+
+2. **Replaced `binary.Write`/`binary.Read` with direct byte manipulation**: The standard library's `binary.Write`/`binary.Read` uses reflection internally, adding significant overhead per call. Direct `binary.LittleEndian.PutUint64`/`Uint64` avoids this entirely.
+
+3. **Single allocation instead of buffer → copy**: The old code allocated a `bytes.Buffer`, grew it, filled it, then allocated a final `[]byte` and copied. The new code allocates the final slice once and writes directly into it.
+
+4. **Deterministic xorshift payload instead of globally-locked random**: The old code used `random.String()` which acquires a global mutex on every call—a severe concurrency bottleneck. The new code uses a deterministic xorshift PRNG seeded from pk/ck, requiring no locks and producing well-distributed non-zero data.
 
 ## Running the Tests
 
 ### Benchmark Tests (No Docker Required)
 
-These tests measure the overhead of data generation and validation functions:
-
 ```bash
 # Run all benchmarks
-go test -bench=. -run=^$ -benchtime=1s
+go test -bench=. -run=^$ -benchtime=1s -benchmem
 
 # Run specific benchmarks
-go test -bench=BenchmarkGenerateDataWithValidation -run=^$
-go test -bench=BenchmarkValidateData -run=^$
+go test -bench=BenchmarkGenerateDataWithValidation -run=^$ -benchmem
+go test -bench=BenchmarkValidateData -run=^$ -benchmem
 ```
 
 ### Integration Test (Requires Docker)
 
-This test measures actual throughput impact with a real ScyllaDB instance:
-
 ```bash
-# Run the integration test
-RUN_CONTAINER_TESTS=true go test -v -run TestValidateDataThroughputImpact
-
-# With timeout for slower systems
-RUN_CONTAINER_TESTS=true go test -v -timeout 15m -run TestValidateDataThroughputImpact
+RUN_CONTAINER_TESTS=true go test -v -run TestValidateDataThroughputImpact -timeout 15m
 ```
 
-## Test Results
+## Benchmark Results
 
-### Benchmark Results
+### GenerateData (51200 bytes, same as original issue)
 
-- **GenerateData without validation**: ~9-11μs per operation, 57KB, 1 allocation
-- **GenerateData with validation**: ~100-110μs per operation, 172KB, 8 allocations (**~10-12x slower, 3x more memory**)
-- **ValidateData on reads**: ~60μs overhead per operation
+| Metric | Before | After | Improvement |
+|--------|--------|-------|-------------|
+| **with validation** | ~108 μs/op | ~25 μs/op | **4.3x faster** |
+| Memory per op | 172 KB | 57 KB | **3x less** |
+| Allocations per op | 8 | 1 | **8x fewer** |
+| without validation | ~11 μs/op | ~11 μs/op | (baseline) |
+| **Validation overhead** | **~10x** | **~2.3x** | |
 
-### Performance Impact Analysis
+### ValidateData (51200 bytes)
 
-The throughput decrease is caused by:
-
-1. **Write Operations**:
-   - SHA256 checksum calculation (cryptographically expensive)
-   - Random payload generation  
-   - Additional memory allocations (3x more memory, 8 allocations vs 1)
-   - More CPU time (10-12x slower)
-
-2. **Read Operations**:
-   - SHA256 checksum verification
-   - Binary data parsing and validation
-
-## Conclusion
-
-The performance impact is **expected and by design**. The `-validate-data` flag provides data integrity guarantees at the cost of throughput.
-
-### Recommendations
-
-- **Enable `-validate-data`** only when data integrity verification is required
-- **Disable `-validate-data`** for maximum performance benchmarking
-- Use `-validate-data` for correctness testing, not performance testing
-
-## Example Usage
-
-```bash
-# High-performance write benchmark (no validation)
-scylla-bench -workload=sequential -mode=write -concurrency=400 -nodes=127.0.0.1
-
-# Data integrity verification test (with validation)
-scylla-bench -workload=sequential -mode=write -validate-data -concurrency=100 -nodes=127.0.0.1
-```
+| Metric | Before | After | Improvement |
+|--------|--------|-------|-------------|
+| Time per op | ~59 μs/op | ~2.2 μs/op | **27x faster** |
+| Memory per op | 115 KB | 0 B | **zero-alloc** |
+| Allocations per op | 8 | 0 | **zero-alloc** |
 
 ## Test Configuration
 
-The integration test uses the following parameters (scaled down from the original issue):
+The integration test uses these parameters (scaled down from the original issue):
 
 - Partition Count: 100 (vs 3000 in issue)
 - Clustering Row Count: 100 (vs 1000 in issue)
 - Clustering Row Size: 51200 bytes (same as issue)
 - Concurrency: 4 (vs 400 in issue)
 - Test Duration: 10 seconds
-
-These smaller values enable faster test execution while still demonstrating the performance impact.

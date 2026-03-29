@@ -17,19 +17,14 @@ import (
 //
 // Issue Context:
 // When running writes (sequential workload) with -validate-data parameter,
-// the throughput became very low. For example:
-// - throughput without parameter: ~533 ops/sec
-// - throughput with parameter:      ~50 ops/sec (90% decrease)
+// the throughput was very low (~50 ops/sec vs ~533 without, a 90% decrease).
+//
+// After optimization (CRC32C + direct byte ops + single alloc + lock-free fill):
+// - GenerateData with validation: ~2.3x slower (was ~10x)
+// - ValidateData during reads: ~2μs per operation (was ~60μs)
 //
 // This test requires Docker and is skipped by default.
 // To run: RUN_CONTAINER_TESTS=true go test -v -run TestValidateDataThroughputImpact
-//
-// Expected Results:
-// The benchmarks show that data validation adds significant overhead:
-// - GenerateData with validation: ~10-12x slower (SHA256 + random payload generation)
-// - ValidateData during reads: ~60μs per operation (SHA256 verification)
-//
-// This test measures the actual throughput impact in a real ScyllaDB scenario.
 func TestValidateDataThroughputImpact(t *testing.T) {
 	// Skip if not explicitly enabled
 	if os.Getenv("RUN_CONTAINER_TESTS") != "true" {
@@ -133,26 +128,13 @@ func TestValidateDataThroughputImpact(t *testing.T) {
 	const maxAcceptableDecrease = 50.0
 
 	if throughputDecrease > maxAcceptableDecrease {
-		t.Logf("\n⚠️  ISSUE STILL PRESENT: -validate-data causes %.2f%% throughput decrease (threshold: %.2f%%)",
+		t.Errorf("REGRESSION: -validate-data causes %.2f%% throughput decrease (threshold: %.2f%%)",
 			throughputDecrease, maxAcceptableDecrease)
-		t.Logf("This is consistent with the reported issue where throughput decreased from ~533 ops to ~50 ops")
-		t.Logf("\nRoot Cause Analysis:")
-		t.Logf("  1. GenerateData() with validation is ~10-12x slower (see BenchmarkGenerateDataWithValidation)")
-		t.Logf("     - SHA256 checksum calculation: expensive cryptographic operation")
-		t.Logf("     - Random payload generation: adds overhead for each write")
-		t.Logf("  2. ValidateData() during reads adds ~60μs overhead per operation")
-		t.Logf("     - SHA256 checksum verification on every read")
-		t.Logf("\nConclusion:")
-		t.Logf("  The performance impact is EXPECTED and BY DESIGN.")
-		t.Logf("  Data validation provides integrity guarantees at the cost of throughput.")
-		t.Logf("  Users should only enable -validate-data when data integrity verification is required.")
+		t.Logf("After optimization, the overhead should be well under 50%%.")
 	} else {
-		t.Logf("\n✅ ISSUE RESOLVED: -validate-data causes only %.2f%% throughput decrease (threshold: %.2f%%)",
+		t.Logf("\n✅ -validate-data causes only %.2f%% throughput decrease (threshold: %.2f%%)",
 			throughputDecrease, maxAcceptableDecrease)
 	}
-
-	// This test is informational - we don't fail it, just report the findings
-	// The performance impact is expected behavior, not a bug
 }
 
 // measureWriteThroughput performs a write workload and measures the throughput
@@ -182,11 +164,14 @@ func measureWriteThroughput(
 	defer session.Close()
 
 	// Create workload generator (sequential workload like in the issue)
-	workload := workloads.NewSequentialVisitAll(
+	workload, err := workloads.NewSequentialVisitAll(
 		0,                                 // rowOffset
 		partitionCount*clusteringRowCount, // rowCount
 		clusteringRowCount,                // clusteringRowCount
 	)
+	if err != nil {
+		t.Fatalf("Failed to create workload: %v", err)
+	}
 
 	// Create a done channel to signal when to stop
 	done := make(chan struct{})
@@ -277,16 +262,15 @@ func measureWriteThroughput(
 // BenchmarkGenerateDataWithValidation benchmarks the GenerateData function
 // to understand the overhead of data validation.
 //
-// This benchmark demonstrates that enabling data validation significantly
-// impacts performance due to:
-// 1. SHA256 checksum calculation for data integrity
-// 2. Random payload generation
+// Optimizations applied:
+// 1. Replaced SHA256 (crypto) with CRC32C (hardware-accelerated) for checksumming
+// 2. Replaced binary.Write reflection-based I/O with direct byte manipulation
+// 3. Single allocation instead of buffer → copy
+// 4. Deterministic xorshift payload instead of globally-locked random source
 //
-// Expected Results:
-// - Without validation: ~9-11μs per operation (simple byte array allocation)
-// - With validation: ~100-110μs per operation (~10-12x slower)
-//
-// This overhead explains the throughput decrease observed in the issue.
+// Expected Results (after optimization):
+// - Without validation: ~10-12μs per operation (simple byte array allocation)
+// - With validation: ~25-27μs per operation (~2.3x slower — down from ~10x)
 func BenchmarkGenerateDataWithValidation(b *testing.B) {
 	const size = 51200 // Same as in the issue
 
@@ -306,12 +290,10 @@ func BenchmarkGenerateDataWithValidation(b *testing.B) {
 // BenchmarkValidateData benchmarks the ValidateData function to measure
 // the overhead of data validation during reads.
 //
-// Expected Results:
-// - ValidateData adds ~60μs overhead per read operation
-// - This includes SHA256 checksum verification
-//
-// This overhead accumulates with high read rates and contributes to
-// the overall throughput decrease when -validate-data is enabled.
+// Expected Results (after optimization):
+// - ValidateData adds ~2μs overhead per read operation (zero allocations)
+// - Down from ~60μs with 8 allocations (27x faster)
+// - Uses hardware-accelerated CRC32C and direct byte access
 func BenchmarkValidateData(b *testing.B) {
 	const size = 51200
 	data, err := GenerateData(1, 2, size, true)

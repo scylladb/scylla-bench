@@ -14,7 +14,7 @@ func TestValidateDataWithSmallSizes(t *testing.T) {
 
 	// Test cases covering different size ranges based on the constants:
 	// - generatedDataHeaderSize = 24
-	// - generatedDataMinSize = 24 + 33 = 57
+	// - generatedDataMinSize = 29 (header + CRC32C + 1 byte payload)
 	testCases := []struct {
 		name string
 		size int64
@@ -29,15 +29,15 @@ func TestValidateDataWithSmallSizes(t *testing.T) {
 		{name: "size 20", size: 20, pk: 500, ck: 700},
 		{name: "size 23", size: 23, pk: 999, ck: 123},
 
-		// Sizes >= header but < min size (24 <= size < 57) - uses full header but no checksum
+		// Sizes >= header but < min size (24 <= size < 29) - uses full header but no checksum
 		{name: "size 24 (boundary)", size: 24, pk: 1000, ck: 2000},
+		{name: "size 28", size: 28, pk: 3000, ck: 4000}, // Just below min size
+
+		// Sizes >= min size (>= 29) - uses full header with payload and CRC32C checksum
+		{name: "size 29 (boundary)", size: 29, pk: 3500, ck: 4500},
 		{name: "size 30", size: 30, pk: 1500, ck: 2500},
 		{name: "size 40", size: 40, pk: 2000, ck: 3000},
 		{name: "size 50", size: 50, pk: 2500, ck: 3500},
-		{name: "size 56", size: 56, pk: 3000, ck: 4000}, // Just below min size
-
-		// Sizes >= min size (>= 57) - uses full header with payload and checksum
-		{name: "size 57 (boundary)", size: 57, pk: 3500, ck: 4500},
 		{name: "size 60", size: 60, pk: 4000, ck: 5000},
 		{name: "size 100", size: 100, pk: 5000, ck: 6000},
 	}

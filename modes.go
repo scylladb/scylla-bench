@@ -2,10 +2,10 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/binary"
 	stdErrors "errors"
 	"fmt"
+	"hash/crc32"
 	"log"
 	"math"
 	"math/rand/v2"
@@ -340,54 +340,77 @@ func RunTest(
 
 const (
 	generatedDataHeaderSize int64 = 24
-	generatedDataMinSize          = generatedDataHeaderSize + 33
+	checksumSize            int64 = 4 // CRC32C (Castagnoli, hardware-accelerated)
+	generatedDataMinSize          = generatedDataHeaderSize + checksumSize + 1
 )
+
+// crc32cTable is the Castagnoli CRC32C table, which benefits from
+// hardware acceleration (SSE4.2) on modern x86_64 CPUs.
+var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
+
+// fillPayload fills buf with a deterministic pseudo-random pattern derived
+// from pk and ck. This avoids the global-locked random source that was a
+// concurrency bottleneck, while still producing well-distributed non-zero
+// byte patterns suitable for benchmarking.
+func fillPayload(buf []byte, pk, ck int64) {
+	// Mix pk and ck into a seed using large odd multipliers
+	state := uint64(pk)*6364136223846793005 ^ uint64(ck)*1442695040888963407
+	if state == 0 {
+		state = 1
+	}
+	i := 0
+	for i+8 <= len(buf) {
+		state ^= state << 13
+		state ^= state >> 7
+		state ^= state << 17
+		binary.LittleEndian.PutUint64(buf[i:i+8], state)
+		i += 8
+	}
+	if i < len(buf) {
+		state ^= state << 13
+		state ^= state >> 7
+		state ^= state << 17
+		for j := i; j < len(buf); j++ {
+			buf[j] = byte(state)
+			state >>= 8
+		}
+	}
+}
 
 func GenerateData(pk, ck, size int64, validateData bool) ([]byte, error) {
 	if !validateData {
 		return make([]byte, size), nil
 	}
 
-	buf := bytes.Buffer{}
-	buf.Grow(int(size))
+	value := make([]byte, size)
 
 	if size < generatedDataHeaderSize {
-		if err := binary.Write(&buf, binary.LittleEndian, int8(size)); err != nil {
-			return nil, err
-		}
-		if err := binary.Write(&buf, binary.LittleEndian, pk^ck); err != nil {
-			return nil, err
+		// Small format: [size_byte] [pk^ck bytes, truncated to fit]
+		value[0] = byte(int8(size))
+		if size > 1 {
+			var xorBytes [8]byte
+			binary.LittleEndian.PutUint64(xorBytes[:], uint64(pk^ck))
+			copy(value[1:], xorBytes[:])
 		}
 	} else {
-		if err := binary.Write(&buf, binary.LittleEndian, size); err != nil {
-			return nil, err
+		// Write header directly: [size(8)] [pk(8)] [ck(8)]
+		binary.LittleEndian.PutUint64(value[0:8], uint64(size))
+		binary.LittleEndian.PutUint64(value[8:16], uint64(pk))
+		binary.LittleEndian.PutUint64(value[16:24], uint64(ck))
+
+		if size >= generatedDataMinSize {
+			// Full format: header + payload + CRC32C
+			payloadStart := int(generatedDataHeaderSize)
+			payloadEnd := int(size - checksumSize)
+
+			fillPayload(value[payloadStart:payloadEnd], pk, ck)
+
+			crc := crc32.Checksum(value[payloadStart:payloadEnd], crc32cTable)
+			binary.LittleEndian.PutUint32(value[payloadEnd:], crc)
 		}
-		if err := binary.Write(&buf, binary.LittleEndian, pk); err != nil {
-			return nil, err
-		}
-		if err := binary.Write(&buf, binary.LittleEndian, ck); err != nil {
-			return nil, err
-		}
-		if size < generatedDataMinSize {
-			for i := generatedDataHeaderSize; i < size; i++ {
-				if err := binary.Write(&buf, binary.LittleEndian, int8(0)); err != nil {
-					return nil, err
-				}
-			}
-		} else {
-			payload := make([]byte, size-generatedDataHeaderSize-sha256.Size)
-			_, _ = random.String(payload)
-			if err := binary.Write(&buf, binary.LittleEndian, payload); err != nil {
-				return nil, err
-			}
-			if err := binary.Write(&buf, binary.LittleEndian, sha256.Sum256(payload)); err != nil {
-				return nil, err
-			}
-		}
+		// else: medium format, header + zeros (already zero from make)
 	}
 
-	value := make([]byte, size)
-	copy(value, buf.Bytes())
 	return value, nil
 }
 
@@ -396,22 +419,17 @@ func ValidateData(pk, ck int64, data []byte, validateData bool) error {
 		return nil
 	}
 
-	buf := bytes.NewBuffer(data)
-	size := int64(buf.Len())
+	size := int64(len(data))
 
+	// Read and validate stored size
 	var storedSize int64
 	if size < generatedDataHeaderSize {
-		var storedSizeCompact int8
-		err := binary.Read(buf, binary.LittleEndian, &storedSizeCompact)
-		if err != nil {
-			return errors.Wrap(err, "failed to validate data, cannot read size from value")
+		if size < 1 {
+			return errors.New("data too short to contain size byte")
 		}
-		storedSize = int64(storedSizeCompact)
+		storedSize = int64(int8(data[0]))
 	} else {
-		err := binary.Read(buf, binary.LittleEndian, &storedSize)
-		if err != nil {
-			return errors.Wrap(err, "failed to validate data, cannot read size from value")
-		}
+		storedSize = int64(binary.LittleEndian.Uint64(data[0:8]))
 	}
 
 	if size != storedSize {
@@ -422,7 +440,7 @@ func ValidateData(pk, ck int64, data []byte, validateData bool) error {
 		)
 	}
 
-	// There is no random payload for sizes < minFullSize
+	// For small/medium sizes, regenerate expected data and compare
 	if size < generatedDataMinSize {
 		expectedBuf, err := GenerateData(pk, ck, size, validateData)
 		if err != nil {
@@ -443,48 +461,28 @@ func ValidateData(pk, ck int64, data []byte, validateData bool) error {
 		return nil
 	}
 
-	var storedPk, storedCk int64
-
-	// Validate pk
-
-	if err := binary.Read(buf, binary.LittleEndian, &storedPk); err != nil {
-		return errors.Wrap(err, "failed to validate data, cannot read pk from value")
-	}
+	// Full format: validate pk, ck, then CRC32C checksum
+	storedPk := int64(binary.LittleEndian.Uint64(data[8:16]))
 	if storedPk != pk {
 		return errors.Errorf("actual pk (%d) doesn't match pk stored in value (%d)", pk, storedPk)
 	}
 
-	// Validate ck
-	if err := binary.Read(buf, binary.LittleEndian, &storedCk); err != nil {
-		return errors.Wrap(err, "failed to validate data, cannot read pk from value")
-	}
-
+	storedCk := int64(binary.LittleEndian.Uint64(data[16:24]))
 	if storedCk != ck {
 		return errors.Errorf("actual ck (%d) doesn't match ck stored in value (%d)", ck, storedCk)
 	}
 
-	// Validate checksum over the payload
-	payload := make([]byte, size-generatedDataHeaderSize-sha256.Size)
+	payloadStart := int(generatedDataHeaderSize)
+	payloadEnd := int(size - checksumSize)
 
-	if err := binary.Read(buf, binary.LittleEndian, payload); err != nil {
-		return errors.Wrap(err, "failed to verify checksum, cannot read payload from value")
-	}
+	storedCrc := binary.LittleEndian.Uint32(data[payloadEnd:])
+	calculatedCrc := crc32.Checksum(data[payloadStart:payloadEnd], crc32cTable)
 
-	calculatedChecksumArray := sha256.Sum256(payload)
-	calculatedChecksum := calculatedChecksumArray[0:]
-
-	var storedChecksum [sha256.Size]byte
-
-	if err := binary.Read(buf, binary.LittleEndian, storedChecksum[:]); err != nil {
-		return errors.Wrap(err, "failed to verify checksum, cannot read checksum from value")
-	}
-
-	if !bytes.Equal(calculatedChecksum, storedChecksum[:]) {
+	if storedCrc != calculatedCrc {
 		return fmt.Errorf(
-			"corrupt checksum or data: calculated checksum (%x) doesn't match stored checksum (%x) over data\n%x",
-			calculatedChecksum,
-			storedChecksum,
-			payload,
+			"corrupt checksum or data: calculated checksum (%08x) doesn't match stored checksum (%08x)",
+			calculatedCrc,
+			storedCrc,
 		)
 	}
 
