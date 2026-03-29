@@ -17,7 +17,11 @@
   ],
   "packageRules": [
     {
-      "description": "Group all Go module dependencies except gocql",
+      "matchPackageNames": ["github.com/gocql/gocql"],
+      "enabled": false
+    },
+    {
+      "description": "Group all Go module dependencies except scylladb/gocql",
       "groupName": "All dependencies",
       "groupSlug": "all-dependencies",
       "matchManagers": [
@@ -29,7 +33,7 @@
       "enabled": true
     },
     {
-      "description": "Keep gocql updates separate for manual review",
+      "description": "Keep scylladb/gocql updates separate for manual review",
       "matchPackageNames": [
         "github.com/scylladb/gocql"
       ],
