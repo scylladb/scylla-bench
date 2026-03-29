@@ -17,6 +17,7 @@
   ],
   "packageRules": [
     {
+      "description": "Group all Go module dependencies except gocql",
       "groupName": "All dependencies",
       "groupSlug": "all-dependencies",
       "matchManagers": [
@@ -28,18 +29,7 @@
       "enabled": true
     },
     {
-      "groupName": "all non-major dependencies",
-      "groupSlug": "all-minor-patch",
-      "matchPackageNames": [
-        "*"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch"
-      ],
-      "enabled": false
-    },
-    {
+      "description": "Keep gocql updates separate for manual review",
       "matchPackageNames": [
         "github.com/scylladb/gocql"
       ],
@@ -47,7 +37,15 @@
     }
   ],
   "vulnerabilityAlerts": {
-    "enabled": true
+    "enabled": true,
+    "labels": [
+      "renovate",
+      "dependencies",
+      "P1"
+    ],
+    "schedule": [
+      "at any time"
+    ]
   },
   "osvVulnerabilityAlerts": true
 }
