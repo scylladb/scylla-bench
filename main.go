@@ -18,6 +18,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/scylladb/scylla-bench/internal/version"
+	"github.com/scylladb/scylla-bench/pkg/config"
 	"github.com/scylladb/scylla-bench/pkg/results"
 	"github.com/scylladb/scylla-bench/pkg/workloads"
 	"github.com/scylladb/scylla-bench/random"
@@ -700,7 +701,7 @@ func main() {
 		errorToTimeoutCutoffTime = time.Second
 	}
 
-	if err := results.ValidateGlobalLatencyType(latencyType); err != nil {
+	if err := config.ValidateGlobalLatencyType(latencyType); err != nil {
 		log.Panic(errors.Wrap(err, "Bad value for latency-type"))
 	}
 	var cluster *gocql.ClusterConfig
@@ -980,14 +981,14 @@ func newHostSelectionPolicy(
 }
 
 func setResultsConfiguration() {
-	results.SetGlobalMeasureLatency(measureLatency)
-	results.SetGlobalHdrLatencyFile(hdrLatencyFile)
-	results.SetGlobalHdrLatencyUnits(hdrLatencyUnits)
-	results.SetGlobalHistogramConfiguration(
+	config.SetGlobalMeasureLatency(measureLatency)
+	config.SetGlobalHdrLatencyFile(hdrLatencyFile)
+	config.SetGlobalHdrLatencyUnits(hdrLatencyUnits)
+	config.SetGlobalHistogramConfiguration(
 		time.Microsecond.Nanoseconds()*50,
 		(timeout * 3).Nanoseconds(),
 		hdrLatencySigFig,
 	)
-	results.SetGlobalConcurrency(concurrency)
-	results.SetGlobalLatencyTypeFromString(latencyType)
+	config.SetGlobalConcurrency(concurrency)
+	config.SetGlobalLatencyTypeFromString(latencyType)
 }

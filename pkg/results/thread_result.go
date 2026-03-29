@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/scylladb/scylla-bench/internal/clock"
+	"github.com/scylladb/scylla-bench/pkg/config"
 )
 
 type TestThreadResult struct {
@@ -47,57 +48,22 @@ func NewTestThreadResultWithClockAndFlag(clk clock.Clock, flag *atomic.Bool) *Te
 	r.PartialResult = &Result{}
 	r.FullResult.Final = true
 	r.criticalErrorFlag = flag
-	if globalResultConfiguration.measureLatency {
-		r.FullResult.RawLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"raw-latency",
-		)
-		r.FullResult.CoFixedLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"co-fixed-lantecy",
-		)
+	if config.GetGlobalMeasureLatency() {
+		histCfg := config.GetGlobalHistogramConfiguration()
+		r.FullResult.RawLatency = NewHistogram(histCfg, "raw-latency")
+		r.FullResult.CoFixedLatency = NewHistogram(histCfg, "co-fixed-lantecy")
 		// Create separate histograms for mixed mode read/write operations
-		r.FullResult.RawReadLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"raw-read-latency",
-		)
-		r.FullResult.CoFixedReadLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"co-fixed-read-latency",
-		)
-		r.FullResult.RawWriteLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"raw-write-latency",
-		)
-		r.FullResult.CoFixedWriteLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"co-fixed-write-latency",
-		)
-		r.PartialResult.RawLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"raw-latency",
-		)
-		r.PartialResult.CoFixedLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"co-fixed-lantecy",
-		)
+		r.FullResult.RawReadLatency = NewHistogram(histCfg, "raw-read-latency")
+		r.FullResult.CoFixedReadLatency = NewHistogram(histCfg, "co-fixed-read-latency")
+		r.FullResult.RawWriteLatency = NewHistogram(histCfg, "raw-write-latency")
+		r.FullResult.CoFixedWriteLatency = NewHistogram(histCfg, "co-fixed-write-latency")
+		r.PartialResult.RawLatency = NewHistogram(histCfg, "raw-latency")
+		r.PartialResult.CoFixedLatency = NewHistogram(histCfg, "co-fixed-lantecy")
 		// Create separate histograms for mixed mode read/write operations in partial results
-		r.PartialResult.RawReadLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"raw-read-latency",
-		)
-		r.PartialResult.CoFixedReadLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"co-fixed-read-latency",
-		)
-		r.PartialResult.RawWriteLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"raw-write-latency",
-		)
-		r.PartialResult.CoFixedWriteLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"co-fixed-write-latency",
-		)
+		r.PartialResult.RawReadLatency = NewHistogram(histCfg, "raw-read-latency")
+		r.PartialResult.CoFixedReadLatency = NewHistogram(histCfg, "co-fixed-read-latency")
+		r.PartialResult.RawWriteLatency = NewHistogram(histCfg, "raw-write-latency")
+		r.PartialResult.CoFixedWriteLatency = NewHistogram(histCfg, "co-fixed-write-latency")
 	}
 	r.ResultChannel = make(chan Result, 10000)
 	return r
@@ -144,56 +110,41 @@ func (r *TestThreadResult) SubmitCriticalError(err error) {
 
 func (r *TestThreadResult) ResetPartialResult() {
 	r.PartialResult = &Result{}
-	if globalResultConfiguration.measureLatency {
-		r.PartialResult.RawLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"raw-latency",
-		)
-		r.PartialResult.CoFixedLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"co-fixed-lantecy",
-		)
+	if config.GetGlobalMeasureLatency() {
+		histCfg := config.GetGlobalHistogramConfiguration()
+		r.PartialResult.RawLatency = NewHistogram(histCfg, "raw-latency")
+		r.PartialResult.CoFixedLatency = NewHistogram(histCfg, "co-fixed-lantecy")
 		// Create separate histograms for mixed mode read/write operations in partial results
-		r.PartialResult.RawReadLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"raw-read-latency",
-		)
-		r.PartialResult.CoFixedReadLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"co-fixed-read-latency",
-		)
-		r.PartialResult.RawWriteLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"raw-write-latency",
-		)
-		r.PartialResult.CoFixedWriteLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"co-fixed-write-latency",
-		)
+		r.PartialResult.RawReadLatency = NewHistogram(histCfg, "raw-read-latency")
+		r.PartialResult.CoFixedReadLatency = NewHistogram(histCfg, "co-fixed-read-latency")
+		r.PartialResult.RawWriteLatency = NewHistogram(histCfg, "raw-write-latency")
+		r.PartialResult.CoFixedWriteLatency = NewHistogram(histCfg, "co-fixed-write-latency")
 	}
 }
 
 func (r *TestThreadResult) RecordRawLatency(latency time.Duration) {
-	if !globalResultConfiguration.measureLatency {
+	if !config.GetGlobalMeasureLatency() {
 		return
 	}
-	lv := latency.Nanoseconds() / globalResultConfiguration.hdrLatencyScale
-
-	if lv >= globalResultConfiguration.latencyHistogramConfiguration.maxValue {
-		lv = globalResultConfiguration.latencyHistogramConfiguration.maxValue
+	scale := config.GetGlobalHdrLatencyScale()
+	maxVal := config.GetGlobalHistogramConfiguration().MaxValue
+	lv := latency.Nanoseconds() / scale
+	if lv >= maxVal {
+		lv = maxVal
 	}
 	_ = r.FullResult.RawLatency.RecordValue(lv)
 	_ = r.PartialResult.RawLatency.RecordValue(lv)
 }
 
 func (r *TestThreadResult) RecordCoFixedLatency(latency time.Duration) {
-	if !globalResultConfiguration.measureLatency {
+	if !config.GetGlobalMeasureLatency() {
 		return
 	}
-	lv := latency.Nanoseconds() / globalResultConfiguration.hdrLatencyScale
-
-	if lv >= globalResultConfiguration.latencyHistogramConfiguration.maxValue {
-		lv = globalResultConfiguration.latencyHistogramConfiguration.maxValue
+	scale := config.GetGlobalHdrLatencyScale()
+	maxVal := config.GetGlobalHistogramConfiguration().MaxValue
+	lv := latency.Nanoseconds() / scale
+	if lv >= maxVal {
+		lv = maxVal
 	}
 	_ = r.FullResult.CoFixedLatency.RecordValue(lv)
 	_ = r.PartialResult.CoFixedLatency.RecordValue(lv)
@@ -201,13 +152,14 @@ func (r *TestThreadResult) RecordCoFixedLatency(latency time.Duration) {
 
 // RecordReadRawLatency records raw latency for read operations in mixed mode
 func (r *TestThreadResult) RecordReadRawLatency(latency time.Duration) {
-	if !globalResultConfiguration.measureLatency {
+	if !config.GetGlobalMeasureLatency() {
 		return
 	}
-	lv := latency.Nanoseconds() / globalResultConfiguration.hdrLatencyScale
-
-	if lv >= globalResultConfiguration.latencyHistogramConfiguration.maxValue {
-		lv = globalResultConfiguration.latencyHistogramConfiguration.maxValue
+	scale := config.GetGlobalHdrLatencyScale()
+	maxVal := config.GetGlobalHistogramConfiguration().MaxValue
+	lv := latency.Nanoseconds() / scale
+	if lv >= maxVal {
+		lv = maxVal
 	}
 	_ = r.FullResult.RawReadLatency.RecordValue(lv)
 	_ = r.PartialResult.RawReadLatency.RecordValue(lv)
@@ -215,13 +167,14 @@ func (r *TestThreadResult) RecordReadRawLatency(latency time.Duration) {
 
 // RecordReadCoFixedLatency records coordinated omission fixed latency for read operations in mixed mode
 func (r *TestThreadResult) RecordReadCoFixedLatency(latency time.Duration) {
-	if !globalResultConfiguration.measureLatency {
+	if !config.GetGlobalMeasureLatency() {
 		return
 	}
-	lv := latency.Nanoseconds() / globalResultConfiguration.hdrLatencyScale
-
-	if lv >= globalResultConfiguration.latencyHistogramConfiguration.maxValue {
-		lv = globalResultConfiguration.latencyHistogramConfiguration.maxValue
+	scale := config.GetGlobalHdrLatencyScale()
+	maxVal := config.GetGlobalHistogramConfiguration().MaxValue
+	lv := latency.Nanoseconds() / scale
+	if lv >= maxVal {
+		lv = maxVal
 	}
 	_ = r.FullResult.CoFixedReadLatency.RecordValue(lv)
 	_ = r.PartialResult.CoFixedReadLatency.RecordValue(lv)
@@ -229,13 +182,14 @@ func (r *TestThreadResult) RecordReadCoFixedLatency(latency time.Duration) {
 
 // RecordWriteRawLatency records raw latency for write operations in mixed mode
 func (r *TestThreadResult) RecordWriteRawLatency(latency time.Duration) {
-	if !globalResultConfiguration.measureLatency {
+	if !config.GetGlobalMeasureLatency() {
 		return
 	}
-	lv := latency.Nanoseconds() / globalResultConfiguration.hdrLatencyScale
-
-	if lv >= globalResultConfiguration.latencyHistogramConfiguration.maxValue {
-		lv = globalResultConfiguration.latencyHistogramConfiguration.maxValue
+	scale := config.GetGlobalHdrLatencyScale()
+	maxVal := config.GetGlobalHistogramConfiguration().MaxValue
+	lv := latency.Nanoseconds() / scale
+	if lv >= maxVal {
+		lv = maxVal
 	}
 	_ = r.FullResult.RawWriteLatency.RecordValue(lv)
 	_ = r.PartialResult.RawWriteLatency.RecordValue(lv)
@@ -243,13 +197,14 @@ func (r *TestThreadResult) RecordWriteRawLatency(latency time.Duration) {
 
 // RecordWriteCoFixedLatency records coordinated omission fixed latency for write operations in mixed mode
 func (r *TestThreadResult) RecordWriteCoFixedLatency(latency time.Duration) {
-	if !globalResultConfiguration.measureLatency {
+	if !config.GetGlobalMeasureLatency() {
 		return
 	}
-	lv := latency.Nanoseconds() / globalResultConfiguration.hdrLatencyScale
-
-	if lv >= globalResultConfiguration.latencyHistogramConfiguration.maxValue {
-		lv = globalResultConfiguration.latencyHistogramConfiguration.maxValue
+	scale := config.GetGlobalHdrLatencyScale()
+	maxVal := config.GetGlobalHistogramConfiguration().MaxValue
+	lv := latency.Nanoseconds() / scale
+	if lv >= maxVal {
+		lv = maxVal
 	}
 	_ = r.FullResult.CoFixedWriteLatency.RecordValue(lv)
 	_ = r.PartialResult.CoFixedWriteLatency.RecordValue(lv)

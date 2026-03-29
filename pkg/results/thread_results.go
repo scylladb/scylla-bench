@@ -7,6 +7,7 @@ import (
 	"github.com/HdrHistogram/hdrhistogram-go"
 
 	"github.com/scylladb/scylla-bench/internal/clock"
+	"github.com/scylladb/scylla-bench/pkg/config"
 )
 
 const (
@@ -64,7 +65,7 @@ func (tr *TestResults) GetResultsFromThreadsAndMerge() (bool, *MergedResult) {
 		}
 		result.AddResult(res)
 	}
-	result.Time /= time.Duration(globalResultConfiguration.concurrency)
+	result.Time /= time.Duration(config.GetGlobalConcurrency())
 	return final, result
 }
 
@@ -81,8 +82,8 @@ func (tr *TestResults) GetTotalResults() {
 	baseTime := (clk.NowUnixNano() / 1000000000) * 1000000000
 
 	var hdrLogWriter *hdrhistogram.HistogramLogWriter
-	if globalResultConfiguration.hdrLatencyFile != "" {
-		hdrLogWriter = InitHdrLogWriter(globalResultConfiguration.hdrLatencyFile, baseTime)
+	if config.GetGlobalHdrLatencyFile() != "" {
+		hdrLogWriter = InitHdrLogWriter(config.GetGlobalHdrLatencyFile(), baseTime)
 	}
 
 	for {
@@ -100,7 +101,7 @@ func (tr *TestResults) GetTotalResults() {
 }
 
 func (tr *TestResults) PrintResultsHeader() {
-	if globalResultConfiguration.measureLatency {
+	if config.GetGlobalMeasureLatency() {
 		fmt.Printf(
 			withLatencyLineFmt,
 			"time",
@@ -131,7 +132,7 @@ func (tr *TestResults) PrintTotalResults() {
 	}
 	fmt.Println("Operations/s:\t", tr.totalResult.OperationsPerSecond)
 	fmt.Println("Rows/s:\t\t", tr.totalResult.ClusteringRowsPerSecond)
-	if globalResultConfiguration.measureLatency {
+	if config.GetGlobalMeasureLatency() {
 		printLatencyResults("raw latency", tr.totalResult.RawLatency)
 		printLatencyResults("c-o fixed latency", tr.totalResult.CoFixedLatency)
 
@@ -153,7 +154,7 @@ func (tr *TestResults) PrintTotalResults() {
 }
 
 func printLatencyResults(name string, latency *hdrhistogram.Histogram) {
-	scale := globalResultConfiguration.hdrLatencyScale
+	scale := config.GetGlobalHdrLatencyScale()
 	fmt.Println(name, ":\n  max:\t\t", time.Duration(latency.Max()*scale),
 		"\n  99.9th:\t", time.Duration(latency.ValueAtQuantile(99.9)*scale),
 		"\n  99th:\t\t", time.Duration(latency.ValueAtQuantile(99)*scale),
