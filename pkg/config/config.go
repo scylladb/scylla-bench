@@ -25,13 +25,13 @@ type HistogramConfiguration struct {
 }
 
 type Configuration struct {
-	concurrency                   int
-	measureLatency                bool
 	hdrLatencyFile                string
+	latencyHistogramConfiguration HistogramConfiguration
+	concurrency                   int
 	hdrLatencyScale               int64
 	latencyTypeToPrint            LatencyType
-	latencyHistogramConfiguration HistogramConfiguration
 	reportingCycle                time.Duration
+	measureLatency                bool
 }
 
 var globalConfig Configuration
