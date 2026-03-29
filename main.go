@@ -19,7 +19,10 @@ import (
 
 	"github.com/scylladb/scylla-bench/internal/version"
 	"github.com/scylladb/scylla-bench/pkg/config"
+	"github.com/scylladb/scylla-bench/pkg/rate_limiter"
 	"github.com/scylladb/scylla-bench/pkg/results"
+	"github.com/scylladb/scylla-bench/pkg/test_run"
+	"github.com/scylladb/scylla-bench/pkg/worker"
 	"github.com/scylladb/scylla-bench/pkg/workloads"
 	"github.com/scylladb/scylla-bench/random"
 )
@@ -30,7 +33,7 @@ type (
 	}
 )
 
-type ModeFunc func(session *gocql.Session, testResult *results.TestThreadResult, workload workloads.Generator, rateLimiter RateLimiter, validateData bool)
+type ModeFunc func(session *gocql.Session, w *worker.Worker, workload workloads.Generator, rateLimiter rate_limiter.RateLimiter, validateData bool)
 
 type DistributionValue struct {
 	Dist *random.Distribution
@@ -927,30 +930,26 @@ func main() {
 		fmt.Println("Start timestamp:\t", startTime.UnixNano())
 		fmt.Println("Write rate:\t\t", int64(maximumRate)/partitionCount)
 	}
-	results.SetGlobalResultClock(globalClock)
 	setResultsConfiguration()
 
-	fmt.Println("Hdr memory consumption:\t", results.GetHdrMemoryConsumption(concurrency), "bytes")
+	fmt.Println("Hdr memory consumption:\t", results.GetHdrMemoryConsumption(), "bytes")
 
-	testResult := RunConcurrently(
-		globalClock,
-		maximumRate,
-		func(i int, testResult *results.TestThreadResult, rateLimiter RateLimiter) {
-			GetMode(
-				mode,
-			)(
-				session,
-				testResult,
-				GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution),
-				rateLimiter,
-				validateData,
-			)
-		},
-	)
-
-	testResult.GetTotalResults()
-	testResult.PrintTotalResults()
-	os.Exit(testResult.GetFinalStatus())
+	tr := test_run.NewTestRun(globalClock, concurrency, maximumRate)
+	tr.SetStartTime()
+	tr.PrintResultsHeader()
+	tr.StartPrintingPartialResult()
+	tr.RunTest(func(i int, w *worker.Worker, rl rate_limiter.RateLimiter) {
+		GetMode(mode)(
+			session,
+			w,
+			GetWorkload(workload, i, partitionOffset, mode, writeRate, distribution),
+			rl,
+			validateData,
+		)
+	})
+	tr.GetTotalResults()
+	tr.PrintTotalResults()
+	os.Exit(tr.GetFinalStatus())
 }
 
 func newHostSelectionPolicy(

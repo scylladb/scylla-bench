@@ -8,7 +8,11 @@ import (
 	"time"
 
 	"github.com/scylladb/scylla-bench/internal/clock"
+	"github.com/scylladb/scylla-bench/pkg/rate_limiter"
+	"github.com/scylladb/scylla-bench/pkg/worker"
 )
+
+type WorkloadFunction func(i int, w *worker.Worker, rateLimiter rate_limiter.RateLimiter)
 
 const (
 	minToken int64 = -(1 << 63)
