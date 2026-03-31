@@ -10,6 +10,7 @@ import (
 	"github.com/HdrHistogram/hdrhistogram-go"
 
 	"github.com/scylladb/scylla-bench/internal/clock"
+	"github.com/scylladb/scylla-bench/pkg/tools"
 )
 
 type MergedResult struct {
@@ -220,27 +221,27 @@ func (mr *MergedResult) PrintPartialResult() {
 		latencyHist := mr.getLatencyHistogram()
 		fmt.Printf(
 			withLatencyLineFmt,
-			Round(mr.Time),
+			tools.Round(mr.Time),
 			mr.Operations,
 			mr.ClusteringRows,
 			mr.Errors,
-			Round(
+			tools.Round(
 				time.Duration(latencyHist.Max()*scale),
 			),
-			Round(time.Duration(latencyHist.ValueAtQuantile(99.9)*scale)),
-			Round(time.Duration(latencyHist.ValueAtQuantile(99)*scale)),
-			Round(
+			tools.Round(time.Duration(latencyHist.ValueAtQuantile(99.9)*scale)),
+			tools.Round(time.Duration(latencyHist.ValueAtQuantile(99)*scale)),
+			tools.Round(
 				time.Duration(latencyHist.ValueAtQuantile(95)*scale),
 			),
-			Round(time.Duration(latencyHist.ValueAtQuantile(90)*scale)),
-			Round(
+			tools.Round(time.Duration(latencyHist.ValueAtQuantile(90)*scale)),
+			tools.Round(
 				time.Duration(latencyHist.ValueAtQuantile(50)*scale),
 			),
-			Round(time.Duration(latencyHist.Mean()*float64(scale))),
+			tools.Round(time.Duration(latencyHist.Mean()*float64(scale))),
 			latencyError,
 		)
 	} else {
-		fmt.Printf(withoutLatencyLineFmt, Round(mr.Time), mr.Operations, mr.ClusteringRows, mr.Errors)
+		fmt.Printf(withoutLatencyLineFmt, tools.Round(mr.Time), mr.Operations, mr.ClusteringRows, mr.Errors)
 	}
 }
 
