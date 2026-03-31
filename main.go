@@ -18,6 +18,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/scylladb/scylla-bench/internal/version"
+	"github.com/scylladb/scylla-bench/pkg/ratelimiter"
 	"github.com/scylladb/scylla-bench/pkg/results"
 	"github.com/scylladb/scylla-bench/pkg/workloads"
 	"github.com/scylladb/scylla-bench/random"
@@ -29,7 +30,7 @@ type (
 	}
 )
 
-type ModeFunc func(session *gocql.Session, testResult *results.TestThreadResult, workload workloads.Generator, rateLimiter RateLimiter, validateData bool)
+type ModeFunc func(session *gocql.Session, testResult *results.TestThreadResult, workload workloads.Generator, rateLimiter ratelimiter.RateLimiter, validateData bool)
 
 type DistributionValue struct {
 	Dist *random.Distribution
@@ -934,7 +935,7 @@ func main() {
 	testResult := RunConcurrently(
 		globalClock,
 		maximumRate,
-		func(i int, testResult *results.TestThreadResult, rateLimiter RateLimiter) {
+		func(i int, testResult *results.TestThreadResult, rateLimiter ratelimiter.RateLimiter) {
 			GetMode(
 				mode,
 			)(
