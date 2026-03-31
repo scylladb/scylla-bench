@@ -44,23 +44,7 @@ func NewMergedResult(clk clock.Clock) *MergedResult {
 			&globalResultConfiguration.latencyHistogramConfiguration,
 			"co-fixed",
 		)
-		// Create separate histograms for mixed mode read/write operations
-		result.RawReadLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"raw-read",
-		)
-		result.CoFixedReadLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"co-fixed-read",
-		)
-		result.RawWriteLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"raw-write",
-		)
-		result.CoFixedWriteLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"co-fixed-write",
-		)
+		// Read/write specific histograms are allocated lazily on first merge.
 	}
 	return result
 }
@@ -94,25 +78,25 @@ func (mr *MergedResult) AddResult(result Result) {
 		}
 		// Merge read/write specific histograms for mixed mode
 		if result.RawReadLatency != nil {
-			droppedRawRead := mr.RawReadLatency.Merge(result.RawReadLatency)
+			droppedRawRead := ensureHistogram(&mr.RawReadLatency, "raw-read").Merge(result.RawReadLatency)
 			if droppedRawRead > 0 {
 				log.Print("dropped raw read: ", droppedRawRead)
 			}
 		}
 		if result.CoFixedReadLatency != nil {
-			droppedCoFixedRead := mr.CoFixedReadLatency.Merge(result.CoFixedReadLatency)
+			droppedCoFixedRead := ensureHistogram(&mr.CoFixedReadLatency, "co-fixed-read").Merge(result.CoFixedReadLatency)
 			if droppedCoFixedRead > 0 {
 				log.Print("dropped co-fixed read: ", droppedCoFixedRead)
 			}
 		}
 		if result.RawWriteLatency != nil {
-			droppedRawWrite := mr.RawWriteLatency.Merge(result.RawWriteLatency)
+			droppedRawWrite := ensureHistogram(&mr.RawWriteLatency, "raw-write").Merge(result.RawWriteLatency)
 			if droppedRawWrite > 0 {
 				log.Print("dropped raw write: ", droppedRawWrite)
 			}
 		}
 		if result.CoFixedWriteLatency != nil {
-			droppedCoFixedWrite := mr.CoFixedWriteLatency.Merge(result.CoFixedWriteLatency)
+			droppedCoFixedWrite := ensureHistogram(&mr.CoFixedWriteLatency, "co-fixed-write").Merge(result.CoFixedWriteLatency)
 			if droppedCoFixedWrite > 0 {
 				log.Print("dropped co-fixed write: ", droppedCoFixedWrite)
 			}
