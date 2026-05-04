@@ -11,7 +11,7 @@ import (
 
 	"github.com/gocql/gocql"
 
-	"github.com/scylladb/scylla-bench/pkg/rate_limiter"
+	"github.com/scylladb/scylla-bench/pkg/ratelimiter"
 	"github.com/scylladb/scylla-bench/pkg/results"
 	"github.com/scylladb/scylla-bench/pkg/testutil"
 	"github.com/scylladb/scylla-bench/pkg/worker"
@@ -108,8 +108,9 @@ func runModeForDuration(
 ) *results.TotalResult {
 	t.Helper()
 
-	totalResult := results.NewTotalResult(1)
-	partialResult := results.NewPartialResult()
+	mixedMode := modeName(mode) == modeName(DoMixed)
+	totalResult := results.NewTotalResult(mixedMode)
+	partialResult := results.NewPartialResult(mixedMode)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	w := worker.NewWorker(partialResult, totalResult, &wg, false, 1, 1)
@@ -147,19 +148,19 @@ func modeWithConfig(
 
 	switch modeName(mode) {
 	case modeName(DoWrites):
-		DoWritesWithConfig(config, session, w, workload, &rate_limiter.UnlimitedRateLimiter{}, validateData)
+		DoWritesWithConfig(config, session, w, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoBatchedWrites):
-		DoBatchedWritesWithConfig(config, session, w, workload, &rate_limiter.UnlimitedRateLimiter{}, validateData)
+		DoBatchedWritesWithConfig(config, session, w, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoReads):
-		DoReadsFromTableWithConfig(config, config.TableName, session, w, workload, &rate_limiter.UnlimitedRateLimiter{}, validateData)
+		DoReadsFromTableWithConfig(config, config.TableName, session, w, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoCounterReads):
-		DoReadsFromTableWithConfig(config, config.CounterTableName, session, w, workload, &rate_limiter.UnlimitedRateLimiter{}, validateData)
+		DoReadsFromTableWithConfig(config, config.CounterTableName, session, w, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoCounterUpdates):
-		DoCounterUpdatesWithConfig(config, session, w, workload, &rate_limiter.UnlimitedRateLimiter{}, validateData)
+		DoCounterUpdatesWithConfig(config, session, w, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoScanTable):
-		DoScanTableWithConfig(config, session, w, workload, &rate_limiter.UnlimitedRateLimiter{}, validateData)
+		DoScanTableWithConfig(config, session, w, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoMixed):
-		DoMixedWithConfig(config, session, w, workload, &rate_limiter.UnlimitedRateLimiter{}, validateData)
+		DoMixedWithConfig(config, session, w, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
 	default:
 		t.Fatalf("unsupported mode func")
 	}

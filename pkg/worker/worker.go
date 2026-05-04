@@ -63,11 +63,7 @@ func (r *Worker) SubmitCriticalError(err error) {
 }
 
 func (r *Worker) clampLatency(latency time.Duration) int64 {
-	lv := latency.Nanoseconds() / r.hdrLatencyScale
-	if lv >= r.hdrLatencyMaxValue {
-		lv = r.hdrLatencyMaxValue
-	}
-	return lv
+	return min(latency.Nanoseconds()/r.hdrLatencyScale, r.hdrLatencyMaxValue)
 }
 
 func (r *Worker) RecordRawLatency(latency time.Duration) {
@@ -88,8 +84,12 @@ func (r *Worker) RecordCoFixedLatency(latency time.Duration) {
 	r.totalResult.CoFixedLatencyStack.Push(lv)
 }
 
+// The mixed-mode read/write stacks are only allocated when the test runs in
+// mixed mode (see results.NewPartialResult). Outside mixed mode these record
+// methods are not called; the nil checks make calls in any other context a
+// silent no-op rather than a nil-deref.
 func (r *Worker) RecordReadRawLatency(latency time.Duration) {
-	if !r.measureLatency {
+	if !r.measureLatency || r.partialResult.RawReadLatencyStack == nil {
 		return
 	}
 	lv := r.clampLatency(latency)
@@ -98,7 +98,7 @@ func (r *Worker) RecordReadRawLatency(latency time.Duration) {
 }
 
 func (r *Worker) RecordReadCoFixedLatency(latency time.Duration) {
-	if !r.measureLatency {
+	if !r.measureLatency || r.partialResult.CoFixedReadLatencyStack == nil {
 		return
 	}
 	lv := r.clampLatency(latency)
@@ -107,7 +107,7 @@ func (r *Worker) RecordReadCoFixedLatency(latency time.Duration) {
 }
 
 func (r *Worker) RecordWriteRawLatency(latency time.Duration) {
-	if !r.measureLatency {
+	if !r.measureLatency || r.partialResult.RawWriteLatencyStack == nil {
 		return
 	}
 	lv := r.clampLatency(latency)
@@ -116,7 +116,7 @@ func (r *Worker) RecordWriteRawLatency(latency time.Duration) {
 }
 
 func (r *Worker) RecordWriteCoFixedLatency(latency time.Duration) {
-	if !r.measureLatency {
+	if !r.measureLatency || r.partialResult.CoFixedWriteLatencyStack == nil {
 		return
 	}
 	lv := r.clampLatency(latency)

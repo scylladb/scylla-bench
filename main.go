@@ -19,9 +19,9 @@ import (
 
 	"github.com/scylladb/scylla-bench/internal/version"
 	"github.com/scylladb/scylla-bench/pkg/config"
-	"github.com/scylladb/scylla-bench/pkg/rate_limiter"
+	"github.com/scylladb/scylla-bench/pkg/ratelimiter"
 	"github.com/scylladb/scylla-bench/pkg/results"
-	"github.com/scylladb/scylla-bench/pkg/test_run"
+	"github.com/scylladb/scylla-bench/pkg/testrun"
 	"github.com/scylladb/scylla-bench/pkg/worker"
 	"github.com/scylladb/scylla-bench/pkg/workloads"
 	"github.com/scylladb/scylla-bench/random"
@@ -33,7 +33,7 @@ type (
 	}
 )
 
-type ModeFunc func(session *gocql.Session, w *worker.Worker, workload workloads.Generator, rateLimiter rate_limiter.RateLimiter, validateData bool)
+type ModeFunc func(session *gocql.Session, w *worker.Worker, workload workloads.Generator, rateLimiter ratelimiter.RateLimiter, validateData bool)
 
 type DistributionValue struct {
 	Dist *random.Distribution
@@ -932,13 +932,13 @@ func main() {
 	}
 	setResultsConfiguration()
 
-	fmt.Println("Hdr memory consumption:\t", results.GetHdrMemoryConsumption(), "bytes")
+	fmt.Println("Hdr memory consumption:\t", results.GetHdrMemoryConsumption(mode == "mixed"), "bytes")
 
-	tr := test_run.NewTestRun(globalClock, concurrency, maximumRate)
+	tr := testrun.NewTestRun(globalClock, concurrency, maximumRate, mode == "mixed")
 	tr.SetStartTime()
 	tr.PrintResultsHeader()
 	tr.StartPrintingPartialResult()
-	tr.RunTest(func(i int, w *worker.Worker, rl rate_limiter.RateLimiter) {
+	tr.RunTest(func(i int, w *worker.Worker, rl ratelimiter.RateLimiter) {
 		GetMode(mode)(
 			session,
 			w,
@@ -988,6 +988,5 @@ func setResultsConfiguration() {
 		(timeout * 3).Nanoseconds(),
 		hdrLatencySigFig,
 	)
-	config.SetGlobalConcurrency(concurrency)
 	config.SetGlobalLatencyTypeFromString(latencyType)
 }

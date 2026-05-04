@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync/atomic"
+	"sync"
 	"time"
 
 	"github.com/HdrHistogram/hdrhistogram-go"
@@ -20,141 +20,82 @@ const (
 )
 
 type PartialResult struct {
-	hdrLogWriter             *hdrhistogram.HistogramLogWriter
-	histogramStartTime       int64
-	Operations               uint64
-	ClusteringRows           uint64
-	Errors                   uint64
+	RawLatency               *hdrhistogram.Histogram
+	CoFixedWriteLatencyStack *stack.Stack
+	CoFixedWriteLatency      *hdrhistogram.Histogram
+	RawWriteLatency          *hdrhistogram.Histogram
+	CoFixedReadLatency       *hdrhistogram.Histogram
 	RawLatencyStack          *stack.Stack
 	CoFixedLatencyStack      *stack.Stack
 	RawReadLatencyStack      *stack.Stack
+	RawReadLatency           *hdrhistogram.Histogram
 	CoFixedReadLatencyStack  *stack.Stack
 	RawWriteLatencyStack     *stack.Stack
-	CoFixedWriteLatencyStack *stack.Stack
 	LatencyToPrint           *hdrhistogram.Histogram
-	RawLatency               *hdrhistogram.Histogram
+	hdrLogWriter             *hdrhistogram.HistogramLogWriter
 	CoFixedLatency           *hdrhistogram.Histogram
-	RawReadLatency           *hdrhistogram.Histogram
-	CoFixedReadLatency       *hdrhistogram.Histogram
-	RawWriteLatency          *hdrhistogram.Histogram
-	CoFixedWriteLatency      *hdrhistogram.Histogram
+	histogramStartTime       int64
+	Errors                   uint64
+	ClusteringRows           uint64
+	Operations               uint64
 }
 
 type TotalResult struct {
 	PartialResult
-	criticalErrors []error
-	criticalNum    uint32
+	criticalErrors   []error
+	criticalErrorsMu sync.Mutex
 }
 
 func initStack() *stack.Stack {
 	return stack.New(config.NumberOfLatencyResultsInPartialReportCycle())
 }
 
-func NewPartialResult() *PartialResult {
-	var hdrLogWriter *hdrhistogram.HistogramLogWriter
-	var rawLatencyStack, coFixedLatencyStack *stack.Stack
-	var rawReadLatencyStack, coFixedReadLatencyStack *stack.Stack
-	var rawWriteLatencyStack, coFixedWriteLatencyStack *stack.Stack
-	var rawLatency, coFixedLatency, latencyToPrint *hdrhistogram.Histogram
-	var rawReadLatency, coFixedReadLatency *hdrhistogram.Histogram
-	var rawWriteLatency, coFixedWriteLatency *hdrhistogram.Histogram
-
-	if config.GetGlobalMeasureLatency() {
-		histCfg := config.GetGlobalHistogramConfiguration()
-		rawLatency = NewHistogram(histCfg, "raw")
-		coFixedLatency = NewHistogram(histCfg, "co-fixed")
-		rawReadLatency = NewHistogram(histCfg, "raw-read")
-		coFixedReadLatency = NewHistogram(histCfg, "co-fixed-read")
-		rawWriteLatency = NewHistogram(histCfg, "raw-write")
-		coFixedWriteLatency = NewHistogram(histCfg, "co-fixed-write")
-
-		rawLatencyStack = initStack()
-		coFixedLatencyStack = initStack()
-		rawReadLatencyStack = initStack()
-		coFixedReadLatencyStack = initStack()
-		rawWriteLatencyStack = initStack()
-		coFixedWriteLatencyStack = initStack()
-
-		if config.GetGlobalLatencyType() == config.LatencyTypeRaw {
-			latencyToPrint = rawLatency
-		} else if config.GetGlobalLatencyType() == config.LatencyTypeCoordinatedOmissionFixed {
-			latencyToPrint = coFixedLatency
+// newLatencyPair allocates a histogram and a stack and wires the stack's flush
+// callback to record into the histogram.
+func newLatencyPair(histCfg *config.HistogramConfiguration, name string) (*hdrhistogram.Histogram, *stack.Stack) {
+	h := NewHistogram(histCfg, name)
+	s := initStack()
+	s.SetDataCallBack(func(data *[]int64, dataLength uint64) {
+		d := *data
+		for i := range dataLength {
+			_ = h.RecordValue(d[i])
 		}
+	})
+	return h, s
+}
 
-		if config.GetGlobalHdrLatencyFile() != "" {
-			hdrLogWriter = InitHdrLogWriter(
-				config.GetGlobalHdrLatencyFile(),
-				(time.Now().UnixNano()/1000000000)*1000000000)
-		}
-	}
+// NewPartialResult allocates the always-used raw/co-fixed histograms and
+// stacks. The mixed-mode read/write histograms are only allocated when
+// mixedMode is true to avoid the OOM regression that motivated #270.
+func NewPartialResult(mixedMode bool) *PartialResult {
+	result := &PartialResult{}
 
-	result := &PartialResult{
-		hdrLogWriter:             hdrLogWriter,
-		Operations:               0,
-		ClusteringRows:           0,
-		Errors:                   0,
-		RawLatencyStack:          rawLatencyStack,
-		CoFixedLatencyStack:      coFixedLatencyStack,
-		RawReadLatencyStack:      rawReadLatencyStack,
-		CoFixedReadLatencyStack:  coFixedReadLatencyStack,
-		RawWriteLatencyStack:     rawWriteLatencyStack,
-		CoFixedWriteLatencyStack: coFixedWriteLatencyStack,
-		RawLatency:               rawLatency,
-		CoFixedLatency:           coFixedLatency,
-		RawReadLatency:           rawReadLatency,
-		CoFixedReadLatency:       coFixedReadLatency,
-		RawWriteLatency:          rawWriteLatency,
-		CoFixedWriteLatency:      coFixedWriteLatency,
-		LatencyToPrint:           latencyToPrint,
+	if !config.GetGlobalMeasureLatency() {
+		return result
 	}
 
-	if rawLatencyStack != nil {
-		rawLatencyStack.SetDataCallBack(func(data *[]int64, dataLength uint64) {
-			dataResolved := *data
-			for i := uint64(0); i < dataLength; i++ {
-				rawLatency.RecordValue(dataResolved[i])
-			}
-		})
+	histCfg := config.GetGlobalHistogramConfiguration()
+	result.RawLatency, result.RawLatencyStack = newLatencyPair(histCfg, "raw")
+	result.CoFixedLatency, result.CoFixedLatencyStack = newLatencyPair(histCfg, "co-fixed")
+
+	if mixedMode {
+		result.RawReadLatency, result.RawReadLatencyStack = newLatencyPair(histCfg, "raw-read")
+		result.CoFixedReadLatency, result.CoFixedReadLatencyStack = newLatencyPair(histCfg, "co-fixed-read")
+		result.RawWriteLatency, result.RawWriteLatencyStack = newLatencyPair(histCfg, "raw-write")
+		result.CoFixedWriteLatency, result.CoFixedWriteLatencyStack = newLatencyPair(histCfg, "co-fixed-write")
 	}
-	if coFixedLatencyStack != nil {
-		coFixedLatencyStack.SetDataCallBack(func(data *[]int64, dataLength uint64) {
-			dataResolved := *data
-			for i := uint64(0); i < dataLength; i++ {
-				coFixedLatency.RecordValue(dataResolved[i])
-			}
-		})
+
+	switch config.GetGlobalLatencyType() {
+	case config.LatencyTypeRaw:
+		result.LatencyToPrint = result.RawLatency
+	case config.LatencyTypeCoordinatedOmissionFixed:
+		result.LatencyToPrint = result.CoFixedLatency
 	}
-	if rawReadLatencyStack != nil {
-		rawReadLatencyStack.SetDataCallBack(func(data *[]int64, dataLength uint64) {
-			dataResolved := *data
-			for i := uint64(0); i < dataLength; i++ {
-				rawReadLatency.RecordValue(dataResolved[i])
-			}
-		})
-	}
-	if coFixedReadLatencyStack != nil {
-		coFixedReadLatencyStack.SetDataCallBack(func(data *[]int64, dataLength uint64) {
-			dataResolved := *data
-			for i := uint64(0); i < dataLength; i++ {
-				coFixedReadLatency.RecordValue(dataResolved[i])
-			}
-		})
-	}
-	if rawWriteLatencyStack != nil {
-		rawWriteLatencyStack.SetDataCallBack(func(data *[]int64, dataLength uint64) {
-			dataResolved := *data
-			for i := uint64(0); i < dataLength; i++ {
-				rawWriteLatency.RecordValue(dataResolved[i])
-			}
-		})
-	}
-	if coFixedWriteLatencyStack != nil {
-		coFixedWriteLatencyStack.SetDataCallBack(func(data *[]int64, dataLength uint64) {
-			dataResolved := *data
-			for i := uint64(0); i < dataLength; i++ {
-				coFixedWriteLatency.RecordValue(dataResolved[i])
-			}
-		})
+
+	if config.GetGlobalHdrLatencyFile() != "" {
+		result.hdrLogWriter = InitHdrLogWriter(
+			config.GetGlobalHdrLatencyFile(),
+			(time.Now().UnixNano()/1000000000)*1000000000)
 	}
 
 	return result
@@ -200,11 +141,9 @@ func InitHdrLogWriter(fileName string, baseTime int64) *hdrhistogram.HistogramLo
 	return writer
 }
 
-func NewTotalResult(concurrency int) *TotalResult {
+func NewTotalResult(mixedMode bool) *TotalResult {
 	return &TotalResult{
-		*NewPartialResult(),
-		make([]error, concurrency*100),
-		0,
+		PartialResult: *NewPartialResult(mixedMode),
 	}
 }
 
@@ -308,32 +247,30 @@ func (pr *PartialResult) PrintPartialResultHeader() {
 }
 
 func (tr *TotalResult) SubmitCriticalError(err *error) {
-	idx := atomic.AddUint32(&tr.criticalNum, 1)
-	tr.criticalErrors[idx] = *err
+	if err == nil || *err == nil {
+		return
+	}
+	tr.criticalErrorsMu.Lock()
+	tr.criticalErrors = append(tr.criticalErrors, *err)
+	tr.criticalErrorsMu.Unlock()
 }
 
 func (tr *TotalResult) PrintCriticalErrors() {
-	if !tr.IsCriticalErrorsFound() {
+	tr.criticalErrorsMu.Lock()
+	defer tr.criticalErrorsMu.Unlock()
+	if len(tr.criticalErrors) == 0 {
 		return
 	}
 	fmt.Printf("\nFollowing critical errors were caught during the run:\n")
 	for _, err := range tr.criticalErrors {
-		if err != nil {
-			fmt.Printf("    %s\n", err.Error())
-		}
+		fmt.Printf("    %s\n", err.Error())
 	}
 }
 
 func (tr *TotalResult) IsCriticalErrorsFound() bool {
-	if tr.criticalErrors == nil || len(tr.criticalErrors) == 0 {
-		return false
-	}
-	for _, err := range tr.criticalErrors {
-		if err != nil {
-			return true
-		}
-	}
-	return false
+	tr.criticalErrorsMu.Lock()
+	defer tr.criticalErrorsMu.Unlock()
+	return len(tr.criticalErrors) > 0
 }
 
 func NewHistogram(cfg *config.HistogramConfiguration, name string) *hdrhistogram.Histogram {
@@ -342,8 +279,18 @@ func NewHistogram(cfg *config.HistogramConfiguration, name string) *hdrhistogram
 	return histogram
 }
 
-func GetHdrMemoryConsumption() int {
-	hdrSize := NewHistogram(config.GetGlobalHistogramConfiguration(), "example_hdr").ByteSize() * 6
-	stackSize := int(initStack().GetMemoryConsumption()) * 6
+// GetHdrMemoryConsumption estimates the memory used by HDR histograms and
+// latency stacks. Each TestRun keeps both a PartialResult (per-cycle) and a
+// TotalResult (whole-run) — workers push every measurement into both — so each
+// pair holds two sets of histograms+stacks. In mixed mode all six pairs are
+// allocated; otherwise only raw and co-fixed.
+func GetHdrMemoryConsumption(mixedMode bool) int {
+	pairs := 2
+	if mixedMode {
+		pairs = 6
+	}
+	const partialAndTotal = 2
+	hdrSize := NewHistogram(config.GetGlobalHistogramConfiguration(), "example_hdr").ByteSize() * pairs * partialAndTotal
+	stackSize := int(initStack().GetMemoryConsumption()) * pairs * partialAndTotal
 	return hdrSize + stackSize
 }

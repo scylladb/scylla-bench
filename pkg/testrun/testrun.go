@@ -1,15 +1,16 @@
-package test_run
+package testrun
 
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/HdrHistogram/hdrhistogram-go"
 
 	"github.com/scylladb/scylla-bench/internal/clock"
 	"github.com/scylladb/scylla-bench/pkg/config"
-	"github.com/scylladb/scylla-bench/pkg/rate_limiter"
+	"github.com/scylladb/scylla-bench/pkg/ratelimiter"
 	"github.com/scylladb/scylla-bench/pkg/results"
 	"github.com/scylladb/scylla-bench/pkg/tools"
 	"github.com/scylladb/scylla-bench/pkg/worker"
@@ -21,20 +22,21 @@ type TestRun struct {
 	workers            []*worker.Worker
 	numberOfThreads    int
 	startTime          time.Time
-	stopTime           *time.Time
+	stopTime           atomic.Pointer[time.Time]
 	partialResult      results.PartialResult
 	totalResult        results.TotalResult
 	waitGroup          sync.WaitGroup
 	measureLatency     bool
+	mixedMode          bool
 	hdrLatencyScale    int64
 	hdrLatencyMaxValue int64
 	timeOffsetUnit     int64
 	maximumRate        int
 }
 
-func NewTestRun(clk clock.Clock, concurrency int, maximumRate int) *TestRun {
+func NewTestRun(clk clock.Clock, concurrency, maximumRate int, mixedMode bool) *TestRun {
 	if clk == nil {
-		panic("test_run: clock must not be nil")
+		panic("testrun: clock must not be nil")
 	}
 	var timeOffsetUnit int64
 	if maximumRate != 0 {
@@ -49,14 +51,15 @@ func NewTestRun(clk clock.Clock, concurrency int, maximumRate int) *TestRun {
 		maximumRate:        maximumRate,
 		workers:            make([]*worker.Worker, concurrency),
 		numberOfThreads:    concurrency,
-		partialResult:      *results.NewPartialResult(),
-		totalResult:        *results.NewTotalResult(concurrency),
+		partialResult:      *results.NewPartialResult(mixedMode),
+		totalResult:        *results.NewTotalResult(mixedMode),
 		measureLatency:     config.GetGlobalMeasureLatency(),
+		mixedMode:          mixedMode,
 		hdrLatencyScale:    config.GetGlobalHdrLatencyScale(),
 		hdrLatencyMaxValue: config.GetGlobalHistogramConfiguration().MaxValue,
 	}
 	tr.waitGroup.Add(concurrency)
-	for i := 0; i < concurrency; i++ {
+	for i := range concurrency {
 		tr.workers[i] = worker.NewWorker(
 			&tr.partialResult,
 			&tr.totalResult,
@@ -82,28 +85,34 @@ func (tr *TestRun) GetTestResults() []*worker.Worker {
 }
 
 func (tr *TestRun) GetElapsedTime() time.Duration {
-	return tools.Round(tr.stopTime.Sub(tr.startTime))
+	stopTime := tr.stopTime.Load()
+	if stopTime == nil {
+		return 0
+	}
+	return tools.Round(stopTime.Sub(tr.startTime))
 }
 
 func (tr *TestRun) GetTotalResults() {
 	tr.waitGroup.Wait()
 	timeNow := tr.clk.Now()
-	tr.stopTime = &timeNow
+	tr.stopTime.Store(&timeNow)
 	tr.partialResult.FlushDataToHistogram()
 	tr.totalResult.FlushDataToHistogram()
 }
 
 func (tr *TestRun) StartPrintingPartialResult() {
 	go func() {
-		for range time.Tick(time.Second) {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
 			tr.partialResult.FlushDataToHistogram()
 			tr.partialResult.PrintPartialResult(tr.clk.Now().Sub(tr.startTime))
 			tr.partialResult.Reset()
-			if tr.stopTime != nil {
+			if tr.stopTime.Load() != nil {
 				if tr.partialResult.FlushDataToHistogram() {
 					tr.partialResult.PrintPartialResult(tr.clk.Now().Sub(tr.startTime))
 				}
-				break
+				return
 			}
 		}
 	}()
@@ -114,12 +123,11 @@ func (tr *TestRun) PrintResultsHeader() {
 }
 
 func (tr *TestRun) RunTest(workload workloads.WorkloadFunction) {
-	for i := 0; i < tr.numberOfThreads; i++ {
+	for i := range tr.numberOfThreads {
 		testResult := tr.GetTestResult(i)
-		i := i
 		go func() {
 			timeOffset := time.Duration(tr.timeOffsetUnit * int64(i))
-			workload(i, testResult, rate_limiter.NewRateLimiter(tr.clk, tr.maximumRate, timeOffset))
+			workload(i, testResult, ratelimiter.NewRateLimiter(tr.clk, tr.maximumRate, timeOffset))
 		}()
 	}
 }
