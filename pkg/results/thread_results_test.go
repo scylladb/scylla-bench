@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/scylladb/scylla-bench/pkg/tools"
 )
 
 // TestOutputAlignment verifies that time values with and without fractional seconds
@@ -24,9 +26,15 @@ func TestOutputAlignment(t *testing.T) {
 	// 12m41.2s has fractional seconds (8 chars)
 	// 12m42s has no fractional seconds (6 chars)
 	// Both should align properly with %8v format
-	fmt.Printf(withLatencyLineFmt, Round(12*time.Minute+41*time.Second+200*time.Millisecond), 407603, 407603, 0, "60ms", "28ms", "12ms", "2.7ms", "1.8ms", "852µs", "1.3ms", "")
-	fmt.Printf(withLatencyLineFmt, Round(12*time.Minute+42*time.Second), 401019, 401019, 0, "48ms", "29ms", "9.1ms", "2.3ms", "1.7ms", "852µs", "1.2ms", "")
-	fmt.Printf(withLatencyLineFmt, Round(12*time.Minute+42*time.Second+200*time.Millisecond), 398582, 398582, 0, "49ms", "27ms", "11ms", "2.8ms", "2ms", "950µs", "1.3ms", "")
+	fmt.Printf(withLatencyLineFmt,
+		tools.Round(12*time.Minute+41*time.Second+200*time.Millisecond),
+		407603, 407603, 0, "60ms", "28ms", "12ms", "2.7ms", "1.8ms", "852µs", "1.3ms", "")
+	fmt.Printf(withLatencyLineFmt,
+		tools.Round(12*time.Minute+42*time.Second),
+		401019, 401019, 0, "48ms", "29ms", "9.1ms", "2.3ms", "1.7ms", "852µs", "1.2ms", "")
+	fmt.Printf(withLatencyLineFmt,
+		tools.Round(12*time.Minute+42*time.Second+200*time.Millisecond),
+		398582, 398582, 0, "49ms", "27ms", "11ms", "2.8ms", "2ms", "950µs", "1.3ms", "")
 
 	// Restore stdout and capture output
 	w.Close()
@@ -81,9 +89,9 @@ func TestOutputAlignmentWithoutLatency(t *testing.T) {
 	os.Stdout = w
 
 	// Print sample rows with different time formats
-	fmt.Printf(withoutLatencyLineFmt, Round(12*time.Minute+41*time.Second+200*time.Millisecond), 407603, 407603, 0)
-	fmt.Printf(withoutLatencyLineFmt, Round(12*time.Minute+42*time.Second), 401019, 401019, 0)
-	fmt.Printf(withoutLatencyLineFmt, Round(12*time.Minute+42*time.Second+600*time.Millisecond), 402153, 402153, 0)
+	fmt.Printf(withoutLatencyLineFmt, tools.Round(12*time.Minute+41*time.Second+200*time.Millisecond), 407603, 407603, 0)
+	fmt.Printf(withoutLatencyLineFmt, tools.Round(12*time.Minute+42*time.Second), 401019, 401019, 0)
+	fmt.Printf(withoutLatencyLineFmt, tools.Round(12*time.Minute+42*time.Second+600*time.Millisecond), 402153, 402153, 0)
 
 	// Restore stdout and capture output
 	w.Close()

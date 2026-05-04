@@ -52,18 +52,10 @@ func NewTestThreadResultWithClockAndFlag(clk clock.Clock, flag *atomic.Bool) *Te
 		histCfg := config.GetGlobalHistogramConfiguration()
 		r.FullResult.RawLatency = NewHistogram(histCfg, "raw-latency")
 		r.FullResult.CoFixedLatency = NewHistogram(histCfg, "co-fixed-lantecy")
-		// Create separate histograms for mixed mode read/write operations
-		r.FullResult.RawReadLatency = NewHistogram(histCfg, "raw-read-latency")
-		r.FullResult.CoFixedReadLatency = NewHistogram(histCfg, "co-fixed-read-latency")
-		r.FullResult.RawWriteLatency = NewHistogram(histCfg, "raw-write-latency")
-		r.FullResult.CoFixedWriteLatency = NewHistogram(histCfg, "co-fixed-write-latency")
 		r.PartialResult.RawLatency = NewHistogram(histCfg, "raw-latency")
 		r.PartialResult.CoFixedLatency = NewHistogram(histCfg, "co-fixed-lantecy")
-		// Create separate histograms for mixed mode read/write operations in partial results
-		r.PartialResult.RawReadLatency = NewHistogram(histCfg, "raw-read-latency")
-		r.PartialResult.CoFixedReadLatency = NewHistogram(histCfg, "co-fixed-read-latency")
-		r.PartialResult.RawWriteLatency = NewHistogram(histCfg, "raw-write-latency")
-		r.PartialResult.CoFixedWriteLatency = NewHistogram(histCfg, "co-fixed-write-latency")
+		// Read/write specific histograms are allocated lazily on first use
+		// (only in mixed mode) to avoid unnecessary memory consumption.
 	}
 	r.ResultChannel = make(chan Result, 10000)
 	return r
@@ -114,11 +106,7 @@ func (r *TestThreadResult) ResetPartialResult() {
 		histCfg := config.GetGlobalHistogramConfiguration()
 		r.PartialResult.RawLatency = NewHistogram(histCfg, "raw-latency")
 		r.PartialResult.CoFixedLatency = NewHistogram(histCfg, "co-fixed-lantecy")
-		// Create separate histograms for mixed mode read/write operations in partial results
-		r.PartialResult.RawReadLatency = NewHistogram(histCfg, "raw-read-latency")
-		r.PartialResult.CoFixedReadLatency = NewHistogram(histCfg, "co-fixed-read-latency")
-		r.PartialResult.RawWriteLatency = NewHistogram(histCfg, "raw-write-latency")
-		r.PartialResult.CoFixedWriteLatency = NewHistogram(histCfg, "co-fixed-write-latency")
+		// Read/write specific histograms are allocated lazily on first use.
 	}
 }
 
@@ -161,8 +149,8 @@ func (r *TestThreadResult) RecordReadRawLatency(latency time.Duration) {
 	if lv >= maxVal {
 		lv = maxVal
 	}
-	_ = r.FullResult.RawReadLatency.RecordValue(lv)
-	_ = r.PartialResult.RawReadLatency.RecordValue(lv)
+	_ = ensureHistogram(&r.FullResult.RawReadLatency, "raw-read-latency").RecordValue(lv)
+	_ = ensureHistogram(&r.PartialResult.RawReadLatency, "raw-read-latency").RecordValue(lv)
 }
 
 // RecordReadCoFixedLatency records coordinated omission fixed latency for read operations in mixed mode
@@ -176,8 +164,8 @@ func (r *TestThreadResult) RecordReadCoFixedLatency(latency time.Duration) {
 	if lv >= maxVal {
 		lv = maxVal
 	}
-	_ = r.FullResult.CoFixedReadLatency.RecordValue(lv)
-	_ = r.PartialResult.CoFixedReadLatency.RecordValue(lv)
+	_ = ensureHistogram(&r.FullResult.CoFixedReadLatency, "co-fixed-read-latency").RecordValue(lv)
+	_ = ensureHistogram(&r.PartialResult.CoFixedReadLatency, "co-fixed-read-latency").RecordValue(lv)
 }
 
 // RecordWriteRawLatency records raw latency for write operations in mixed mode
@@ -191,8 +179,8 @@ func (r *TestThreadResult) RecordWriteRawLatency(latency time.Duration) {
 	if lv >= maxVal {
 		lv = maxVal
 	}
-	_ = r.FullResult.RawWriteLatency.RecordValue(lv)
-	_ = r.PartialResult.RawWriteLatency.RecordValue(lv)
+	_ = ensureHistogram(&r.FullResult.RawWriteLatency, "raw-write-latency").RecordValue(lv)
+	_ = ensureHistogram(&r.PartialResult.RawWriteLatency, "raw-write-latency").RecordValue(lv)
 }
 
 // RecordWriteCoFixedLatency records coordinated omission fixed latency for write operations in mixed mode
@@ -206,8 +194,8 @@ func (r *TestThreadResult) RecordWriteCoFixedLatency(latency time.Duration) {
 	if lv >= maxVal {
 		lv = maxVal
 	}
-	_ = r.FullResult.CoFixedWriteLatency.RecordValue(lv)
-	_ = r.PartialResult.CoFixedWriteLatency.RecordValue(lv)
+	_ = ensureHistogram(&r.FullResult.CoFixedWriteLatency, "co-fixed-write-latency").RecordValue(lv)
+	_ = ensureHistogram(&r.PartialResult.CoFixedWriteLatency, "co-fixed-write-latency").RecordValue(lv)
 }
 
 func (r *TestThreadResult) SubmitResult() {

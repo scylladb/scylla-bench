@@ -30,6 +30,14 @@ func NewHistogram(cfg *config.HistogramConfiguration, name string) *hdrhistogram
 	return histogram
 }
 
+func ensureHistogram(h **hdrhistogram.Histogram, name string) *hdrhistogram.Histogram {
+	if *h == nil {
+		*h = NewHistogram(config.GetGlobalHistogramConfiguration(), name)
+	}
+	return *h
+}
+
+
 func GetHdrMemoryConsumption(concurrency int) int {
 	hdr := NewHistogram(config.GetGlobalHistogramConfiguration(), "example_hdr")
 	return hdr.ByteSize() * concurrency * 4

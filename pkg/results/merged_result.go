@@ -11,6 +11,7 @@ import (
 
 	"github.com/scylladb/scylla-bench/internal/clock"
 	"github.com/scylladb/scylla-bench/pkg/config"
+	"github.com/scylladb/scylla-bench/pkg/tools"
 )
 
 type MergedResult struct {
@@ -39,11 +40,7 @@ func NewMergedResult(clk clock.Clock) *MergedResult {
 		result.HistogramStartTime = clk.NowUnixNano()
 		result.RawLatency = NewHistogram(histCfg, "raw")
 		result.CoFixedLatency = NewHistogram(histCfg, "co-fixed")
-		// Create separate histograms for mixed mode read/write operations
-		result.RawReadLatency = NewHistogram(histCfg, "raw-read")
-		result.CoFixedReadLatency = NewHistogram(histCfg, "co-fixed-read")
-		result.RawWriteLatency = NewHistogram(histCfg, "raw-write")
-		result.CoFixedWriteLatency = NewHistogram(histCfg, "co-fixed-write")
+		// Read/write specific histograms are allocated lazily on first merge.
 	}
 	return result
 }
@@ -77,25 +74,25 @@ func (mr *MergedResult) AddResult(result Result) {
 		}
 		// Merge read/write specific histograms for mixed mode
 		if result.RawReadLatency != nil {
-			droppedRawRead := mr.RawReadLatency.Merge(result.RawReadLatency)
+			droppedRawRead := ensureHistogram(&mr.RawReadLatency, "raw-read").Merge(result.RawReadLatency)
 			if droppedRawRead > 0 {
 				log.Print("dropped raw read: ", droppedRawRead)
 			}
 		}
 		if result.CoFixedReadLatency != nil {
-			droppedCoFixedRead := mr.CoFixedReadLatency.Merge(result.CoFixedReadLatency)
+			droppedCoFixedRead := ensureHistogram(&mr.CoFixedReadLatency, "co-fixed-read").Merge(result.CoFixedReadLatency)
 			if droppedCoFixedRead > 0 {
 				log.Print("dropped co-fixed read: ", droppedCoFixedRead)
 			}
 		}
 		if result.RawWriteLatency != nil {
-			droppedRawWrite := mr.RawWriteLatency.Merge(result.RawWriteLatency)
+			droppedRawWrite := ensureHistogram(&mr.RawWriteLatency, "raw-write").Merge(result.RawWriteLatency)
 			if droppedRawWrite > 0 {
 				log.Print("dropped raw write: ", droppedRawWrite)
 			}
 		}
 		if result.CoFixedWriteLatency != nil {
-			droppedCoFixedWrite := mr.CoFixedWriteLatency.Merge(result.CoFixedWriteLatency)
+			droppedCoFixedWrite := ensureHistogram(&mr.CoFixedWriteLatency, "co-fixed-write").Merge(result.CoFixedWriteLatency)
 			if droppedCoFixedWrite > 0 {
 				log.Print("dropped co-fixed write: ", droppedCoFixedWrite)
 			}
@@ -204,27 +201,27 @@ func (mr *MergedResult) PrintPartialResult() {
 		latencyHist := mr.getLatencyHistogram()
 		fmt.Printf(
 			withLatencyLineFmt,
-			Round(mr.Time),
+			tools.Round(mr.Time),
 			mr.Operations,
 			mr.ClusteringRows,
 			mr.Errors,
-			Round(
+			tools.Round(
 				time.Duration(latencyHist.Max()*scale),
 			),
-			Round(time.Duration(latencyHist.ValueAtQuantile(99.9)*scale)),
-			Round(time.Duration(latencyHist.ValueAtQuantile(99)*scale)),
-			Round(
+			tools.Round(time.Duration(latencyHist.ValueAtQuantile(99.9)*scale)),
+			tools.Round(time.Duration(latencyHist.ValueAtQuantile(99)*scale)),
+			tools.Round(
 				time.Duration(latencyHist.ValueAtQuantile(95)*scale),
 			),
-			Round(time.Duration(latencyHist.ValueAtQuantile(90)*scale)),
-			Round(
+			tools.Round(time.Duration(latencyHist.ValueAtQuantile(90)*scale)),
+			tools.Round(
 				time.Duration(latencyHist.ValueAtQuantile(50)*scale),
 			),
-			Round(time.Duration(latencyHist.Mean()*float64(scale))),
+			tools.Round(time.Duration(latencyHist.Mean()*float64(scale))),
 			latencyError,
 		)
 	} else {
-		fmt.Printf(withoutLatencyLineFmt, Round(mr.Time), mr.Operations, mr.ClusteringRows, mr.Errors)
+		fmt.Printf(withoutLatencyLineFmt, tools.Round(mr.Time), mr.Operations, mr.ClusteringRows, mr.Errors)
 	}
 }
 

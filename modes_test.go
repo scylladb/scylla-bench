@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/scylladb/scylla-bench/internal/clock"
+	"github.com/scylladb/scylla-bench/pkg/ratelimiter"
 )
 
 func Must[T any](v T, err error) T {
@@ -415,7 +416,7 @@ func TestMixedModeCoFixedLatencyRecording(t *testing.T) {
 	// without requiring a database connection by testing the function signature changes
 
 	// Mock rate limiter that returns a known expected time
-	mockRateLimiter := &MaximumRateLimiter{
+	mockRateLimiter := &ratelimiter.MaximumRateLimiter{
 		StartTime: clock.New().Now().Add(-time.Second), // 1 second ago
 		Period:    time.Millisecond * 10,               // 10ms between operations
 	}
