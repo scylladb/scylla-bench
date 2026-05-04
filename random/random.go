@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
@@ -43,6 +44,12 @@ var (
 	_ Distribution = (*Fixed)(nil)
 	_ Distribution = (*Uniform)(nil)
 	_ Distribution = (*Ratio)(nil)
+)
+
+var (
+	_ SourceDistribution = Fixed{}
+	_ SourceDistribution = Uniform{}
+	_ SourceDistribution = (*Ratio)(nil)
 )
 
 var (
@@ -316,6 +323,9 @@ func (u Uniform) String() string {
 
 // Generate implements the Distribution interface.
 func (u Uniform) Generate() int64 {
+	if u.Max == u.Min {
+		return u.Min
+	}
 	return u.Min + globalRand.Int64N(u.Max-u.Min)
 }
 
@@ -386,12 +396,22 @@ type Source struct {
 	str *rand.ChaCha8
 }
 
-// NewSource creates a new unlocked random source with the given seed.
+var sourceCounter atomic.Uint64
+
+// NewSource creates a new unlocked random source with a unique seed derived
+// from the provided base seed and an internal atomic counter.
 func NewSource(seed uint64) *Source {
-	s := sha256.Sum256([]byte(strconv.FormatUint(seed, 10)))
+	id := sourceCounter.Add(1)
+	s1 := seed ^ (id * 6364136223846793005) // Knuth LCG multiplier for mixing
+	s2 := s1 ^ 0xdeadbeefcafebabe
+	var key [32]byte
+	binary.LittleEndian.PutUint64(key[0:8], s1)
+	binary.LittleEndian.PutUint64(key[8:16], s2)
+	binary.LittleEndian.PutUint64(key[16:24], s1^s2)
+	binary.LittleEndian.PutUint64(key[24:32], id)
 	return &Source{
-		rng: rand.New(rand.NewPCG(seed, seed+1)),
-		str: rand.NewChaCha8(s),
+		rng: rand.New(rand.NewPCG(s1, s2)),
+		str: rand.NewChaCha8(key),
 	}
 }
 
