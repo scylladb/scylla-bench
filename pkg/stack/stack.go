@@ -13,11 +13,11 @@ type CbFunction func(*[]int64, uint64)
 type Stack struct {
 	data         *[]int64
 	swap         *[]int64
+	swapCb       *CbFunction
 	current      uint64
 	upperLimit   uint64
 	cbInProgress sync.Mutex
 	swapLock     sync.Mutex
-	swapCb       *CbFunction
 }
 
 func New(elementsLimit int64) *Stack {

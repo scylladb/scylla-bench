@@ -41,8 +41,8 @@ type PartialResult struct {
 }
 
 type TotalResult struct {
+	criticalErrors []error
 	PartialResult
-	criticalErrors   []error
 	criticalErrorsMu sync.Mutex
 }
 

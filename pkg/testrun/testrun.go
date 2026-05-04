@@ -20,18 +20,18 @@ import (
 type TestRun struct {
 	clk                clock.Clock
 	workers            []*worker.Worker
-	numberOfThreads    int
 	startTime          time.Time
 	stopTime           atomic.Pointer[time.Time]
 	partialResult      results.PartialResult
 	totalResult        results.TotalResult
 	waitGroup          sync.WaitGroup
-	measureLatency     bool
-	mixedMode          bool
+	numberOfThreads    int
 	hdrLatencyScale    int64
 	hdrLatencyMaxValue int64
 	timeOffsetUnit     int64
 	maximumRate        int
+	measureLatency     bool
+	mixedMode          bool
 }
 
 func NewTestRun(clk clock.Clock, concurrency, maximumRate int, mixedMode bool) *TestRun {
