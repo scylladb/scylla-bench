@@ -290,6 +290,9 @@ func (u Uniform) String() string {
 
 // Generate implements the Distribution interface.
 func (u Uniform) Generate() int64 {
+	if u.Max == u.Min {
+		return u.Min
+	}
 	return u.Min + globalRand.Int64N(u.Max-u.Min)
 }
 

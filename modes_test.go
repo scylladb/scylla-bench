@@ -448,3 +448,44 @@ func TestMixedModeCoFixedLatencyRecording(t *testing.T) {
 
 	t.Logf("Test verified coordinated omission calculation: %v", coFixedLatency)
 }
+
+func BenchmarkGenerateData(b *testing.B) {
+	benchmarks := []struct {
+		name     string
+		size     int64
+		validate bool
+	}{
+		{"NoValidate_1024", 1024, false},
+		{"Validate_1024", 1024, true},
+		{"Validate_128", 128, true},
+		{"Validate_Small_16", 16, true},
+	}
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_, _ = GenerateData(1, 1, bm.size, bm.validate)
+			}
+		})
+	}
+}
+
+func BenchmarkValidateData(b *testing.B) {
+	benchmarks := []struct {
+		name string
+		size int64
+	}{
+		{"Large_1024", 1024},
+		{"Medium_128", 128},
+		{"Small_16", 16},
+	}
+	for _, bm := range benchmarks {
+		data, _ := GenerateData(1, 1, bm.size, true)
+		b.Run(bm.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_ = ValidateData(1, 1, data, true)
+			}
+		})
+	}
+}

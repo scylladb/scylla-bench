@@ -255,50 +255,33 @@ const (
 )
 
 func GenerateData(pk, ck, size int64, validateData bool) ([]byte, error) {
-	if !validateData {
+	if !validateData || size == 0 {
 		return make([]byte, size), nil
 	}
 
-	buf := bytes.Buffer{}
-	buf.Grow(int(size))
+	value := make([]byte, size)
 
 	if size < generatedDataHeaderSize {
-		if err := binary.Write(&buf, binary.LittleEndian, int8(size)); err != nil {
-			return nil, err
-		}
-		if err := binary.Write(&buf, binary.LittleEndian, pk^ck); err != nil {
-			return nil, err
-		}
+		// Write a compact header (1 byte size + 8 byte pk^ck) into a temp buffer,
+		// then copy only what fits into value (original behavior).
+		var hdr [9]byte
+		hdr[0] = byte(size)
+		binary.LittleEndian.PutUint64(hdr[1:9], uint64(pk^ck))
+		copy(value, hdr[:])
 	} else {
-		if err := binary.Write(&buf, binary.LittleEndian, size); err != nil {
-			return nil, err
-		}
-		if err := binary.Write(&buf, binary.LittleEndian, pk); err != nil {
-			return nil, err
-		}
-		if err := binary.Write(&buf, binary.LittleEndian, ck); err != nil {
-			return nil, err
-		}
-		if size < generatedDataMinSize {
-			for i := generatedDataHeaderSize; i < size; i++ {
-				if err := binary.Write(&buf, binary.LittleEndian, int8(0)); err != nil {
-					return nil, err
-				}
-			}
-		} else {
-			payload := make([]byte, size-generatedDataHeaderSize-sha256.Size)
+		binary.LittleEndian.PutUint64(value[0:8], uint64(size))
+		binary.LittleEndian.PutUint64(value[8:16], uint64(pk))
+		binary.LittleEndian.PutUint64(value[16:24], uint64(ck))
+
+		if size >= generatedDataMinSize {
+			payload := value[generatedDataHeaderSize : size-sha256.Size]
 			_, _ = random.String(payload)
-			if err := binary.Write(&buf, binary.LittleEndian, payload); err != nil {
-				return nil, err
-			}
-			if err := binary.Write(&buf, binary.LittleEndian, sha256.Sum256(payload)); err != nil {
-				return nil, err
-			}
+			checksum := sha256.Sum256(payload)
+			copy(value[size-sha256.Size:], checksum[:])
 		}
+		// else: zero-filled between header and end (already zero from make)
 	}
 
-	value := make([]byte, size)
-	copy(value, buf.Bytes())
 	return value, nil
 }
 
@@ -307,22 +290,16 @@ func ValidateData(pk, ck int64, data []byte, validateData bool) error {
 		return nil
 	}
 
-	buf := bytes.NewBuffer(data)
-	size := int64(buf.Len())
+	size := int64(len(data))
+	if size == 0 {
+		return nil
+	}
 
 	var storedSize int64
 	if size < generatedDataHeaderSize {
-		var storedSizeCompact int8
-		err := binary.Read(buf, binary.LittleEndian, &storedSizeCompact)
-		if err != nil {
-			return errors.Wrap(err, "failed to validate data, cannot read size from value")
-		}
-		storedSize = int64(storedSizeCompact)
+		storedSize = int64(int8(data[0]))
 	} else {
-		err := binary.Read(buf, binary.LittleEndian, &storedSize)
-		if err != nil {
-			return errors.Wrap(err, "failed to validate data, cannot read size from value")
-		}
+		storedSize = int64(binary.LittleEndian.Uint64(data[0:8]))
 	}
 
 	if size != storedSize {
@@ -340,9 +317,6 @@ func ValidateData(pk, ck int64, data []byte, validateData bool) error {
 			return errors.Wrap(err, "failed to generate expected data for validation")
 		}
 
-		// Compare the original data slice directly, not the buffer's remaining bytes.
-		// After reading the size field (either int8 or int64), the buffer position has advanced,
-		// and buf.Bytes() would return incomplete data. We need to compare the full original data.
 		if !bytes.Equal(data, expectedBuf) {
 			return errors.Errorf(
 				"actual value doesn't match expected value:\nexpected: %x\nactual: %x",
@@ -354,43 +328,25 @@ func ValidateData(pk, ck int64, data []byte, validateData bool) error {
 		return nil
 	}
 
-	var storedPk, storedCk int64
-
 	// Validate pk
-
-	if err := binary.Read(buf, binary.LittleEndian, &storedPk); err != nil {
-		return errors.Wrap(err, "failed to validate data, cannot read pk from value")
-	}
+	storedPk := int64(binary.LittleEndian.Uint64(data[8:16]))
 	if storedPk != pk {
 		return errors.Errorf("actual pk (%d) doesn't match pk stored in value (%d)", pk, storedPk)
 	}
 
 	// Validate ck
-	if err := binary.Read(buf, binary.LittleEndian, &storedCk); err != nil {
-		return errors.Wrap(err, "failed to validate data, cannot read pk from value")
-	}
-
+	storedCk := int64(binary.LittleEndian.Uint64(data[16:24]))
 	if storedCk != ck {
 		return errors.Errorf("actual ck (%d) doesn't match ck stored in value (%d)", ck, storedCk)
 	}
 
-	// Validate checksum over the payload
-	payload := make([]byte, size-generatedDataHeaderSize-sha256.Size)
+	// Validate checksum over the payload (no copy needed — slice directly into data)
+	payload := data[generatedDataHeaderSize : size-sha256.Size]
+	storedChecksum := data[size-sha256.Size : size]
 
-	if err := binary.Read(buf, binary.LittleEndian, payload); err != nil {
-		return errors.Wrap(err, "failed to verify checksum, cannot read payload from value")
-	}
+	calculatedChecksum := sha256.Sum256(payload)
 
-	calculatedChecksumArray := sha256.Sum256(payload)
-	calculatedChecksum := calculatedChecksumArray[0:]
-
-	var storedChecksum [sha256.Size]byte
-
-	if err := binary.Read(buf, binary.LittleEndian, storedChecksum[:]); err != nil {
-		return errors.Wrap(err, "failed to verify checksum, cannot read checksum from value")
-	}
-
-	if !bytes.Equal(calculatedChecksum, storedChecksum[:]) {
+	if !bytes.Equal(calculatedChecksum[:], storedChecksum) {
 		return fmt.Errorf(
 			"corrupt checksum or data: calculated checksum (%x) doesn't match stored checksum (%x) over data\n%x",
 			calculatedChecksum,
@@ -429,12 +385,12 @@ func createWriteTestFuncWithConfig(
 	validateData bool,
 ) func(w *worker.Worker) (time.Duration, error) {
 	config = config.normalized()
+	request := fmt.Sprintf(
+		"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)",
+		config.KeyspaceName,
+		config.TableName,
+	)
 	return func(w *worker.Worker) (time.Duration, error) {
-		request := fmt.Sprintf(
-			"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)",
-			config.KeyspaceName,
-			config.TableName,
-		)
 		query := session.Query(request)
 		defer query.Release()
 		pk := workload.NextPartitionKey()
@@ -1001,12 +957,12 @@ func createMixedWriteTestFuncWithConfig(
 	validateData bool,
 ) func(rb *worker.Worker) (time.Duration, error) {
 	config = config.normalized()
+	request := fmt.Sprintf(
+		"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)",
+		config.KeyspaceName,
+		config.TableName,
+	)
 	return func(rb *worker.Worker) (time.Duration, error) {
-		request := fmt.Sprintf(
-			"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)",
-			config.KeyspaceName,
-			config.TableName,
-		)
 		query := session.Query(request)
 		defer query.Release()
 		pk := workload.NextPartitionKey()
