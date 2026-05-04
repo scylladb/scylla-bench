@@ -10,6 +10,7 @@ import (
 	"github.com/HdrHistogram/hdrhistogram-go"
 
 	"github.com/scylladb/scylla-bench/internal/clock"
+	"github.com/scylladb/scylla-bench/pkg/config"
 	"github.com/scylladb/scylla-bench/pkg/tools"
 )
 
@@ -34,16 +35,11 @@ type MergedResult struct {
 
 func NewMergedResult(clk clock.Clock) *MergedResult {
 	result := &MergedResult{clk: clk}
-	if globalResultConfiguration.measureLatency {
+	if config.GetGlobalMeasureLatency() {
+		histCfg := config.GetGlobalHistogramConfiguration()
 		result.HistogramStartTime = clk.NowUnixNano()
-		result.RawLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"raw",
-		)
-		result.CoFixedLatency = NewHistogram(
-			&globalResultConfiguration.latencyHistogramConfiguration,
-			"co-fixed",
-		)
+		result.RawLatency = NewHistogram(histCfg, "raw")
+		result.CoFixedLatency = NewHistogram(histCfg, "co-fixed")
 		// Read/write specific histograms are allocated lazily on first merge.
 	}
 	return result
@@ -63,7 +59,7 @@ func (mr *MergedResult) AddResult(result Result) {
 			mr.CriticalErrors = append(mr.CriticalErrors, result.CriticalErrors...)
 		}
 	}
-	if globalResultConfiguration.measureLatency {
+	if config.GetGlobalMeasureLatency() {
 		if result.RawLatency != nil {
 			droppedRaw := mr.RawLatency.Merge(result.RawLatency)
 			if droppedRaw > 0 {
@@ -145,7 +141,7 @@ func InitHdrLogWriter(fileName string, baseTime int64) *hdrhistogram.HistogramLo
 }
 
 func (mr *MergedResult) getLatencyHistogram() *hdrhistogram.Histogram {
-	if globalResultConfiguration.latencyTypeToPrint == LatencyTypeCoordinatedOmissionFixed {
+	if config.GetGlobalLatencyType() == config.LatencyTypeCoordinatedOmissionFixed {
 		return mr.CoFixedLatency
 	}
 	return mr.RawLatency
@@ -200,8 +196,8 @@ func (mr *MergedResult) SaveLatenciesToHdrHistogram(hdrLogWriter *hdrhistogram.H
 
 func (mr *MergedResult) PrintPartialResult() {
 	latencyError := ""
-	if globalResultConfiguration.measureLatency {
-		scale := globalResultConfiguration.hdrLatencyScale
+	if config.GetGlobalMeasureLatency() {
+		scale := config.GetGlobalHdrLatencyScale()
 		latencyHist := mr.getLatencyHistogram()
 		fmt.Printf(
 			withLatencyLineFmt,
