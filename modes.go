@@ -20,12 +20,10 @@ import (
 
 	"github.com/scylladb/scylla-bench/internal/clock"
 	"github.com/scylladb/scylla-bench/pkg/ratelimiter"
-	"github.com/scylladb/scylla-bench/pkg/results"
+	"github.com/scylladb/scylla-bench/pkg/worker"
 	"github.com/scylladb/scylla-bench/pkg/workloads"
 	"github.com/scylladb/scylla-bench/random"
 )
-
-var reportInterval = 1 * time.Second
 
 // globalClock is the process-wide real clock, initialized at package load time.
 // It is used as the default for DefaultExecutionConfig() and normalized().
@@ -145,34 +143,6 @@ var (
 	globalTotalErrorsPrintOnce sync.Once
 )
 
-func RunConcurrently(
-	clk clock.Clock,
-	maximumRate int,
-	workload func(id int, testResult *results.TestThreadResult, rateLimiter ratelimiter.RateLimiter),
-) *results.TestResults {
-	var timeOffsetUnit int64
-	if maximumRate != 0 {
-		timeOffsetUnit = int64(time.Second) / int64(maximumRate)
-		maximumRate /= concurrency
-	} else {
-		timeOffsetUnit = 0
-	}
-
-	totalResults := results.TestResults{}
-	totalResults.Init(concurrency, clk)
-	totalResults.PrintResultsHeader()
-
-	for i := 0; i < concurrency; i++ {
-		testResult := totalResults.GetTestResult(i)
-		go func(i int) {
-			timeOffset := time.Duration(timeOffsetUnit * int64(i))
-			workload(i, testResult, ratelimiter.NewRateLimiter(clk, maximumRate, timeOffset))
-		}(i)
-	}
-
-	return &totalResults
-}
-
 type TestIterator struct {
 	workload  workloads.Generator
 	config    ExecutionConfig
@@ -225,14 +195,12 @@ var errDoNotRegister = errors.New("do not register this test results")
 
 func RunTest(
 	config ExecutionConfig,
-	threadResult *results.TestThreadResult,
+	w *worker.Worker,
 	workload workloads.Generator,
 	rateLimiter ratelimiter.RateLimiter,
-	test func(rb *results.TestThreadResult) (time.Duration, error),
+	test func(w *worker.Worker) (time.Duration, error),
 ) {
 	config = config.normalized()
-	start := config.Clock.Now()
-	partialStart := start
 	iter := NewTestIterator(workload, config)
 	errorsAtRow := 0
 	for !iter.IsDone() {
@@ -243,54 +211,42 @@ func RunTest(
 			expectedStartTime = config.Clock.Now()
 		}
 
-		rawLatency, err := test(threadResult)
+		rawLatency, err := test(w)
 		endTime := config.Clock.Now()
 		switch {
 		case err == nil:
 			errorsAtRow = 0
-			threadResult.RecordRawLatency(rawLatency)
-			threadResult.RecordCoFixedLatency(endTime.Sub(expectedStartTime))
+			w.RecordRawLatency(rawLatency)
+			w.RecordCoFixedLatency(endTime.Sub(expectedStartTime))
 		case stdErrors.Is(err, errDoNotRegister):
 			// Do not register test run results
 		default:
 			errorsAtRow++
 			config.TotalErrors.Add(1)
-			threadResult.IncErrors()
+			w.IncErrors()
 			log.Print(err)
 			if rawLatency > errorToTimeoutCutoffTime {
 				// Consider this error to be timeout error and register it in histogram
-				threadResult.RecordRawLatency(rawLatency)
-				threadResult.RecordCoFixedLatency(endTime.Sub(expectedStartTime))
+				w.RecordRawLatency(rawLatency)
+				w.RecordCoFixedLatency(endTime.Sub(expectedStartTime))
 			}
 		}
 
-		now := config.Clock.Now()
 		if config.MaxErrorsAtRow > 0 && errorsAtRow >= config.MaxErrorsAtRow {
-			threadResult.SubmitCriticalError(fmt.Errorf(
+			w.SubmitCriticalError(fmt.Errorf(
 				"error limit (maxErrorsAtRow) of %d errors is reached", errorsAtRow))
 		}
 		if config.MaxErrors > 0 && int(config.TotalErrors.Load()) >= config.MaxErrors {
 			config.TotalErrorsPrintOnce.Do(func() {
-				threadResult.SubmitCriticalError(fmt.Errorf(
+				w.SubmitCriticalError(fmt.Errorf(
 					"error limit (maxErrors) of %d errors is reached", config.MaxErrors))
 			})
 		}
-		if threadResult.HasCriticalError() {
-			threadResult.ResultChannel <- *threadResult.PartialResult
-			threadResult.ResetPartialResult()
+		if worker.GlobalErrorFlag.Load() {
 			break
 		}
-		if now.Sub(partialStart) > reportInterval {
-			threadResult.ResultChannel <- *threadResult.PartialResult
-			threadResult.ResetPartialResult()
-			partialStart = partialStart.Add(reportInterval)
-		}
 	}
-	end := config.Clock.Now()
-
-	threadResult.FullResult.ElapsedTime = end.Sub(start)
-	threadResult.ResultChannel <- *threadResult.FullResult
-	threadResult.StopReporting()
+	w.StopReporting()
 }
 
 const (
@@ -471,9 +427,9 @@ func createWriteTestFuncWithConfig(
 	session *gocql.Session,
 	workload workloads.Generator,
 	validateData bool,
-) func(rb *results.TestThreadResult) (time.Duration, error) {
+) func(w *worker.Worker) (time.Duration, error) {
 	config = config.normalized()
-	return func(rb *results.TestThreadResult) (time.Duration, error) {
+	return func(w *worker.Worker) (time.Duration, error) {
 		request := fmt.Sprintf(
 			"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)",
 			config.KeyspaceName,
@@ -497,8 +453,8 @@ func createWriteTestFuncWithConfig(
 			requestEnd := config.Clock.Now()
 
 			if err == nil {
-				rb.IncOps()
-				rb.IncRows()
+				w.IncOps()
+				w.IncRows()
 				latency := requestEnd.Sub(requestStart)
 				return latency, nil
 			}
@@ -524,14 +480,14 @@ func createWriteTestFuncWithConfig(
 
 func DoWrites(
 	session *gocql.Session,
-	threadResult *results.TestThreadResult,
+	w *worker.Worker,
 	workload workloads.Generator,
 	rateLimiter ratelimiter.RateLimiter,
 	validateData bool,
 ) {
 	RunTest(
 		DefaultExecutionConfig(),
-		threadResult,
+		w,
 		workload,
 		rateLimiter,
 		createWriteTestFuncWithConfig(DefaultExecutionConfig(), session, workload, validateData),
@@ -541,14 +497,14 @@ func DoWrites(
 func DoWritesWithConfig(
 	config ExecutionConfig,
 	session *gocql.Session,
-	threadResult *results.TestThreadResult,
+	w *worker.Worker,
 	workload workloads.Generator,
 	rateLimiter ratelimiter.RateLimiter,
 	validateData bool,
 ) {
 	RunTest(
 		config,
-		threadResult,
+		w,
 		workload,
 		rateLimiter,
 		createWriteTestFuncWithConfig(config, session, workload, validateData),
@@ -558,7 +514,7 @@ func DoWritesWithConfig(
 func DoBatchedWritesWithConfig(
 	config ExecutionConfig,
 	session *gocql.Session,
-	threadResult *results.TestThreadResult,
+	w *worker.Worker,
 	workload workloads.Generator,
 	rateLimiter ratelimiter.RateLimiter,
 	validateData bool,
@@ -572,10 +528,10 @@ func DoBatchedWritesWithConfig(
 
 	RunTest(
 		config,
-		threadResult,
+		w,
 		workload,
 		rateLimiter,
-		func(rb *results.TestThreadResult) (time.Duration, error) {
+		func(rb *worker.Worker) (time.Duration, error) {
 			batch := session.Batch(gocql.UnloggedBatch)
 			batchSize := 0
 
@@ -619,7 +575,7 @@ func DoBatchedWritesWithConfig(
 
 				if err == nil {
 					rb.IncOps()
-					rb.AddRows(batchSize)
+					rb.AddRows(uint64(batchSize))
 					latency := requestEnd.Sub(requestStart)
 					return latency, nil
 				}
@@ -648,28 +604,28 @@ func DoBatchedWritesWithConfig(
 
 func DoBatchedWrites(
 	session *gocql.Session,
-	threadResult *results.TestThreadResult,
+	w *worker.Worker,
 	workload workloads.Generator,
 	rateLimiter ratelimiter.RateLimiter,
 	validateData bool,
 ) {
-	DoBatchedWritesWithConfig(DefaultExecutionConfig(), session, threadResult, workload, rateLimiter, validateData)
+	DoBatchedWritesWithConfig(DefaultExecutionConfig(), session, w, workload, rateLimiter, validateData)
 }
 
 func DoCounterUpdates(
 	session *gocql.Session,
-	threadResult *results.TestThreadResult,
+	w *worker.Worker,
 	workload workloads.Generator,
 	rateLimiter ratelimiter.RateLimiter,
 	_ bool,
 ) {
-	DoCounterUpdatesWithConfig(DefaultExecutionConfig(), session, threadResult, workload, rateLimiter, false)
+	DoCounterUpdatesWithConfig(DefaultExecutionConfig(), session, w, workload, rateLimiter, false)
 }
 
 func DoCounterUpdatesWithConfig(
 	config ExecutionConfig,
 	session *gocql.Session,
-	threadResult *results.TestThreadResult,
+	w *worker.Worker,
 	workload workloads.Generator,
 	rateLimiter ratelimiter.RateLimiter,
 	_ bool,
@@ -677,10 +633,10 @@ func DoCounterUpdatesWithConfig(
 	config = config.normalized()
 	RunTest(
 		config,
-		threadResult,
+		w,
 		workload,
 		rateLimiter,
-		func(rb *results.TestThreadResult) (time.Duration, error) {
+		func(rb *worker.Worker) (time.Duration, error) {
 			pk := workload.NextPartitionKey()
 			ck := workload.NextClusteringKey()
 
@@ -718,24 +674,24 @@ func DoCounterUpdatesWithConfig(
 
 func DoReads(
 	session *gocql.Session,
-	threadResult *results.TestThreadResult,
+	w *worker.Worker,
 	workload workloads.Generator,
 	rateLimiter ratelimiter.RateLimiter,
 	validateData bool,
 ) {
 	config := DefaultExecutionConfig()
-	DoReadsFromTableWithConfig(config, config.TableName, session, threadResult, workload, rateLimiter, validateData)
+	DoReadsFromTableWithConfig(config, config.TableName, session, w, workload, rateLimiter, validateData)
 }
 
 func DoCounterReads(
 	session *gocql.Session,
-	threadResult *results.TestThreadResult,
+	w *worker.Worker,
 	workload workloads.Generator,
 	rateLimiter ratelimiter.RateLimiter,
 	validateData bool,
 ) {
 	config := DefaultExecutionConfig()
-	DoReadsFromTableWithConfig(config, config.CounterTableName, session, threadResult, workload, rateLimiter, validateData)
+	DoReadsFromTableWithConfig(config, config.CounterTableName, session, w, workload, rateLimiter, validateData)
 }
 
 func BuildReadQueryString(table, orderBy string) string {
@@ -799,7 +755,7 @@ func BuildReadQueryStringWithConfig(config ExecutionConfig, table, orderBy strin
 	}
 }
 
-func executeReadsQuery(config ExecutionConfig, query *gocql.Query, table string, rb *results.TestThreadResult, validateData bool) error {
+func executeReadsQuery(config ExecutionConfig, query *gocql.Query, table string, rb *worker.Worker, validateData bool) error {
 	config = config.normalized()
 	iter := query.Iter()
 	var err error
@@ -859,10 +815,10 @@ func createReadTestFuncWithConfig(
 	session *gocql.Session,
 	workload workloads.Generator,
 	validateData bool,
-) func(rb *results.TestThreadResult) (time.Duration, error) {
+) func(w *worker.Worker) (time.Duration, error) {
 	config = config.normalized()
 	counter, numOfOrderings := 0, len(config.SelectOrderByParsed)
-	return func(rb *results.TestThreadResult) (time.Duration, error) {
+	return func(rb *worker.Worker) (time.Duration, error) {
 		counter++
 		pk := workload.NextPartitionKey()
 		query := session.Query(
@@ -924,37 +880,30 @@ func DoReadsFromTableWithConfig(
 	config ExecutionConfig,
 	table string,
 	session *gocql.Session,
-	threadResult *results.TestThreadResult,
+	w *worker.Worker,
 	workload workloads.Generator,
 	rateLimiter ratelimiter.RateLimiter,
 	validateData bool,
 ) {
-	RunTest(config, threadResult, workload, rateLimiter, createReadTestFuncWithConfig(config, table, session, workload, validateData))
+	RunTest(config, w, workload, rateLimiter, createReadTestFuncWithConfig(config, table, session, workload, validateData))
 }
 
 func DoReadsFromTable(
 	table string,
 	session *gocql.Session,
-	threadResult *results.TestThreadResult,
+	w *worker.Worker,
 	workload workloads.Generator,
 	rateLimiter ratelimiter.RateLimiter,
 	validateData bool,
 ) {
-	DoReadsFromTableWithConfig(DefaultExecutionConfig(), table, session, threadResult, workload, rateLimiter, validateData)
+	DoReadsFromTableWithConfig(DefaultExecutionConfig(), table, session, w, workload, rateLimiter, validateData)
 }
 
-func DoScanTableWithConfig(
-	config ExecutionConfig,
-	session *gocql.Session,
-	threadResult *results.TestThreadResult,
-	workload workloads.Generator,
-	rateLimiter ratelimiter.RateLimiter,
-	_ bool,
-) {
+func DoScanTableWithConfig(config ExecutionConfig, session *gocql.Session, w *worker.Worker, workload workloads.Generator, rateLimiter ratelimiter.RateLimiter, _ bool) {
 	config = config.normalized()
 	request := fmt.Sprintf("SELECT * FROM %s.%s WHERE token(pk) >= ? AND token(pk) <= ?", config.KeyspaceName, config.TableName)
 
-	RunTest(config, threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (time.Duration, error) {
+	RunTest(config, w, workload, rateLimiter, func(rb *worker.Worker) (time.Duration, error) {
 		query := session.Query(request)
 		defer query.Release()
 		currentRange := workload.NextTokenRange()
@@ -985,14 +934,14 @@ func DoScanTableWithConfig(
 	})
 }
 
-func DoScanTable(session *gocql.Session, threadResult *results.TestThreadResult, workload workloads.Generator, rateLimiter ratelimiter.RateLimiter, validateData bool) {
-	DoScanTableWithConfig(DefaultExecutionConfig(), session, threadResult, workload, rateLimiter, validateData)
+func DoScanTable(session *gocql.Session, w *worker.Worker, workload workloads.Generator, rateLimiter ratelimiter.RateLimiter, validateData bool) {
+	DoScanTableWithConfig(DefaultExecutionConfig(), session, w, workload, rateLimiter, validateData)
 }
 
 func DoMixedWithConfig(
 	config ExecutionConfig,
 	session *gocql.Session,
-	threadResult *results.TestThreadResult,
+	w *worker.Worker,
 	workload workloads.Generator,
 	rateLimiter ratelimiter.RateLimiter,
 	validateData bool,
@@ -1002,7 +951,7 @@ func DoMixedWithConfig(
 	writeTestFunc := createMixedWriteTestFuncWithConfig(config, session, workload, validateData)
 	readTestFunc := createMixedReadTestFuncWithConfig(config, config.TableName, session, workload, validateData)
 
-	RunTest(config, threadResult, workload, rateLimiter, func(rb *results.TestThreadResult) (time.Duration, error) {
+	RunTest(config, w, workload, rateLimiter, func(rb *worker.Worker) (time.Duration, error) {
 		// Use global atomic counter to ensure true 50/50 distribution across all threads
 		opCount := config.MixedOperationCounter.Add(1)
 
@@ -1036,12 +985,12 @@ func DoMixedWithConfig(
 
 func DoMixed(
 	session *gocql.Session,
-	threadResult *results.TestThreadResult,
+	w *worker.Worker,
 	workload workloads.Generator,
 	rateLimiter ratelimiter.RateLimiter,
 	validateData bool,
 ) {
-	DoMixedWithConfig(DefaultExecutionConfig(), session, threadResult, workload, rateLimiter, validateData)
+	DoMixedWithConfig(DefaultExecutionConfig(), session, w, workload, rateLimiter, validateData)
 }
 
 // createMixedWriteTestFunc creates a test function for write operations in mixed mode with separate latency recording
@@ -1050,9 +999,9 @@ func createMixedWriteTestFuncWithConfig(
 	session *gocql.Session,
 	workload workloads.Generator,
 	validateData bool,
-) func(rb *results.TestThreadResult) (time.Duration, error) {
+) func(rb *worker.Worker) (time.Duration, error) {
 	config = config.normalized()
-	return func(rb *results.TestThreadResult) (time.Duration, error) {
+	return func(rb *worker.Worker) (time.Duration, error) {
 		request := fmt.Sprintf(
 			"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)",
 			config.KeyspaceName,
@@ -1113,10 +1062,10 @@ func createMixedReadTestFuncWithConfig(
 	session *gocql.Session,
 	workload workloads.Generator,
 	validateData bool,
-) func(rb *results.TestThreadResult) (time.Duration, error) {
+) func(rb *worker.Worker) (time.Duration, error) {
 	config = config.normalized()
 	counter, numOfOrderings := 0, len(config.SelectOrderByParsed)
-	return func(rb *results.TestThreadResult) (time.Duration, error) {
+	return func(rb *worker.Worker) (time.Duration, error) {
 		counter++
 		pk := workload.NextPartitionKey()
 		query := session.Query(

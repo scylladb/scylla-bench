@@ -14,6 +14,7 @@ import (
 	"github.com/scylladb/scylla-bench/pkg/ratelimiter"
 	"github.com/scylladb/scylla-bench/pkg/results"
 	"github.com/scylladb/scylla-bench/pkg/testutil"
+	"github.com/scylladb/scylla-bench/pkg/worker"
 	"github.com/scylladb/scylla-bench/pkg/workloads"
 	"github.com/scylladb/scylla-bench/random"
 )
@@ -104,15 +105,20 @@ func runModeForDuration(
 	workload workloads.Generator,
 	validateData bool,
 	duration time.Duration,
-) *results.TestThreadResult {
+) *results.TotalResult {
 	t.Helper()
 
-	testResult := results.NewTestThreadResultWithCriticalErrorFlag(config.CriticalErrorFlag)
+	mixedMode := modeName(mode) == modeName(DoMixed)
+	totalResult := results.NewTotalResult(mixedMode)
+	partialResult := results.NewPartialResult(mixedMode)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	w := worker.NewWorker(partialResult, totalResult, &wg, false, 1, 1)
 	done := make(chan struct{})
 
 	go func() {
 		defer close(done)
-		modeWithConfig(t, config, mode, session, testResult, workload, validateData)
+		modeWithConfig(t, config, mode, session, w, workload, validateData)
 	}()
 
 	select {
@@ -122,7 +128,7 @@ func runModeForDuration(
 	}
 
 	<-done
-	return testResult
+	return totalResult
 }
 
 func modeName(mode ModeFunc) string {
@@ -134,7 +140,7 @@ func modeWithConfig(
 	config ExecutionConfig,
 	mode ModeFunc,
 	session *gocql.Session,
-	testResult *results.TestThreadResult,
+	w *worker.Worker,
 	workload workloads.Generator,
 	validateData bool,
 ) {
@@ -142,34 +148,34 @@ func modeWithConfig(
 
 	switch modeName(mode) {
 	case modeName(DoWrites):
-		DoWritesWithConfig(config, session, testResult, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
+		DoWritesWithConfig(config, session, w, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoBatchedWrites):
-		DoBatchedWritesWithConfig(config, session, testResult, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
+		DoBatchedWritesWithConfig(config, session, w, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoReads):
-		DoReadsFromTableWithConfig(config, config.TableName, session, testResult, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
+		DoReadsFromTableWithConfig(config, config.TableName, session, w, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoCounterReads):
-		DoReadsFromTableWithConfig(config, config.CounterTableName, session, testResult, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
+		DoReadsFromTableWithConfig(config, config.CounterTableName, session, w, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoCounterUpdates):
-		DoCounterUpdatesWithConfig(config, session, testResult, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
+		DoCounterUpdatesWithConfig(config, session, w, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoScanTable):
-		DoScanTableWithConfig(config, session, testResult, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
+		DoScanTableWithConfig(config, session, w, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
 	case modeName(DoMixed):
-		DoMixedWithConfig(config, session, testResult, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
+		DoMixedWithConfig(config, session, w, workload, &ratelimiter.UnlimitedRateLimiter{}, validateData)
 	default:
 		t.Fatalf("unsupported mode func")
 	}
 }
 
-func assertSuccessfulRun(t *testing.T, name string, result *results.TestThreadResult) {
+func assertSuccessfulRun(t *testing.T, name string, result *results.TotalResult) {
 	t.Helper()
-	if result.FullResult.Operations == 0 {
+	if result.Operations == 0 {
 		t.Fatalf("%s: no operations completed", name)
 	}
-	if result.FullResult.Errors > 0 {
-		t.Fatalf("%s: encountered %d errors", name, result.FullResult.Errors)
+	if result.Errors > 0 {
+		t.Fatalf("%s: encountered %d errors", name, result.Errors)
 	}
-	if len(result.FullResult.CriticalErrors) > 0 {
-		t.Fatalf("%s: encountered critical errors: %v", name, result.FullResult.CriticalErrors)
+	if result.IsCriticalErrorsFound() {
+		t.Fatalf("%s: encountered critical errors", name)
 	}
 }
 
@@ -378,7 +384,7 @@ func TestIntegrationQuickSmoke(t *testing.T) {
 			}
 			result := runModeForDuration(t, h.childConfig(), tc.mode, h.session, tc.workload, false, time.Second)
 			assertSuccessfulRun(t, tc.name, result)
-			fmt.Printf("%s: %d ops, %d errors\n", tc.name, result.FullResult.Operations, result.FullResult.Errors)
+			fmt.Printf("%s: %d ops, %d errors\n", tc.name, result.Operations, result.Errors)
 		})
 	}
 }

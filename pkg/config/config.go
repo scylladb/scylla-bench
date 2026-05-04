@@ -27,7 +27,6 @@ type HistogramConfiguration struct {
 type Configuration struct {
 	hdrLatencyFile                string
 	latencyHistogramConfiguration HistogramConfiguration
-	concurrency                   int
 	hdrLatencyScale               int64
 	latencyTypeToPrint            LatencyType
 	reportingCycle                time.Duration
@@ -99,12 +98,10 @@ func GetGlobalHdrLatencyScale() int64 {
 	return globalConfig.hdrLatencyScale
 }
 
-func SetGlobalConcurrency(value int) {
-	globalConfig.concurrency = value
-}
-
-func GetGlobalConcurrency() int {
-	return globalConfig.concurrency
+func NumberOfLatencyResultsInPartialReportCycle() int64 {
+	nsInReportCycleTime := int64(globalConfig.reportingCycle)
+	nsPerDataPoint := int64(1000)
+	return nsInReportCycleTime / nsPerDataPoint
 }
 
 func init() {
