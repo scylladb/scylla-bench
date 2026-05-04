@@ -20,7 +20,7 @@ func Must[T any](v T, err error) T {
 }
 
 func GenerateTestData(pk, ck, size int64) []byte {
-	return Must(GenerateData(pk, ck, size, true))
+	return Must(GenerateData(pk, ck, size, true, nil))
 }
 
 func TestBuildReadQuery(t *testing.T) {
@@ -178,7 +178,7 @@ func TestGenerateData(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := GenerateData(tt.pk, tt.ck, tt.size, tt.validate)
+			got, err := GenerateData(tt.pk, tt.ck, tt.size, tt.validate, nil)
 
 			if (err != nil) != tt.wantError {
 				t.Errorf("GenerateData() error = %v, wantError %v", err, tt.wantError)

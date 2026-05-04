@@ -254,7 +254,7 @@ const (
 	generatedDataMinSize          = generatedDataHeaderSize + 33
 )
 
-func GenerateData(pk, ck, size int64, validateData bool) ([]byte, error) {
+func GenerateData(pk, ck, size int64, validateData bool, src *random.Source) ([]byte, error) {
 	if !validateData {
 		return make([]byte, size), nil
 	}
@@ -287,7 +287,11 @@ func GenerateData(pk, ck, size int64, validateData bool) ([]byte, error) {
 			}
 		} else {
 			payload := make([]byte, size-generatedDataHeaderSize-sha256.Size)
-			_, _ = random.String(payload)
+			if src != nil {
+				src.FillRandom(payload)
+			} else {
+				_, _ = random.String(payload)
+			}
 			if err := binary.Write(&buf, binary.LittleEndian, payload); err != nil {
 				return nil, err
 			}
@@ -335,7 +339,7 @@ func ValidateData(pk, ck int64, data []byte, validateData bool) error {
 
 	// There is no random payload for sizes < minFullSize
 	if size < generatedDataMinSize {
-		expectedBuf, err := GenerateData(pk, ck, size, validateData)
+		expectedBuf, err := GenerateData(pk, ck, size, validateData, nil)
 		if err != nil {
 			return errors.Wrap(err, "failed to generate expected data for validation")
 		}
@@ -429,6 +433,7 @@ func createWriteTestFuncWithConfig(
 	validateData bool,
 ) func(w *worker.Worker) (time.Duration, error) {
 	config = config.normalized()
+	src := random.NewSource(uint64(time.Now().UnixNano()))
 	return func(w *worker.Worker) (time.Duration, error) {
 		request := fmt.Sprintf(
 			"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)",
@@ -439,7 +444,7 @@ func createWriteTestFuncWithConfig(
 		defer query.Release()
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
-		value, err := GenerateData(pk, ck, config.ClusteringRowSizeDist.Generate(), validateData)
+		value, err := GenerateData(pk, ck, random.GenerateDist(config.ClusteringRowSizeDist, src), validateData, src)
 		if err != nil {
 			panic(err)
 		}
@@ -525,6 +530,7 @@ func DoBatchedWritesWithConfig(
 		config.KeyspaceName,
 		config.TableName,
 	)
+	src := random.NewSource(uint64(time.Now().UnixNano()))
 
 	RunTest(
 		config,
@@ -551,8 +557,9 @@ func DoBatchedWritesWithConfig(
 				value, err := GenerateData(
 					currentPk,
 					ck,
-					config.ClusteringRowSizeDist.Generate(),
+					random.GenerateDist(config.ClusteringRowSizeDist, src),
 					validateData,
+					src,
 				)
 				if err != nil {
 					log.Panic(err)
@@ -1001,6 +1008,7 @@ func createMixedWriteTestFuncWithConfig(
 	validateData bool,
 ) func(rb *worker.Worker) (time.Duration, error) {
 	config = config.normalized()
+	src := random.NewSource(uint64(time.Now().UnixNano()))
 	return func(rb *worker.Worker) (time.Duration, error) {
 		request := fmt.Sprintf(
 			"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?)",
@@ -1011,7 +1019,7 @@ func createMixedWriteTestFuncWithConfig(
 		defer query.Release()
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
-		value, err := GenerateData(pk, ck, config.ClusteringRowSizeDist.Generate(), validateData)
+		value, err := GenerateData(pk, ck, random.GenerateDist(config.ClusteringRowSizeDist, src), validateData, src)
 		if err != nil {
 			panic(err)
 		}
