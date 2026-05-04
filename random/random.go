@@ -23,6 +23,22 @@ type Distribution interface {
 	Generate() int64
 }
 
+// SourceDistribution is a Distribution that can generate values using
+// an unlocked per-goroutine Source for better concurrency.
+type SourceDistribution interface {
+	Distribution
+	GenerateUsing(src *Source) int64
+}
+
+// GenerateDist generates a value from a distribution, using src if the
+// distribution supports it, otherwise falling back to the locked global.
+func GenerateDist(d Distribution, src *Source) int64 {
+	if sd, ok := d.(SourceDistribution); ok {
+		return sd.GenerateUsing(src)
+	}
+	return d.Generate()
+}
+
 var (
 	_ Distribution = (*Fixed)(nil)
 	_ Distribution = (*Uniform)(nil)
@@ -263,6 +279,11 @@ func (r *Ratio) Generate() int64 {
 	return r.Distribution.Generate()
 }
 
+// GenerateUsing implements the SourceDistribution interface.
+func (r *Ratio) GenerateUsing(src *Source) int64 {
+	return GenerateDist(r.Distribution, src)
+}
+
 // Fixed represents a fixed distribution, that always returns specified value.
 type Fixed struct {
 	Value int64
@@ -275,6 +296,11 @@ func (f Fixed) String() string {
 
 // Generate implements the Distribution interface.
 func (f Fixed) Generate() int64 {
+	return f.Value
+}
+
+// GenerateUsing implements the SourceDistribution interface.
+func (f Fixed) GenerateUsing(_ *Source) int64 {
 	return f.Value
 }
 
@@ -291,6 +317,14 @@ func (u Uniform) String() string {
 // Generate implements the Distribution interface.
 func (u Uniform) Generate() int64 {
 	return u.Min + globalRand.Int64N(u.Max-u.Min)
+}
+
+// GenerateUsing generates a value using the provided Source (no locking).
+func (u Uniform) GenerateUsing(src *Source) int64 {
+	if u.Max == u.Min {
+		return u.Min
+	}
+	return u.Min + src.Int64N(u.Max-u.Min)
 }
 
 type LockedRandom struct {
@@ -342,4 +376,31 @@ func (r *LockedRandomString) Read(b []byte) (n int, err error) {
 	n, err = r.rnd.Read(b)
 	defer r.mu.Unlock()
 	return n, err
+}
+
+// Source is an unlocked random source intended for single-goroutine use.
+// It provides both random bytes (for payload generation) and random integers
+// (for distribution sampling) without any mutex overhead.
+type Source struct {
+	rng *rand.Rand
+	str *rand.ChaCha8
+}
+
+// NewSource creates a new unlocked random source with the given seed.
+func NewSource(seed uint64) *Source {
+	s := sha256.Sum256([]byte(strconv.FormatUint(seed, 10)))
+	return &Source{
+		rng: rand.New(rand.NewPCG(seed, seed+1)),
+		str: rand.NewChaCha8(s),
+	}
+}
+
+// Int64N returns a random int64 in [0, n). Not safe for concurrent use.
+func (s *Source) Int64N(n int64) int64 {
+	return s.rng.Int64N(n)
+}
+
+// FillRandom fills b with random bytes. Not safe for concurrent use.
+func (s *Source) FillRandom(b []byte) {
+	s.str.Read(b)
 }

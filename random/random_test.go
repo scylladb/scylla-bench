@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/scylladb/scylla-bench/random"
 )
@@ -199,4 +200,51 @@ func BenchmarkNewLockedRandomString(b *testing.B) {
 			}
 		})
 	}
+}
+
+func BenchmarkSourceInt64N(b *testing.B) {
+	src := random.NewSource(42)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_ = src.Int64N(math.MaxInt64)
+	}
+}
+
+func BenchmarkSourceFillRandom(b *testing.B) {
+	src := random.NewSource(42)
+	sizes := []int{100, 1024, 8192}
+	for _, size := range sizes {
+		b.Run(strconv.Itoa(size), func(b *testing.B) {
+			b.ReportAllocs()
+			data := make([]byte, size)
+			b.ResetTimer()
+			for b.Loop() {
+				src.FillRandom(data)
+			}
+		})
+	}
+}
+
+func BenchmarkLockedRandomParallel(b *testing.B) {
+	rnd := random.NewLockedRandom(100)
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = rnd.Int64N(math.MaxInt64)
+		}
+	})
+}
+
+func BenchmarkSourceParallel(b *testing.B) {
+	// Each goroutine gets its own Source — no contention
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		src := random.NewSource(uint64(time.Now().UnixNano()))
+		for pb.Next() {
+			_ = src.Int64N(math.MaxInt64)
+		}
+	})
 }

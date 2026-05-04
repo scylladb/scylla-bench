@@ -47,7 +47,7 @@ func TestValidateDataWithSmallSizes(t *testing.T) {
 			t.Parallel()
 
 			// Generate data with validation enabled
-			data, err := GenerateData(tc.pk, tc.ck, tc.size, true)
+			data, err := GenerateData(tc.pk, tc.ck, tc.size, true, nil)
 			if err != nil {
 				t.Fatalf("GenerateData failed: %v", err)
 			}
@@ -93,7 +93,7 @@ func TestValidateDataRoundTripAllSizes(t *testing.T) {
 			// Test sizes from 1 to 100
 			for size := int64(1); size <= 100; size++ {
 				// Generate data
-				data, err := GenerateData(keys.pk, keys.ck, size, true)
+				data, err := GenerateData(keys.pk, keys.ck, size, true, nil)
 				if err != nil {
 					t.Fatalf("GenerateData failed for pk=%d, ck=%d, size=%d: %v",
 						keys.pk, keys.ck, size, err)
@@ -171,7 +171,7 @@ func TestValidateDataDetectsCorruption(t *testing.T) {
 			t.Parallel()
 
 			// Generate valid data
-			data, err := GenerateData(tc.pk, tc.ck, tc.size, true)
+			data, err := GenerateData(tc.pk, tc.ck, tc.size, true, nil)
 			if err != nil {
 				t.Fatalf("GenerateData failed: %v", err)
 			}
@@ -184,7 +184,7 @@ func TestValidateDataDetectsCorruption(t *testing.T) {
 			// For the large data case, test with wrong pk/ck
 			if tc.size >= generatedDataMinSize && tc.expectError == "" {
 				// Generate data with different pk
-				wrongPkData, _ := GenerateData(tc.pk+1, tc.ck, tc.size, true)
+				wrongPkData, _ := GenerateData(tc.pk+1, tc.ck, tc.size, true, nil)
 				err = ValidateData(tc.pk, tc.ck, wrongPkData, true)
 				if err == nil {
 					t.Error("ValidateData should detect wrong pk")
