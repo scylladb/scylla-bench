@@ -126,6 +126,8 @@ var (
 
 	clientRoutesConnectionIDs string
 	clientRoutesTable         string
+
+	extraClause string
 )
 
 func Query(session Session, request string) {
@@ -504,6 +506,12 @@ func main() {
 		"validate-data",
 		false,
 		"write meaningful data and validate while reading",
+	)
+	flag.StringVar(
+		&extraClause,
+		"extra-clause",
+		"",
+		"extra CQL clause to be appended to the end of used statements",
 	)
 
 	var startTimestamp int64

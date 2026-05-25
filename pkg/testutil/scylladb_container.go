@@ -56,7 +56,7 @@ func NewScyllaDBContainer(ctx context.Context) (*ScyllaDBContainer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get container port: %w", err)
 	}
-	port := mappedPort.Int()
+	port := int(mappedPort.Num())
 
 	// Wait a bit longer for ScyllaDB to fully initialize
 	time.Sleep(5 * time.Second)
