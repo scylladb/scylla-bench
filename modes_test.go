@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/binary"
+	"hash/crc32"
 	"strings"
 	"testing"
 	"time"
@@ -238,21 +238,21 @@ func TestGenerateData(t *testing.T) {
 				}
 
 				if tt.size >= generatedDataMinSize {
-					// For large sizes, verify payload and checksum
-					payloadSize := tt.size - generatedDataHeaderSize - sha256.Size
+					// For large sizes, verify payload and CRC32C checksum
+					payloadSize := tt.size - generatedDataHeaderSize - checksumSize
 					payload := make([]byte, payloadSize)
 					if err = binary.Read(buf, binary.LittleEndian, payload); err != nil {
 						t.Errorf("Failed to read payload: %v", err)
 					}
 
-					var storedChecksum [sha256.Size]byte
+					var storedChecksum uint32
 					if err = binary.Read(buf, binary.LittleEndian, &storedChecksum); err != nil {
 						t.Errorf("Failed to read checksum: %v", err)
 					}
 
-					calculatedChecksum := sha256.Sum256(payload)
-					if !bytes.Equal(calculatedChecksum[:], storedChecksum[:]) {
-						t.Error("Checksum verification failed")
+					calculatedChecksum := crc32.Checksum(payload, crc32cTable)
+					if calculatedChecksum != storedChecksum {
+						t.Error("CRC32C checksum verification failed")
 					}
 				}
 			}
@@ -366,26 +366,25 @@ func TestValidateData(t *testing.T) {
 
 // Helper function to create data with corrupted checksum
 func createCorruptedChecksumData(size, pk, ck int64) []byte {
-	buf := bytes.Buffer{}
-	buf.Grow(int(size))
+	value := make([]byte, size)
 
-	_ = binary.Write(&buf, binary.LittleEndian, size)
-	_ = binary.Write(&buf, binary.LittleEndian, pk)
-	_ = binary.Write(&buf, binary.LittleEndian, ck)
+	// Write header
+	binary.LittleEndian.PutUint64(value[0:8], uint64(size))
+	binary.LittleEndian.PutUint64(value[8:16], uint64(pk))
+	binary.LittleEndian.PutUint64(value[16:24], uint64(ck))
 
-	payload := make([]byte, size-generatedDataHeaderSize-sha256.Size)
-	for i := range payload {
-		payload[i] = byte(i)
+	// Fill payload with known pattern
+	payloadStart := int(generatedDataHeaderSize)
+	payloadEnd := int(size - checksumSize)
+	for i := payloadStart; i < payloadEnd; i++ {
+		value[i] = byte(i)
 	}
 
-	// Write payload
-	_ = binary.Write(&buf, binary.LittleEndian, payload)
+	// Write incorrect CRC32C checksum
+	incorrectCrc := crc32.Checksum([]byte("wrong data"), crc32cTable)
+	binary.LittleEndian.PutUint32(value[payloadEnd:], incorrectCrc)
 
-	// Write incorrect checksum
-	incorrectChecksum := sha256.Sum256([]byte("wrong data"))
-	_ = binary.Write(&buf, binary.LittleEndian, incorrectChecksum)
-
-	return buf.Bytes()
+	return value
 }
 
 // Helper function to create test data for small sizes with intentional mismatch
