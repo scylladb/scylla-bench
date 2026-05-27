@@ -431,8 +431,8 @@ func createWriteTestFuncWithConfig(
 	validateData bool,
 ) func(w *worker.Worker) (time.Duration, error) {
 	config = config.normalized()
-	src := random.NewSource(uint64(time.Now().UnixNano()))
 	return func(w *worker.Worker) (time.Duration, error) {
+		src := random.NewSource(uint64(time.Now().UnixNano()))
 		request := fmt.Sprintf(
 			"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?) %s",
 			config.KeyspaceName,
@@ -530,7 +530,6 @@ func DoBatchedWritesWithConfig(
 		config.TableName,
 		extraClause,
 	)
-	src := random.NewSource(uint64(time.Now().UnixNano()))
 
 	RunTest(
 		config,
@@ -538,6 +537,7 @@ func DoBatchedWritesWithConfig(
 		workload,
 		rateLimiter,
 		func(rb *worker.Worker) (time.Duration, error) {
+			src := random.NewSource(uint64(time.Now().UnixNano()))
 			batch := session.Batch(gocql.UnloggedBatch)
 			batchSize := 0
 
@@ -1012,8 +1012,8 @@ func createMixedWriteTestFuncWithConfig(
 	validateData bool,
 ) func(rb *worker.Worker) (time.Duration, error) {
 	config = config.normalized()
-	src := random.NewSource(uint64(time.Now().UnixNano()))
 	return func(rb *worker.Worker) (time.Duration, error) {
+		src := random.NewSource(uint64(time.Now().UnixNano()))
 		request := fmt.Sprintf(
 			"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?) %s",
 			config.KeyspaceName,

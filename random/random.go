@@ -389,11 +389,10 @@ func (r *LockedRandomString) Read(b []byte) (n int, err error) {
 }
 
 // Source is an unlocked random source intended for single-goroutine use.
-// It provides both random bytes (for payload generation) and random integers
-// (for distribution sampling) without any mutex overhead.
+// It uses ChaCha8 for both random byte generation and integer sampling,
+// avoiding any mutex overhead.
 type Source struct {
-	rng *rand.Rand
-	str *rand.ChaCha8
+	rng *rand.ChaCha8
 }
 
 var sourceCounter atomic.Uint64
@@ -410,17 +409,27 @@ func NewSource(seed uint64) *Source {
 	binary.LittleEndian.PutUint64(key[16:24], s1^s2)
 	binary.LittleEndian.PutUint64(key[24:32], id)
 	return &Source{
-		rng: rand.New(rand.NewPCG(s1, s2)),
-		str: rand.NewChaCha8(key),
+		rng: rand.NewChaCha8(key),
 	}
 }
 
 // Int64N returns a random int64 in [0, n). Not safe for concurrent use.
+// Uses rejection sampling to avoid modulo bias.
 func (s *Source) Int64N(n int64) int64 {
-	return s.rng.Int64N(n)
+	if n <= 0 {
+		panic("random: Int64N called with non-positive n")
+	}
+	un := uint64(n)
+	threshold := (-un) % un // == (2^64 - un) % un
+	for {
+		v := s.rng.Uint64()
+		if v >= threshold {
+			return int64(v % un)
+		}
+	}
 }
 
 // FillRandom fills b with random bytes. Not safe for concurrent use.
 func (s *Source) FillRandom(b []byte) {
-	s.str.Read(b)
+	_, _ = s.rng.Read(b)
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/scylladb/scylla-bench/internal/clock"
 	"github.com/scylladb/scylla-bench/pkg/ratelimiter"
+	"github.com/scylladb/scylla-bench/random"
 )
 
 func Must[T any](v T, err error) T {
@@ -257,6 +258,114 @@ func TestGenerateData(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGenerateDataWithSource(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		pk       int64
+		ck       int64
+		size     int64
+		validate bool
+	}{
+		{
+			name:     "Large size with validation and src",
+			pk:       1,
+			ck:       2,
+			size:     100,
+			validate: true,
+		},
+		{
+			name:     "Large size without validation and src",
+			pk:       1,
+			ck:       2,
+			size:     100,
+			validate: false,
+		},
+		{
+			name:     "Small size with validation and src",
+			pk:       5,
+			ck:       10,
+			size:     10,
+			validate: true,
+		},
+		{
+			name:     "Min full size with src",
+			pk:       7,
+			ck:       3,
+			size:     generatedDataMinSize,
+			validate: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			src := random.NewSource(42)
+
+			got, err := GenerateData(tt.pk, tt.ck, tt.size, tt.validate, src)
+			if err != nil {
+				t.Fatalf("GenerateData() unexpected error: %v", err)
+			}
+			if int64(len(got)) != tt.size {
+				t.Errorf("GenerateData() returned len=%d, want %d", len(got), tt.size)
+			}
+
+			if !tt.validate {
+				return
+			}
+
+			// The data must round-trip through ValidateData without error.
+			if err = ValidateData(tt.pk, tt.ck, got, tt.validate); err != nil {
+				t.Errorf("ValidateData() failed on data generated with src: %v", err)
+			}
+		})
+	}
+}
+
+// TestGenerateDataWithSourceDeterministic verifies that GenerateData produces
+// deterministic output regardless of the src argument (payload is derived from
+// pk/ck, not from the source), and that the generated data always validates.
+func TestGenerateDataWithSourceDeterministic(t *testing.T) {
+	t.Parallel()
+
+	const pk, ck, size int64 = 1, 2, generatedDataMinSize + 64
+
+	src1 := random.NewSource(1)
+	src2 := random.NewSource(2)
+
+	// Same pk/ck must produce identical output regardless of src.
+	data1, err := GenerateData(pk, ck, size, true, src1)
+	if err != nil {
+		t.Fatalf("GenerateData() src1 error: %v", err)
+	}
+	data2, err := GenerateData(pk, ck, size, true, src2)
+	if err != nil {
+		t.Fatalf("GenerateData() src2 error: %v", err)
+	}
+	if !bytes.Equal(data1, data2) {
+		t.Error("GenerateData() with same pk/ck but different Sources produced different output — payload should be deterministic")
+	}
+
+	// Different pk must produce different output.
+	dataDiffPk, err := GenerateData(pk+1, ck, size, true, src1)
+	if err != nil {
+		t.Fatalf("GenerateData() diffPk error: %v", err)
+	}
+	if bytes.Equal(data1, dataDiffPk) {
+		t.Error("GenerateData() with different pk produced identical output")
+	}
+
+	// Both must validate correctly.
+	if err = ValidateData(pk, ck, data1, true); err != nil {
+		t.Errorf("ValidateData() failed for data1: %v", err)
+	}
+	if err = ValidateData(pk+1, ck, dataDiffPk, true); err != nil {
+		t.Errorf("ValidateData() failed for dataDiffPk: %v", err)
 	}
 }
 
