@@ -340,8 +340,12 @@ func RunTest(
 
 const (
 	generatedDataHeaderSize int64 = 24
-	checksumSize            int64 = 4 // CRC32C (Castagnoli, hardware-accelerated)
-	generatedDataMinSize          = generatedDataHeaderSize + checksumSize + 1
+	checksumSize            int64 = 4  // CRC32C (Castagnoli, hardware-accelerated)
+	generatedDataMinSize    int64 = 57 // Preserved from original: header(24) + min_payload(1) + sha256(32).
+	// New format uses CRC32C(4) instead of SHA256(32), but the boundary is kept
+	// at 57 for backwards compatibility: rows written by older versions in the
+	// 24–56 range used header+zeros (no checksum), and new code must still
+	// validate them correctly via the regenerate-and-compare path.
 )
 
 // crc32cTable is the Castagnoli CRC32C table, which benefits from
