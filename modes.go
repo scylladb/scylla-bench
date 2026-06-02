@@ -292,7 +292,7 @@ func fillPayload(buf []byte, pk, ck int64) {
 	}
 }
 
-func GenerateData(pk, ck, size int64, validateData bool) ([]byte, error) {
+func GenerateData(pk, ck, size int64, validateData bool, _ *random.Source) ([]byte, error) {
 	if !validateData {
 		return make([]byte, size), nil
 	}
@@ -357,7 +357,7 @@ func ValidateData(pk, ck int64, data []byte, validateData bool) error {
 
 	// For small/medium sizes, regenerate expected data and compare
 	if size < generatedDataMinSize {
-		expectedBuf, err := GenerateData(pk, ck, size, validateData)
+		expectedBuf, err := GenerateData(pk, ck, size, validateData, nil)
 		if err != nil {
 			return errors.Wrap(err, "failed to generate expected data for validation")
 		}
@@ -432,6 +432,7 @@ func createWriteTestFuncWithConfig(
 ) func(w *worker.Worker) (time.Duration, error) {
 	config = config.normalized()
 	return func(w *worker.Worker) (time.Duration, error) {
+		src := random.NewSource(uint64(time.Now().UnixNano()))
 		request := fmt.Sprintf(
 			"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?) %s",
 			config.KeyspaceName,
@@ -442,7 +443,7 @@ func createWriteTestFuncWithConfig(
 		defer query.Release()
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
-		value, err := GenerateData(pk, ck, config.ClusteringRowSizeDist.Generate(), validateData)
+		value, err := GenerateData(pk, ck, random.GenerateDist(config.ClusteringRowSizeDist, src), validateData, src)
 		if err != nil {
 			panic(err)
 		}
@@ -536,6 +537,7 @@ func DoBatchedWritesWithConfig(
 		workload,
 		rateLimiter,
 		func(rb *worker.Worker) (time.Duration, error) {
+			src := random.NewSource(uint64(time.Now().UnixNano()))
 			batch := session.Batch(gocql.UnloggedBatch)
 			batchSize := 0
 
@@ -555,8 +557,9 @@ func DoBatchedWritesWithConfig(
 				value, err := GenerateData(
 					currentPk,
 					ck,
-					config.ClusteringRowSizeDist.Generate(),
+					random.GenerateDist(config.ClusteringRowSizeDist, src),
 					validateData,
+					src,
 				)
 				if err != nil {
 					log.Panic(err)
@@ -1010,6 +1013,7 @@ func createMixedWriteTestFuncWithConfig(
 ) func(rb *worker.Worker) (time.Duration, error) {
 	config = config.normalized()
 	return func(rb *worker.Worker) (time.Duration, error) {
+		src := random.NewSource(uint64(time.Now().UnixNano()))
 		request := fmt.Sprintf(
 			"INSERT INTO %s.%s (pk, ck, v) VALUES (?, ?, ?) %s",
 			config.KeyspaceName,
@@ -1020,7 +1024,7 @@ func createMixedWriteTestFuncWithConfig(
 		defer query.Release()
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
-		value, err := GenerateData(pk, ck, config.ClusteringRowSizeDist.Generate(), validateData)
+		value, err := GenerateData(pk, ck, random.GenerateDist(config.ClusteringRowSizeDist, src), validateData, src)
 		if err != nil {
 			panic(err)
 		}
