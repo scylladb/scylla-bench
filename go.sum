@@ -148,6 +148,8 @@ github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0t
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/scylladb/gocql v1.18.0 h1:bmaMHNOUJyu0GHnTsVv0RRUAquQoTtYjCL/9jTxrg9Q=
 github.com/scylladb/gocql v1.18.0/go.mod h1:PZU+XJQ3fDymccIlTacmTdO+aTGGDSgXF1hw+yULUMk=
+github.com/scylladb/gocql v1.18.3 h1:OpHMqnDLP7/B+xdomrex2YPzMXq9pw/g/Q99mcV2E+U=
+github.com/scylladb/gocql v1.18.3/go.mod h1:ZC9IgUCZsd9UdPeWPv7M2l9F43BgPFUAqoqL5cljwVo=
 github.com/shirou/gopsutil/v4 v4.26.3 h1:2ESdQt90yU3oXF/CdOlRCJxrP+Am1aBYubTMTfxJ1qc=
 github.com/shirou/gopsutil/v4 v4.26.3/go.mod h1:LZ6ewCSkBqUpvSOf+LsTGnRinC6iaNUNMGBtDkJBaLQ=
 github.com/shirou/gopsutil/v4 v4.26.4 h1:B4SXVbcwTyrocPHEmWBC4uCYr4Xcu3MK1TXqbprAOWY=
