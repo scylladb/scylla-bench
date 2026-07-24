@@ -298,6 +298,8 @@ Note that if the effective write rate is lower than the specified one the reader
 * `-validate-data` defines data integrity verification. If set then some none-zero data will be written in such a way that it can be validated during read operation.
 Note that this option should be set for both write and read (counter_update and counter_read) modes.
 
+* `-random-data` fills the value blob with high-entropy, non-zero data that is distinct per row (derived from `pk`/`ck`) instead of the default all-zero payload. Use it when a materialized view is created over the `v` column (e.g. by an MV nemesis) — an all-zero value column makes every view row share one partition key, collapsing the whole view onto a single shard/node and overloading it. It also avoids unrealistically compressible payloads when client/table compression is enabled. Implied by `-validate-data`; unlike `-validate-data`, it adds no read-side verification.
+
 * `-iterations` sets the Number of iterations to run the given workloads. This is only relevant for workloads that have a finite number of steps. Currently the only such workloads are [sequential](#sequential-workload--workload-sequential) and [scan](#scan-mode--mode-scan). Can be combined with `-duration` to limit a run by both number of iterations and time. Set to 0 for infinite iterations. Defaults to 1.
 
 * `keyspace` defines keyspace name to use

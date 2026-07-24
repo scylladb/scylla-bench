@@ -213,7 +213,7 @@ func measureWriteThroughput(
 					ck := workload.NextClusteringKey()
 
 					// Generate data with or without validation
-					value, generateErr := GenerateData(pk, ck, clusteringRowSize, validateData, nil)
+					value, generateErr := GenerateData(pk, ck, clusteringRowSize, validateData, false, nil)
 					if generateErr != nil {
 						// Log error but don't fail the test - just stop this goroutine
 						t.Logf("Thread %d: Failed to generate data: %v", threadID, generateErr)
@@ -276,13 +276,13 @@ func BenchmarkGenerateDataWithValidation(b *testing.B) {
 
 	b.Run("without_validation", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, _ = GenerateData(int64(i), int64(i), size, false, nil)
+			_, _ = GenerateData(int64(i), int64(i), size, false, false, nil)
 		}
 	})
 
 	b.Run("with_validation", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, _ = GenerateData(int64(i), int64(i), size, true, nil)
+			_, _ = GenerateData(int64(i), int64(i), size, true, false, nil)
 		}
 	})
 }
@@ -296,7 +296,7 @@ func BenchmarkGenerateDataWithValidation(b *testing.B) {
 // - Uses hardware-accelerated CRC32C and direct byte access
 func BenchmarkValidateData(b *testing.B) {
 	const size = 51200
-	data, err := GenerateData(1, 2, size, true, nil)
+	data, err := GenerateData(1, 2, size, true, false, nil)
 	if err != nil {
 		b.Fatal(err)
 	}
