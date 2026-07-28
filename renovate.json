@@ -19,20 +19,15 @@
   ],
   "packageRules": [
     {
-      "matchPackageNames": [
-        "github.com/gocql/gocql"
-      ],
-      "enabled": false
-    },
-    {
-      "description": "Group all Go module dependencies except scylladb/gocql",
+      "description": "Group all Go module dependencies except the CQL drivers",
       "groupName": "All dependencies",
       "groupSlug": "all-dependencies",
       "matchManagers": [
         "gomod"
       ],
       "matchPackageNames": [
-        "!github.com/scylladb/gocql"
+        "!github.com/scylladb/gocql",
+        "!github.com/gocql/gocql"
       ],
       "enabled": true
     },
@@ -42,6 +37,23 @@
         "github.com/scylladb/gocql"
       ],
       "enabled": true
+    },
+    {
+      "description": "scylladb/gocql is a fork pinned via a replace directive; major bumps track the upstream apache driver and are never drop-in. Bump manually.",
+      "matchPackageNames": [
+        "github.com/scylladb/gocql"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "github.com/gocql/gocql is fully replaced by scylladb/gocql; its version is inert, so never open PRs for it (notably the apache v2 major).",
+      "matchPackageNames": [
+        "github.com/gocql/gocql"
+      ],
+      "enabled": false
     }
   ],
   "vulnerabilityAlerts": {
