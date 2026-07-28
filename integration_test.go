@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -310,6 +312,103 @@ func testMixedMode(t *testing.T, h *integrationHarness) {
 	config := h.childConfig()
 	result := runModeForDuration(t, config, DoMixed, h.session, workloads.NewRandomUniform(0, 1000, 0, 10), false, 3*time.Second)
 	assertSuccessfulRun(t, "Mixed mode", result)
+}
+
+// readValueColumn returns every `v` blob stored in the given table.
+func readValueColumn(t *testing.T, h *integrationHarness, tableName string) [][]byte {
+	t.Helper()
+
+	iter := h.session.Query(
+		fmt.Sprintf("SELECT v FROM %s.%s", h.keyspaceName, tableName),
+	).WithContext(h.ctx).Iter()
+
+	var (
+		values [][]byte
+		value  []byte
+	)
+	for iter.Scan(&value) {
+		values = append(values, append([]byte(nil), value...))
+	}
+	if err := iter.Close(); err != nil {
+		t.Fatalf("failed to read %s.%s: %v", h.keyspaceName, tableName, err)
+	}
+	return values
+}
+
+// TestIntegrationRandomData writes through the real single, batched and mixed write
+// paths with ExecutionConfig.RandomData toggled, then reads the persisted `v` column
+// back to confirm the flag reaches ScyllaDB: enabled must yield non-zero blobs with
+// more than one distinct value, disabled must reproduce the legacy all-zero payload.
+func TestIntegrationRandomData(t *testing.T) {
+	requireContainerTests(t)
+	t.Parallel()
+
+	h := newIntegrationHarness(t, false)
+
+	testCases := []struct {
+		mode       ModeFunc
+		name       string
+		randomData bool
+	}{
+		{name: "Writes-Random", mode: DoWrites, randomData: true},
+		{name: "Writes-Zero", mode: DoWrites, randomData: false},
+		{name: "BatchedWrites-Random", mode: DoBatchedWrites, randomData: true},
+		{name: "BatchedWrites-Zero", mode: DoBatchedWrites, randomData: false},
+		{name: "Mixed-Random", mode: DoMixed, randomData: true},
+		{name: "Mixed-Zero", mode: DoMixed, randomData: false},
+	}
+
+	const valueSize = 64
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// A dedicated table per case: the shared one is written by other
+			// subtests, whose payloads would defeat the assertions below.
+			caseTable := "random_data_" + strings.ToLower(strings.ReplaceAll(tc.name, "-", "_"))
+			if err := h.container.CreateTable(h.keyspaceName, caseTable); err != nil {
+				t.Fatalf("failed to create table %s: %v", caseTable, err)
+			}
+
+			config := h.childConfig()
+			config.TableName = caseTable
+			config.RandomData = tc.randomData
+			config.ClusteringRowSizeDist = random.Fixed{Value: valueSize}
+
+			result := runModeForDuration(
+				t, config, tc.mode, h.session,
+				workloads.NewRandomUniform(0, 200, 0, 5), false, 3*time.Second,
+			)
+			assertSuccessfulRun(t, tc.name, result)
+
+			values := readValueColumn(t, h, caseTable)
+			if len(values) == 0 {
+				t.Fatalf("%s: no rows persisted", tc.name)
+			}
+
+			zero := make([]byte, valueSize)
+			distinct := make(map[string]struct{}, len(values))
+			for _, value := range values {
+				if len(value) != valueSize {
+					t.Fatalf("%s: persisted value has length %d, want %d", tc.name, len(value), valueSize)
+				}
+				if tc.randomData == bytes.Equal(value, zero) {
+					t.Fatalf("%s: persisted value all-zero=%v with RandomData=%v",
+						tc.name, !tc.randomData, tc.randomData)
+				}
+				distinct[string(value)] = struct{}{}
+			}
+
+			switch {
+			case tc.randomData && len(distinct) < 2:
+				t.Errorf("%s: %d rows collapsed into a single value, want distinct values",
+					tc.name, len(values))
+			case !tc.randomData && len(distinct) != 1:
+				t.Errorf("%s: legacy path produced %d distinct values, want 1", tc.name, len(distinct))
+			}
+		})
+	}
 }
 
 func TestIntegrationWithDataValidation(t *testing.T) {

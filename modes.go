@@ -68,7 +68,7 @@ func DefaultExecutionConfig() ExecutionConfig {
 		SelectOrderByParsed:   append([]string(nil), selectOrderByParsed...),
 		NoLowerBound:          noLowerBound,
 		BypassCache:           bypassCache,
-		RandomData:            randomData || validateData,
+		RandomData:            !noRandomData,
 		MaxErrorsAtRow:        maxErrorsAtRow,
 		MaxErrors:             maxErrors,
 		RetryHandler:          retryHandler,
@@ -294,6 +294,25 @@ func fillPayload(buf []byte, pk, ck int64) {
 	}
 }
 
+// ensureNonZero guarantees the payload has at least one non-zero byte.
+//
+// xorshift64 never emits a zero 64-bit word for a non-zero state, so any buffer
+// of 8 bytes or more is already non-zero; only the truncated tail of a shorter
+// buffer can come out all zeros. Note that short payloads are also inherently
+// low-cardinality: a 1-byte value has at most 256 distinct values regardless of
+// how many rows are written, so collisions are unavoidable there.
+func ensureNonZero(buf []byte) {
+	if len(buf) == 0 || len(buf) >= 8 {
+		return
+	}
+	for _, b := range buf {
+		if b != 0 {
+			return
+		}
+	}
+	buf[0] = 1
+}
+
 func GenerateData(pk, ck, size int64, validateData, randomData bool, _ *random.Source) ([]byte, error) {
 	if !validateData {
 		value := make([]byte, size)
@@ -303,6 +322,7 @@ func GenerateData(pk, ck, size int64, validateData, randomData bool, _ *random.S
 			// partition when a materialized view is keyed on it, and makes the
 			// payload realistically incompressible.
 			fillPayload(value, pk, ck)
+			ensureNonZero(value)
 		}
 		return value, nil
 	}

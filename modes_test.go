@@ -422,6 +422,56 @@ func TestGenerateDataRandomData(t *testing.T) {
 	}
 }
 
+// TestGenerateDataRandomDataShortSizes covers value sizes below 8 bytes, where the
+// xorshift word is truncated. Such payloads are still guaranteed non-zero, but they
+// are inherently low-cardinality (a 1-byte value has at most 256 distinct values),
+// so collisions across rows are expected and only non-zeroness is asserted.
+func TestGenerateDataRandomDataShortSizes(t *testing.T) {
+	t.Parallel()
+
+	for shorterBy := range int64(7) {
+		size := shorterBy + 1
+		for pk := range int64(512) {
+			for ck := range int64(4) {
+				value, err := GenerateData(pk, ck, size, false, true, nil)
+				if err != nil {
+					t.Fatalf("GenerateData(%d, %d, %d) error: %v", pk, ck, size, err)
+				}
+				if len(value) != int(size) {
+					t.Fatalf("GenerateData(%d, %d, %d) length = %d", pk, ck, size, len(value))
+				}
+				if bytes.Equal(value, make([]byte, size)) {
+					t.Fatalf("GenerateData(%d, %d, %d) returned all zeros", pk, ck, size)
+				}
+			}
+		}
+	}
+}
+
+// TestDefaultExecutionConfigRandomData pins the -no-random-data flag to the
+// ExecutionConfig field the write paths actually read.
+func TestDefaultExecutionConfigRandomData(t *testing.T) {
+	origNoRandom, origValidate := noRandomData, validateData
+	t.Cleanup(func() { noRandomData, validateData = origNoRandom, origValidate })
+
+	for _, tc := range []struct {
+		noRandomData bool
+		validateData bool
+		want         bool
+	}{
+		{false, false, true},
+		{true, false, false},
+		{false, true, true},
+		{true, true, false},
+	} {
+		noRandomData, validateData = tc.noRandomData, tc.validateData
+		if got := DefaultExecutionConfig().RandomData; got != tc.want {
+			t.Errorf("DefaultExecutionConfig().RandomData with -no-random-data=%v -validate-data=%v = %v, want %v",
+				tc.noRandomData, tc.validateData, got, tc.want)
+		}
+	}
+}
+
 func TestValidateData(t *testing.T) {
 	t.Parallel()
 

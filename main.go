@@ -122,7 +122,7 @@ var (
 	hdrLatencyUnits          string
 	hdrLatencySigFig         int
 	validateData             bool
-	randomData               bool
+	noRandomData             bool
 	truncateTable            bool
 
 	clientRoutesConnectionIDs string
@@ -509,13 +509,14 @@ func main() {
 		"write meaningful data and validate while reading",
 	)
 	flag.BoolVar(
-		&randomData,
-		"random-data",
+		&noRandomData,
+		"no-random-data",
 		false,
-		"fill the value blob with high-entropy per-row data instead of zeros "+
-			"(distinct per pk/ck). Prevents materialized views keyed on the value "+
-			"column from collapsing into a single partition and avoids unrealistically "+
-			"compressible payloads. Implied by -validate-data.",
+		"write the legacy all-zero value blob instead of high-entropy per-row data. "+
+			"By default the value column holds data distinct per pk/ck, which keeps a "+
+			"materialized view keyed on that column from collapsing into a single "+
+			"partition and avoids unrealistically compressible payloads. No effect "+
+			"when -validate-data is set, which already writes distinct per-row data.",
 	)
 	flag.StringVar(
 		&extraClause,

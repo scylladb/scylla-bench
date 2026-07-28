@@ -280,6 +280,12 @@ func BenchmarkGenerateDataWithValidation(b *testing.B) {
 		}
 	})
 
+	b.Run("with_random_data", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, _ = GenerateData(int64(i), int64(i), size, false, true, nil)
+		}
+	})
+
 	b.Run("with_validation", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_, _ = GenerateData(int64(i), int64(i), size, true, false, nil)
