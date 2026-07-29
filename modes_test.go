@@ -21,7 +21,7 @@ func Must[T any](v T, err error) T {
 }
 
 func GenerateTestData(pk, ck, size int64) []byte {
-	return Must(GenerateData(pk, ck, size, true, nil))
+	return Must(GenerateData(pk, ck, size, true, false, nil))
 }
 
 func TestBuildReadQuery(t *testing.T) {
@@ -179,7 +179,7 @@ func TestGenerateData(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := GenerateData(tt.pk, tt.ck, tt.size, tt.validate, nil)
+			got, err := GenerateData(tt.pk, tt.ck, tt.size, tt.validate, false, nil)
 
 			if (err != nil) != tt.wantError {
 				t.Errorf("GenerateData() error = %v, wantError %v", err, tt.wantError)
@@ -307,7 +307,7 @@ func TestGenerateDataWithSource(t *testing.T) {
 
 			src := random.NewSource(42)
 
-			got, err := GenerateData(tt.pk, tt.ck, tt.size, tt.validate, src)
+			got, err := GenerateData(tt.pk, tt.ck, tt.size, tt.validate, false, src)
 			if err != nil {
 				t.Fatalf("GenerateData() unexpected error: %v", err)
 			}
@@ -339,11 +339,11 @@ func TestGenerateDataWithSourceDeterministic(t *testing.T) {
 	src2 := random.NewSource(2)
 
 	// Same pk/ck must produce identical output regardless of src.
-	data1, err := GenerateData(pk, ck, size, true, src1)
+	data1, err := GenerateData(pk, ck, size, true, false, src1)
 	if err != nil {
 		t.Fatalf("GenerateData() src1 error: %v", err)
 	}
-	data2, err := GenerateData(pk, ck, size, true, src2)
+	data2, err := GenerateData(pk, ck, size, true, false, src2)
 	if err != nil {
 		t.Fatalf("GenerateData() src2 error: %v", err)
 	}
@@ -352,7 +352,7 @@ func TestGenerateDataWithSourceDeterministic(t *testing.T) {
 	}
 
 	// Different pk must produce different output.
-	dataDiffPk, err := GenerateData(pk+1, ck, size, true, src1)
+	dataDiffPk, err := GenerateData(pk+1, ck, size, true, false, src1)
 	if err != nil {
 		t.Fatalf("GenerateData() diffPk error: %v", err)
 	}
@@ -366,6 +366,109 @@ func TestGenerateDataWithSourceDeterministic(t *testing.T) {
 	}
 	if err = ValidateData(pk+1, ck, dataDiffPk, true); err != nil {
 		t.Errorf("ValidateData() failed for dataDiffPk: %v", err)
+	}
+}
+
+// TestGenerateDataRandomData verifies the -random-data path (validateData=false,
+// randomData=true): the value blob must be non-zero and distinct per (pk, ck) so a
+// materialized view keyed on it does not collapse into a single partition, while
+// remaining deterministic for a given (pk, ck).
+func TestGenerateDataRandomData(t *testing.T) {
+	t.Parallel()
+
+	const size int64 = 128
+
+	// randomData=false keeps the legacy all-zero fast path.
+	zeros, err := GenerateData(1, 2, size, false, false, nil)
+	if err != nil {
+		t.Fatalf("GenerateData() zeros error: %v", err)
+	}
+	if !bytes.Equal(zeros, make([]byte, size)) {
+		t.Error("GenerateData() with randomData=false should return all zeros")
+	}
+
+	// randomData=true must produce non-zero output...
+	a, err := GenerateData(1, 2, size, false, true, nil)
+	if err != nil {
+		t.Fatalf("GenerateData() randomData error: %v", err)
+	}
+	if bytes.Equal(a, make([]byte, size)) {
+		t.Error("GenerateData() with randomData=true returned all zeros")
+	}
+
+	// ...that is deterministic for the same (pk, ck)...
+	aAgain, err := GenerateData(1, 2, size, false, true, nil)
+	if err != nil {
+		t.Fatalf("GenerateData() randomData repeat error: %v", err)
+	}
+	if !bytes.Equal(a, aAgain) {
+		t.Error("GenerateData() with randomData=true is not deterministic for the same pk/ck")
+	}
+
+	// ...and distinct across different (pk, ck) so the view token spreads.
+	diffPk, err := GenerateData(2, 2, size, false, true, nil)
+	if err != nil {
+		t.Fatalf("GenerateData() randomData diffPk error: %v", err)
+	}
+	diffCk, err := GenerateData(1, 3, size, false, true, nil)
+	if err != nil {
+		t.Fatalf("GenerateData() randomData diffCk error: %v", err)
+	}
+	if bytes.Equal(a, diffPk) {
+		t.Error("GenerateData() with randomData=true produced identical output for different pk")
+	}
+	if bytes.Equal(a, diffCk) {
+		t.Error("GenerateData() with randomData=true produced identical output for different ck")
+	}
+}
+
+// TestGenerateDataRandomDataShortSizes covers value sizes below 8 bytes, where the
+// xorshift word is truncated. Such payloads are still guaranteed non-zero, but they
+// are inherently low-cardinality (a 1-byte value has at most 256 distinct values),
+// so collisions across rows are expected and only non-zeroness is asserted.
+func TestGenerateDataRandomDataShortSizes(t *testing.T) {
+	t.Parallel()
+
+	for shorterBy := range int64(7) {
+		size := shorterBy + 1
+		for pk := range int64(512) {
+			for ck := range int64(4) {
+				value, err := GenerateData(pk, ck, size, false, true, nil)
+				if err != nil {
+					t.Fatalf("GenerateData(%d, %d, %d) error: %v", pk, ck, size, err)
+				}
+				if len(value) != int(size) {
+					t.Fatalf("GenerateData(%d, %d, %d) length = %d", pk, ck, size, len(value))
+				}
+				if bytes.Equal(value, make([]byte, size)) {
+					t.Fatalf("GenerateData(%d, %d, %d) returned all zeros", pk, ck, size)
+				}
+			}
+		}
+	}
+}
+
+// TestDefaultExecutionConfigRandomData pins the -no-random-data flag to the
+// ExecutionConfig field the write paths actually read.
+func TestDefaultExecutionConfigRandomData(t *testing.T) {
+	origNoRandom, origValidate := noRandomData, validateData
+	t.Cleanup(func() { noRandomData, validateData = origNoRandom, origValidate })
+
+	for _, tc := range []struct {
+		noRandomData bool
+		validateData bool
+		want         bool
+	}{
+		{false, false, true},
+		{true, false, false},
+		{false, true, true},
+		{true, true, false},
+	} {
+		noRandomData, validateData = tc.noRandomData, tc.validateData
+		if got := DefaultExecutionConfig().RandomData; got != tc.want {
+			t.Errorf("DefaultExecutionConfig().RandomData with -no-random-data=%v -validate-data=%v = %v, want %v",
+				tc.noRandomData, tc.validateData, got, tc.want)
+		}
 	}
 }
 

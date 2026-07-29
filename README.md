@@ -298,6 +298,10 @@ Note that if the effective write rate is lower than the specified one the reader
 * `-validate-data` defines data integrity verification. If set then some none-zero data will be written in such a way that it can be validated during read operation.
 Note that this option should be set for both write and read (counter_update and counter_read) modes.
 
+* `-no-random-data` restores the legacy all-zero value blob. By default the value blob holds high-entropy, non-zero data derived from `pk`/`ck`. This matters when a materialized view is created over the `v` column (e.g. by an MV nemesis) — an all-zero value column makes every view row share one partition key, collapsing the whole view onto a single shard/node and overloading it. It also avoids unrealistically compressible payloads when client/table compression is enabled.
+Values are distinct per row only when the row is long enough to hold the key material: a value shorter than 8 bytes (`-clustering-row-size` below 8) is guaranteed non-zero but is inherently low-cardinality — a 1-byte value has at most 256 distinct values no matter how many rows are written, so an MV keyed on it will still have few partitions. Use `-clustering-row-size` of at least 8 (ideally more) when view cardinality matters.
+Has no effect when `-validate-data` is set, since that mode already writes distinct per-row data; unlike `-validate-data`, the default random payload adds no read-side verification.
+
 * `-iterations` sets the Number of iterations to run the given workloads. This is only relevant for workloads that have a finite number of steps. Currently the only such workloads are [sequential](#sequential-workload--workload-sequential) and [scan](#scan-mode--mode-scan). Can be combined with `-duration` to limit a run by both number of iterations and time. Set to 0 for infinite iterations. Defaults to 1.
 
 * `keyspace` defines keyspace name to use

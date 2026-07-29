@@ -52,6 +52,7 @@ type ExecutionConfig struct {
 	NoLowerBound          bool
 	BypassCache           bool
 	ProvideUpperBound     bool
+	RandomData            bool
 }
 
 func DefaultExecutionConfig() ExecutionConfig {
@@ -67,6 +68,7 @@ func DefaultExecutionConfig() ExecutionConfig {
 		SelectOrderByParsed:   append([]string(nil), selectOrderByParsed...),
 		NoLowerBound:          noLowerBound,
 		BypassCache:           bypassCache,
+		RandomData:            !noRandomData,
 		MaxErrorsAtRow:        maxErrorsAtRow,
 		MaxErrors:             maxErrors,
 		RetryHandler:          retryHandler,
@@ -292,9 +294,37 @@ func fillPayload(buf []byte, pk, ck int64) {
 	}
 }
 
-func GenerateData(pk, ck, size int64, validateData bool, _ *random.Source) ([]byte, error) {
+// ensureNonZero guarantees the payload has at least one non-zero byte.
+//
+// xorshift64 never emits a zero 64-bit word for a non-zero state, so any buffer
+// of 8 bytes or more is already non-zero; only the truncated tail of a shorter
+// buffer can come out all zeros. Note that short payloads are also inherently
+// low-cardinality: a 1-byte value has at most 256 distinct values regardless of
+// how many rows are written, so collisions are unavoidable there.
+func ensureNonZero(buf []byte) {
+	if len(buf) == 0 || len(buf) >= 8 {
+		return
+	}
+	for _, b := range buf {
+		if b != 0 {
+			return
+		}
+	}
+	buf[0] = 1
+}
+
+func GenerateData(pk, ck, size int64, validateData, randomData bool, _ *random.Source) ([]byte, error) {
 	if !validateData {
-		return make([]byte, size), nil
+		value := make([]byte, size)
+		if randomData {
+			// Fill with a deterministic, high-entropy pattern that is distinct per
+			// (pk, ck). Keeps the value column from collapsing into a single
+			// partition when a materialized view is keyed on it, and makes the
+			// payload realistically incompressible.
+			fillPayload(value, pk, ck)
+			ensureNonZero(value)
+		}
+		return value, nil
 	}
 
 	value := make([]byte, size)
@@ -357,7 +387,7 @@ func ValidateData(pk, ck int64, data []byte, validateData bool) error {
 
 	// For small/medium sizes, regenerate expected data and compare
 	if size < generatedDataMinSize {
-		expectedBuf, err := GenerateData(pk, ck, size, validateData, nil)
+		expectedBuf, err := GenerateData(pk, ck, size, validateData, false, nil)
 		if err != nil {
 			return errors.Wrap(err, "failed to generate expected data for validation")
 		}
@@ -443,7 +473,7 @@ func createWriteTestFuncWithConfig(
 		defer query.Release()
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
-		value, err := GenerateData(pk, ck, random.GenerateDist(config.ClusteringRowSizeDist, src), validateData, src)
+		value, err := GenerateData(pk, ck, random.GenerateDist(config.ClusteringRowSizeDist, src), validateData, config.RandomData, src)
 		if err != nil {
 			panic(err)
 		}
@@ -559,6 +589,7 @@ func DoBatchedWritesWithConfig(
 					ck,
 					random.GenerateDist(config.ClusteringRowSizeDist, src),
 					validateData,
+					config.RandomData,
 					src,
 				)
 				if err != nil {
@@ -1024,7 +1055,7 @@ func createMixedWriteTestFuncWithConfig(
 		defer query.Release()
 		pk := workload.NextPartitionKey()
 		ck := workload.NextClusteringKey()
-		value, err := GenerateData(pk, ck, random.GenerateDist(config.ClusteringRowSizeDist, src), validateData, src)
+		value, err := GenerateData(pk, ck, random.GenerateDist(config.ClusteringRowSizeDist, src), validateData, config.RandomData, src)
 		if err != nil {
 			panic(err)
 		}
