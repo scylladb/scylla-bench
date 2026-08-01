@@ -35,7 +35,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gotesttools/gotestfmt/v2 v2.5.0 // indirect
 	github.com/klauspost/compress v1.19.1 // indirect
-	github.com/lufia/plan9stats v0.0.0-20260627054121-477a66015f15 // indirect
+	github.com/lufia/plan9stats v0.0.0-20260801144041-2fc331e7910f // indirect
 	github.com/magiconair/properties v1.18.11 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.3.2 // indirect
@@ -61,7 +61,7 @@ require (
 	go.opentelemetry.io/otel v1.44.0 // indirect
 	go.opentelemetry.io/otel/metric v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
-	go.yaml.in/yaml/v2 v2.4.3 // indirect
+	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/mod v0.38.0 // indirect
