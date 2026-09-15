@@ -1,4 +1,4 @@
-FROM golang:1.25 AS build
+FROM golang:1.27 AS build
 
 ENV GO111MODULE=on
 ENV CFLAGS="-O3"
