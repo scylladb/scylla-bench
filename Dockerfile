@@ -17,7 +17,7 @@ RUN apt-get update \
 
 FROM build AS debug
 
-ENV GODEBUG="default=go1.24,cgocheck=1,disablethp=0,panicnil=0,http2client=1,http2server=1,asynctimerchan=0,madvdontneed=0"
+ENV GODEBUG="default=go1.27,madvdontneed=0"
 ENV PATH="/scylla-bench/bin:${PATH}"
 
 RUN apt-get install -y gdb gcc iputils-ping mlocate vim \
@@ -43,7 +43,7 @@ LABEL com.scylladb.loader-type="scylla-bench"
 
 WORKDIR /
 
-ENV GODEBUG="default=go1.24,cgocheck=0,disablethp=0,panicnil=0,http2client=1,http2server=1,asynctimerchan=0,madvdontneed=0"
+ENV GODEBUG="default=go1.27,cgocheck=0,madvdontneed=0"
 
 ENV PATH="/usr/local/bin:${PATH}"
 
