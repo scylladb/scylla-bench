@@ -17,7 +17,7 @@ linters:
     - gocritic
     - gocyclo
     - goheader
-    - gomodguard
+    - gomodguard_v2
     - govet
     - ineffassign
     - lll
@@ -69,7 +69,8 @@ formatters:
     - golines
   settings:
     gofumpt:
-      extra-rules: true
+      extra:
+        group-params: true
     goimports:
       local-prefixes:
         - github.com/scylladb/scylla-bench

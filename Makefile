@@ -6,7 +6,7 @@ GOARCH ?= $(shell go env GOARCH)
 MAKEFILE_PATH := $(abspath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 BIN_DIR := "${MAKEFILE_PATH}/bin"
 
-GOLANGCI_VERSION = 2.6.0
+GOLANGCI_VERSION = 2.13.2
 VERSION ?= $(shell git describe --tags 2>/dev/null || echo "dev")
 COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE ?= $(shell git log -1 --format=%cd --date=format:%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%SZ")
