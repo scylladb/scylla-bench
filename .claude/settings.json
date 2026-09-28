@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "qatools": {
+      "source": {
+        "source": "git",
+        "url": "git@github.com:scylladb/qatools.git"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "qatools-sdlc@qatools": true
+  }
+}

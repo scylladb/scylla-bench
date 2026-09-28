@@ -18,9 +18,9 @@ AGENTS.md
 
 # Claude - AI assistant metadata
 .anthropic/
-.claude/
+.claude/*
+!.claude/settings.json
 claude.log
 claude_history.json
 claude_config.json
-CLAUDE.md
 bin/
