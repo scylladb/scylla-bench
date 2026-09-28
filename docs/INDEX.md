@@ -42,10 +42,10 @@ Located in `docs/standards/testing/`.
 Add unit tests for new functions and behavior changes, with error paths. Call
 `t.Parallel()` unless the test changes global state. Run tests with `-race`.
 Write table-driven tests with `t.Run` subtests when a test has more than one
-case. Use only the standard
-`testing` package. Call `t.Helper()` in test helpers. Test ScyllaDB code
-against a testcontainers ScyllaDB gated by `RUN_CONTAINER_TESTS=true`, and
-clean up containers. Gate memory-leak tests by `RUN_MEMORY_LEAK_TEST=true`.
+case. Use only the standard `testing` package. Call `t.Helper()` in test
+helpers. Test ScyllaDB code against a testcontainers ScyllaDB, and remove the
+containers after the test. Gate integration tests by `RUN_CONTAINER_TESTS=true`
+and memory-leak tests by `RUN_MEMORY_LEAK_TEST=true`.
 
 ## Updating this documentation
 

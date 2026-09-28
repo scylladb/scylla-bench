@@ -10,7 +10,7 @@ because Go does not allow a `replace` directive in a module installed by version
 Wrap an error with `fmt.Errorf` and the `%w` verb, and add context.
 Do not add new calls to `github.com/pkg/errors`. Leave its current calls
 unless the task changes that code.
-Check errors with `errors.Is` and `errors.As`, not with `==` or a type assertion.
+Check errors with `errors.Is` and `errors.As`.
 The errorlint linter enforces the checks.
 
 ```go

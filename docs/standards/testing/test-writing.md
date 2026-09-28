@@ -39,9 +39,8 @@ Call `t.Helper()` as the first statement of a test helper. The thelper linter en
 
 ### Container tests
 Test code that talks to ScyllaDB against a real ScyllaDB container from `pkg/testutil` (testcontainers).
-Skip the test unless `RUN_CONTAINER_TESTS=true` is set.
-Clean up each container and resource that the test starts.
+Remove each container and resource that the test starts.
+Gate each container test with an environment variable:
 
-### Memory-leak tests
-Skip memory-leak tests unless `RUN_MEMORY_LEAK_TEST=true` is set.
-CI sets the variable for the unit test job.
+- Integration tests skip unless `RUN_CONTAINER_TESTS=true` is set.
+- Memory-leak tests skip unless `RUN_MEMORY_LEAK_TEST=true` is set. CI sets this variable for the unit test job.
