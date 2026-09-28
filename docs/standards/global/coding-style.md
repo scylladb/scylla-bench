@@ -18,7 +18,7 @@ Keep each line at 180 characters or fewer. The lll linter and golines enforce th
 
 ### Field alignment
 Order struct fields so that the struct has the smallest padding.
-Run `make fieldalign` to fix the order. The govet fieldalignment check enforces it.
+The govet fieldalignment check in `make check` enforces it.
 
 ### No shadowed variables
 Do not declare a variable that shadows a variable in an outer scope.

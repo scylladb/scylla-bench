@@ -15,8 +15,8 @@ Located in `docs/standards/global/`.
 #### Coding style (`standards/global/coding-style.md`)
 Format with gofumpt, goimports, and golines through `make fmt`. Put imports in
 three gci groups: standard, third-party (with gocql), scylla-bench. Keep lines at 180
-characters or fewer. Order struct fields for the smallest padding with
-`make fieldalign`. Do not shadow variables. Make sure `make check` passes
+characters or fewer. Order struct fields for the smallest padding. Do not
+shadow variables. Make sure `make check` passes
 before a pull request.
 
 #### Git workflow (`standards/global/git-workflow.md`)
@@ -28,11 +28,11 @@ commit type.
 Located in `docs/standards/backend/`.
 
 #### Go conventions (`standards/backend/go-conventions.md`)
-Keep the `go.mod` replace directive to the ScyllaDB gocql fork, import it as
-`github.com/gocql/gocql`, and build with `make build`. Wrap errors with
-`fmt.Errorf` and `%w`, add no new `github.com/pkg/errors` calls, and check
-them with `errors.Is` and `errors.As`. Keep function cyclomatic complexity at
-50 or lower.
+Keep the `go.mod` replace directive to the ScyllaDB gocql fork. Import the
+driver as `github.com/gocql/gocql`. Build with `make build`. Wrap errors with
+`fmt.Errorf` and `%w`. Add no new `github.com/pkg/errors` calls. Check errors
+with `errors.Is` and `errors.As`. Keep function cyclomatic complexity at 50 or
+lower.
 
 ### Testing standards
 

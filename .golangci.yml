@@ -79,7 +79,6 @@ formatters:
         - standard
         - default
         - prefix(github.com/scylladb/scylla-bench)
-        - prefix(github.com/scylladb/gocql)
     golines:
       max-len: 180
       shorten-comments: true
