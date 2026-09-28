@@ -7,7 +7,8 @@ Build with `make build`. `go install github.com/scylladb/scylla-bench@<version>`
 because Go does not allow a `replace` directive in a module installed by version.
 
 ### Error wrapping
-Wrap an error with `fmt.Errorf` and the `%w` verb, and add context.
+Wrap an error with `fmt.Errorf` and the `%w` verb.
+Add context to the message.
 Do not add new calls to `github.com/pkg/errors`. Leave its current calls
 unless the task changes that code.
 Check errors with `errors.Is` and `errors.As`.

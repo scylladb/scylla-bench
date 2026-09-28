@@ -7,8 +7,8 @@ make check   # Lint with golangci-lint. The target installs it into bin/.
 make test    # Run the unit tests with the race detector. Needs jq.
 ```
 
-Integration tests run only when `RUN_CONTAINER_TESTS=true` is set.
-Memory-leak tests run only when `RUN_MEMORY_LEAK_TEST=true` is set. CI sets it for `make test`.
+Set `RUN_CONTAINER_TESTS=true` to run the integration tests.
+Set `RUN_MEMORY_LEAK_TEST=true` to run the memory-leak tests. CI sets it for `make test`.
 Both test groups need Docker.
 
 <!-- qatools-sdlc:begin -->
