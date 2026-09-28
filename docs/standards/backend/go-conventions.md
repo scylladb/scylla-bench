@@ -2,12 +2,14 @@
 
 ### ScyllaDB gocql fork
 Keep the `replace github.com/gocql/gocql => github.com/scylladb/gocql` directive in `go.mod`.
-The fork gives shard awareness. Do not install the tool with `go install` or `go get`.
-These commands ignore the `replace` directive. Build with `make build`.
+The fork gives shard awareness. Import the driver as `github.com/gocql/gocql`.
+Build with `make build`. `go install github.com/scylladb/scylla-bench@<version>` fails,
+because Go does not allow a `replace` directive in a module installed by version.
 
 ### Error wrapping
-Create errors with the standard library.
 Wrap an error with `fmt.Errorf` and the `%w` verb, and add context.
+Do not add new calls to `github.com/pkg/errors`. Leave its current calls
+unless the task changes that code.
 Check errors with `errors.Is` and `errors.As`, not with `==` or a type assertion.
 The errorlint linter enforces the checks.
 

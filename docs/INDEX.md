@@ -1,7 +1,7 @@
 # Documentation Index
 
 Read this file at the start of any task. It indexes the standards of this
-repository and the project documentation.
+repository.
 
 ## Standards
 
@@ -14,7 +14,7 @@ Located in `docs/standards/global/`.
 
 #### Coding style (`standards/global/coding-style.md`)
 Format with gofumpt, goimports, and golines through `make fmt`. Put imports in
-four gci groups: standard, third-party, scylla-bench, gocql. Keep lines at 180
+three gci groups: standard, third-party (with gocql), scylla-bench. Keep lines at 180
 characters or fewer. Order struct fields for the smallest padding with
 `make fieldalign`. Do not shadow variables. Make sure `make check` passes
 before a pull request.
@@ -28,8 +28,9 @@ commit type.
 Located in `docs/standards/backend/`.
 
 #### Go conventions (`standards/backend/go-conventions.md`)
-Keep the `go.mod` replace directive to the ScyllaDB gocql fork and never
-install with `go install`. Wrap errors with `fmt.Errorf` and `%w`, and check
+Keep the `go.mod` replace directive to the ScyllaDB gocql fork, import it as
+`github.com/gocql/gocql`, and build with `make build`. Wrap errors with
+`fmt.Errorf` and `%w`, add no new `github.com/pkg/errors` calls, and check
 them with `errors.Is` and `errors.As`. Keep function cyclomatic complexity at
 50 or lower.
 
@@ -40,7 +41,8 @@ Located in `docs/standards/testing/`.
 #### Test writing (`standards/testing/test-writing.md`)
 Add unit tests for new functions and behavior changes, with error paths. Call
 `t.Parallel()` unless the test changes global state. Run tests with `-race`.
-Write table-driven tests with `t.Run` subtests. Use only the standard
+Write table-driven tests with `t.Run` subtests when a test has more than one
+case. Use only the standard
 `testing` package. Call `t.Helper()` in test helpers. Test ScyllaDB code
 against a testcontainers ScyllaDB gated by `RUN_CONTAINER_TESTS=true`, and
 clean up containers. Gate memory-leak tests by `RUN_MEMORY_LEAK_TEST=true`.

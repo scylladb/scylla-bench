@@ -1,6 +1,6 @@
 ## Git workflow
 
 ### Commit subject
-Write the subject as `type(scope): summary`, as in `perf: use per-worker RNG`.
-Use the types `feat`, `fix`, `perf`, `ci`, or `chore`.
+Write the subject as `type(scope): summary`, as in `ci: pin GitHub Actions to commit SHAs`.
+Use a Conventional Commits type: `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `build`, `ci`, `revert`, or `chore`.
 The scope is optional.

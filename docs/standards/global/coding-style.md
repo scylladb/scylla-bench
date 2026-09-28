@@ -5,14 +5,13 @@ Format Go code with gofumpt (with `group-params`), goimports, and golines.
 Run `make fmt` before each commit. The target runs `golangci-lint run --fix`.
 
 ### Import order
-Put imports in four groups, in this order:
+Put imports in three groups, in this order:
 
 1. The standard library.
-2. Third-party modules.
+2. Third-party modules. This group includes `github.com/gocql/gocql`.
 3. `github.com/scylladb/scylla-bench`.
-4. `github.com/scylladb/gocql`.
 
-The gci formatter in `.golangci.yml` sets the groups.
+The gci formatter in `.golangci.yml` sets the groups. Run `make fmt` to fix the order.
 
 ### Line length
 Keep each line at 180 characters or fewer. The lll linter and golines enforce the limit.

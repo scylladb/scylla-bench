@@ -12,7 +12,7 @@ Skip the call only when the test changes global state.
 Run tests with the `-race` flag. `make test` sets it.
 
 ### Table-driven tests
-Use a table of cases and run each case as a `t.Run` subtest.
+When a test has more than one case, put the cases in a table and run each case as a `t.Run` subtest.
 
 ```go
 tests := []struct {
