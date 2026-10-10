@@ -159,6 +159,8 @@ github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 h1:1EYB5IzjZawrrnELUi78f9fPu57Hu
 github.com/santhosh-tekuri/jsonschema/v6 v6.0.3/go.mod h1:JXeL+ps8p7/KNMjDQk3TCwPpBy0wYklyWTfbkIzdIFU=
 github.com/scylladb/gocql v1.19.0 h1:6/G/2KHgb3QOaCbOiV77DWrN6s7xkkcWucf+3FuhkBY=
 github.com/scylladb/gocql v1.19.0/go.mod h1:a6Vin9ENon+KJcXzzWK111h4XHC1777vb2pD9U8N5Ls=
+github.com/scylladb/gocql v1.20.0 h1:kNpU1uj9HK3bIsl4IiofFcFWaK6FrD2OnpsY9bsBeAc=
+github.com/scylladb/gocql v1.20.0/go.mod h1:VwJQvUW93ztgs6wvA4XPWQu6i60B444VUXimePzXTok=
 github.com/shirou/gopsutil/v4 v4.26.7 h1:IXzpHz/dkMRYAhKkOXr1HB6SuzWU3eoyyeWe7g3bNZc=
 github.com/shirou/gopsutil/v4 v4.26.7/go.mod h1:5O9FjBiXoTDFatIWjZZosqj4pV0DRtLx598xGbBehzM=
 github.com/shirou/gopsutil/v4 v4.26.8 h1:YQMTF/1J50B5+Y0vlo1eDRf5DoR7Gk69hY+8wjYkQeo=

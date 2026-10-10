@@ -72,7 +72,7 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-replace github.com/gocql/gocql => github.com/scylladb/gocql v1.19.0
+replace github.com/gocql/gocql => github.com/scylladb/gocql v1.20.0
 
 tool (
 	github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt
