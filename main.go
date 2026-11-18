@@ -13,7 +13,6 @@ import (
 
 	"github.com/gocql/gocql"
 	"github.com/gocql/gocql/hostpolicy"
-	"github.com/gocql/gocql/scyllacloud"
 	"github.com/hailocab/go-hostpool"
 	"github.com/pkg/errors"
 
@@ -355,8 +354,6 @@ func main() {
 		hostSelectionPolicy string
 		tlsEncryption       bool
 
-		cloudConfigPath string
-
 		datacenter string
 		rack       string
 
@@ -611,7 +608,6 @@ func main() {
 		"Number of errors in summary to appear before stopping the execution of a workflow. "+
 			"If it is set to '0' then no limit for number of errors is applied.")
 
-	flag.StringVar(&cloudConfigPath, "cloud-config-path", "", "set the cloud config bundle")
 	flag.BoolVar(
 		&showVersion,
 		"version",
@@ -726,23 +722,7 @@ func main() {
 	if err := config.ValidateGlobalLatencyType(latencyType); err != nil {
 		log.Panic(errors.Wrap(err, "Bad value for latency-type"))
 	}
-	var cluster *gocql.ClusterConfig
-	var err error
-
-	if cloudConfigPath == "" {
-		cluster = gocql.NewCluster(strings.Split(nodes, ",")...)
-	} else if !tlsEncryption && username == "" && password == "" {
-		cluster, err = scyllacloud.NewCloudCluster(cloudConfigPath)
-		if err != nil {
-			log.Panic(err)
-		}
-	} else {
-		log.Panic("can't use -tls/-username/-password and -cloud-config-path at the same time")
-	}
-
-	if (clientRoutesConnectionIDs != "") && cloudConfigPath != "" {
-		log.Panic("can't use -client-routes-connection-ids together with -cloud-config-path")
-	}
+	cluster := gocql.NewCluster(strings.Split(nodes, ",")...)
 
 	if clientRoutesConnectionIDs != "" {
 		rawIDs := strings.Split(clientRoutesConnectionIDs, ",")

@@ -340,8 +340,6 @@ This is useful when connecting to ScyllaDB Cloud clusters through AWS PrivateLin
   -duration 15m
 ```
 
-**Note:** The `-client-routes-connection-ids` flag cannot be used together with `-cloud-config-path`.
-
 ### Random value distributions
 
 scylla-bench supports random values for certain command line arguments. The list of these arguments is:
